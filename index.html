@@ -3025,13 +3025,9 @@ function repintarPorCambioRemoto(){
   }, 250);
 }
 
-const USERS = {
-  mateo: { pass: 'mateo123', role: 'admin' },
-  paloma: { pass: 'paloma123', role: 'admin' },
-  fabiana: { pass: 'fabiana123', role: 'admin' },
-  taller: { pass: 'taller123', role: 'taller' },
-  facturacion: { pass: 'factura123', role: 'facturacion' }
-};
+// Acá vivían las contraseñas de todo el equipo, en texto plano, dentro de un
+// archivo público: cualquiera hacía "ver código fuente" y las leía. Ahora están
+// cifradas en Supabase y ni nosotros podemos verlas. Ver login() más abajo.
 // Nombre para mostrar y para el campo "cargado por" según quién está logueado
 const NOMBRES_USUARIO = { mateo:'Mateo', paloma:'Paloma', fabiana:'Fabiana', facturacion:'Walter' };
 function nombreUsuarioActual(){
