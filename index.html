@@ -2961,6 +2961,12 @@ async function cargarTodoDesdeSupabase(){
 function escucharCambiosEnVivo(){
   if(!sb || !sbSesion) return;
 
+  // Si ya habia un canal abierto, lo cerramos primero. Supabase no deja
+  // agregarle avisos a un canal ya conectado: tira "cannot add postgres_changes
+  // callbacks after subscribe()" y la persona no puede entrar. Pasa si alguien
+  // entra dos veces sin cerrar sesion en el medio.
+  try{ sb.removeAllChannels(); }catch(e){ console.error('Al cerrar canales previos:', e); }
+
   const canal = sb.channel('rentaz-cambios');
 
   SB_LISTAS.forEach(({tabla, get, set})=>{
@@ -3559,6 +3565,9 @@ function goTo(s){
   }
   if(s==='home')renderDashboard();
   if(s==='impuestos')renderDashboard();
+  // goTo() no dibujaba la pantalla de alquileres (lo hace el propio botón de
+  // filtro), así que los números de las solapas nunca se actualizaban al entrar.
+  if(s==='alquileres')actualizarContadoresAlq();
   if(s==='control')renderCtrl();
   if(s==='equipos')renderEq();
   if(s==='reportes')renderReportes();
@@ -10641,7 +10650,22 @@ async function agregarDiasFacturablesAlq(id){
   alert(`✅ Factura ${fmtD(desde)} al ${fmtD(nuevaFin)} — ${detalle} (${fmt(montoChunk)})${numeroFactura?' · N° '+numeroFactura:''}.\n\nYa cuenta para el reporte de ${mesLabel(mesActual)}. Si en realidad corresponde a otro mes, tocá "cambiar" al lado de esta factura en el detalle del alquiler.`);
 }
 
+// Muestra entre paréntesis cuántos hay en cada solapa. Antes había que contarlos
+// a ojo, y con 53 alquileres en la lista no se podía saber de un vistazo cuántos
+// están en curso hoy.
+function actualizarContadoresAlq(){
+  const hoy = new Date().toISOString().slice(0,10);
+  const activos = ALQUILERES.filter(a => alqEstaActivoHoy(a,hoy) && !a.entregaPendiente).length;
+  const espera = (typeof SOLICITUDES_ESPERA !== 'undefined' ? SOLICITUDES_ESPERA : [])
+                   .filter(s => s && s.estado === 'pendiente').length;
+  const poner = (id, txt) => { const b = document.getElementById(id); if(b) b.textContent = txt; };
+  poner('falq-activos', 'Activos (' + activos + ')');
+  poner('falq-todos',   'Todos (' + ALQUILERES.length + ')');
+  poner('falq-espera',  '🕓 Lista de espera (' + espera + ')');
+}
+
 function renderAlq(){
+  actualizarContadoresAlq();
   const hoy=new Date().toISOString().slice(0,10);
   // Orden: por orden de carga, el más reciente primero — así siempre ves arriba
   // lo último que cargaste, sin importar la fecha de inicio del alquiler.
@@ -10709,6 +10733,7 @@ function historialAlqCliente(clienteId, clienteNombre){
   return ALQUILERES.filter(a=>(a.cliente||'').trim().toLowerCase()===clienteNombre.trim().toLowerCase()).length;
 }
 function renderSolicitudesEspera(){
+  actualizarContadoresAlq();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
   // Orden: primero las pendientes que YA se pueden cubrir (dentro de ese grupo, más días
   // primero — para priorizar al cliente de alquiler más largo — y a igualdad de días, el
