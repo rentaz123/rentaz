@@ -5735,12 +5735,12 @@ function renderPrecios(){
         ${soloDia?'<span style="font-size:.68rem;font-weight:700;color:var(--txt2);background:var(--bg3);border-radius:8px;padding:2px 8px">solo por día</span>':''}
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px">
-        <div><label class="flabel">Día</label><input type="number" value="${p.dia!=null?p.dia:''}" onchange="setPrecioOverride('${tipo}','dia',this.value,this)"></div>
+        <div><label class="flabel">Día</label><input type="text" inputmode="numeric" class="campo-plata" value="${p.dia!=null?miles(p.dia):''}" onfocus="alEditarPlata(this)" oninput="alEscribirPlata(this)" onchange="setPrecioOverride('${tipo}','dia',this.value,this)"></div>
         ${soloDia
           ? `<div><label class="flabel">Semana</label><div style="font-weight:700;color:var(--txt3);padding:.3rem 0">— (no aplica)</div></div><div><label class="flabel">Mes</label><div style="font-weight:700;color:var(--txt3);padding:.3rem 0">— (no aplica)</div></div>`
-          : `<div><label class="flabel">Semana</label><input type="number" value="${p.sem!=null?p.sem:''}" placeholder="—" onchange="setPrecioOverride('${tipo}','sem',this.value,this)"></div>
-        <div><label class="flabel">Mes</label><input type="number" value="${p.mes!=null?p.mes:''}" placeholder="—" onchange="setPrecioOverride('${tipo}','mes',this.value,this)"></div>`}
-        <div><label class="flabel">Hora</label><input type="number" value="${p.hora!=null?p.hora:''}" placeholder="—" onchange="setPrecioOverride('${tipo}','hora',this.value,this)"></div>
+          : `<div><label class="flabel">Semana</label><input type="text" inputmode="numeric" class="campo-plata" value="${p.sem!=null?miles(p.sem):''}" placeholder="—" onfocus="alEditarPlata(this)" oninput="alEscribirPlata(this)" onchange="setPrecioOverride('${tipo}','sem',this.value,this)"></div>
+        <div><label class="flabel">Mes</label><input type="text" inputmode="numeric" class="campo-plata" value="${p.mes!=null?miles(p.mes):''}" placeholder="—" onfocus="alEditarPlata(this)" oninput="alEscribirPlata(this)" onchange="setPrecioOverride('${tipo}','mes',this.value,this)"></div>`}
+        <div><label class="flabel">Hora</label><input type="text" inputmode="numeric" class="campo-plata" value="${p.hora!=null?miles(p.hora):''}" placeholder="—" onfocus="alEditarPlata(this)" oninput="alEscribirPlata(this)" onchange="setPrecioOverride('${tipo}','hora',this.value,this)"></div>
       </div>
     </div>`;
   }).join('') + (esTaller ? '' : `<p style="font-size:.75rem;color:var(--txt3);margin-top:.5rem">Los cambios se guardan solos al salir de cada campo. Dejá "Semana", "Mes" u "Hora" vacío si ese equipo no maneja esa tarifa.</p>`);
@@ -5751,7 +5751,7 @@ function renderPrecios(){
   </div>`;
   const campoFlete=(label, val, onchange)=> esTaller
     ? `<div><label class="flabel">${label}</label><div style="font-weight:800;color:var(--txt);padding:.3rem 0">${val!=null?fmt(val):'—'}</div></div>`
-    : `<div><label class="flabel">${label}</label><input type="number" value="${val!=null?val:''}" onchange="${onchange}"></div>`;
+    : `<div><label class="flabel">${label}</label><input type="text" inputmode="numeric" class="campo-plata" value="${val!=null?miles(val):''}" onfocus="alEditarPlata(this)" oninput="alEscribirPlata(this)" onchange="${onchange}"></div>`;
 
   // ── Un destino con su desglose: lo que cobra el fletero + lo que suma Rentaz ──
   // Solo se toca el costo del fletero cuando llama; el final se calcula solo.
@@ -5759,6 +5759,7 @@ function renderPrecios(){
     const d = desgloseFlete(clave) || {};
     const calc = calcularFleteFijo(clave);
     const sinCargar = calc == null;
+    const margenMostrado = d.margen != null ? d.margen : MARGEN_RENTAZ_DEFECTO;
     if(esTaller){
       return `<div style="display:flex;justify-content:space-between;padding:.45rem 0;font-size:.85rem">
         <span style="color:var(--txt2)">${etiqueta}</span><b>${fmt(finalActual)}</b></div>`;
@@ -5767,10 +5768,12 @@ function renderPrecios(){
       <div style="font-size:.82rem;font-weight:600;color:var(--txt);margin-bottom:.45rem">${etiqueta}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:9px;align-items:end">
         <div><label class="flabel">Cobra el fletero (1 viaje)</label>
-          <input type="number" value="${d.costo!=null?d.costo:''}" placeholder="—"
+          <input type="text" inputmode="numeric" class="campo-plata" value="${d.costo!=null?miles(d.costo):''}" placeholder="—"
+            onfocus="alEditarPlata(this)" oninput="alEscribirPlata(this)"
             onchange="guardarDesgloseFlete('${clave}','costo',this.value,'${etiqueta.replace(/'/g,"\\'")}',this)"></div>
         <div><label class="flabel">Margen Rentaz</label>
-          <input type="number" value="${d.margen!=null?d.margen:''}" placeholder="—"
+          <input type="text" inputmode="numeric" class="campo-plata" value="${miles(margenMostrado)}" placeholder="—"
+            onfocus="alEditarPlata(this)" oninput="alEscribirPlata(this)"
             onchange="guardarDesgloseFlete('${clave}','margen',this.value,'${etiqueta.replace(/'/g,"\\'")}',this)"></div>
         <div style="text-align:right;padding-bottom:.35rem;min-width:120px">
           <div style="font-size:.62rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;font-weight:700">Precio final</div>
@@ -5779,7 +5782,7 @@ function renderPrecios(){
       </div>
       ${sinCargar
         ? `<div style="font-size:.7rem;color:var(--txt3);margin-top:.35rem">Todavía sin desglose — se usa el precio final de siempre. Cargá lo que cobra el fletero y se calcula solo.</div>`
-        : `<div style="font-size:.7rem;color:var(--txt3);margin-top:.35rem">${fmt(d.costo)} × 2 = ${fmt(d.costo*2)} + ${fmt(d.margen||0)} de margen</div>`}
+        : `<div style="font-size:.7rem;color:var(--txt3);margin-top:.35rem">${fmt(d.costo)} × 2 = ${fmt(d.costo*2)} + ${fmt(margenMostrado)} de margen</div>`}
     </div>`;
   };
 
@@ -5973,7 +5976,12 @@ function tablaEvolucion(filas, pct, colorPct, fmtPct){
 
   const cuerpo = claves.map(c=>{
     const s = series[c];
-    let valorVigente = s.puntos[0].antes;         // lo que valía antes del primer cambio
+    // De dónde arranca la fila. Si el primer registro es un cambio normal, se
+    // usa su valor anterior. Si es una foto de precio vigente (sin valor
+    // anterior, como la de agosto), se arranca de ese mismo valor: es el punto
+    // de partida, no un aumento.
+    const p0 = s.puntos[0];
+    let valorVigente = p0.antes != null ? p0.antes : p0.valor;
     const primero = valorVigente;
     const celdas = meses.map(m=>{
       const delMes = s.puntos.filter(p=>p.mes===m);
@@ -6029,6 +6037,33 @@ async function registrarCambioPrecio(tipo, clave, etiqueta, anterior, nuevo){
   }catch(e){ console.error('No se pudo anotar el cambio de precio:', e); }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  CAMPOS DE PLATA CON PUNTO DE MIL
+//  Un campo <input type="number"> no deja poner puntos, así que escribir
+//  1900000 es contar ceros a ojo y equivocarse. Estos campos son de texto y
+//  van poniendo el punto solos mientras escribís: 1.900.000.
+//  Al guardar se sacan los puntos y queda el número limpio.
+// ═══════════════════════════════════════════════════════════════════════════
+function miles(n){
+  if(n==null || n==='') return '';
+  return String(n).replace(/\D/g,'').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+function sinMiles(txt){
+  const limpio = String(txt||'').replace(/\./g,'').replace(',','.');
+  const n = parseFloat(limpio);
+  return isNaN(n) ? null : n;
+}
+// Mientras escribe: reformatea sin que se le mueva el cursor al final.
+function alEscribirPlata(input){
+  const antesLargo = input.value.length;
+  const pos = input.selectionStart;
+  input.value = miles(input.value);
+  const diff = input.value.length - antesLargo;
+  const nuevaPos = Math.max(0, pos + diff);
+  try{ input.setSelectionRange(nuevaPos, nuevaPos); }catch(e){}
+}
+function alEditarPlata(input){ input.select(); }
+
 // Cartelito breve al lado del campo, para no quedarse con la duda de si guardo.
 function avisarGuardado(input){
   if(!input) return;
@@ -6044,8 +6079,7 @@ function avisarGuardado(input){
 function setPrecioOverride(tipo, campo, val, input){
   if(!PRECIOS_OVERRIDE[tipo]) PRECIOS_OVERRIDE[tipo]={};
   const anterior = precioTipo(tipo)[campo];
-  const num = val===''? null : parseFloat(val);
-  const nuevo = (num===null || isNaN(num)) ? null : num;
+  const nuevo = sinMiles(val);            // saca los puntos de mil
   PRECIOS_OVERRIDE[tipo][campo] = nuevo;
   guardarPreciosOverride();
 
@@ -6092,8 +6126,7 @@ function fleteKmParam(clave){
 }
 function setFleteKmParam(clave, val, input){
   const anterior = fleteKmParam(clave);
-  const num = val==='' ? null : parseFloat(val);
-  const nuevo = (num===null || isNaN(num)) ? null : num;
+  const nuevo = sinMiles(val);
   if(!FLETES_OVERRIDE.km) FLETES_OVERRIDE.km = {};
   FLETES_OVERRIDE.km[clave] = nuevo;
   guardarFletesOverride();
@@ -6117,28 +6150,52 @@ function setFleteKmParam(clave, val, input){
 //  Los fletes que todavía no tengan el desglose cargado siguen funcionando con
 //  el precio final de siempre: nada se rompe mientras los vas pasando.
 // ═══════════════════════════════════════════════════════════════════════════
+// Lo que suma Rentaz sobre el costo del fletero. Viene puesto por defecto para
+// no tener que escribirlo en cada destino; si en alguno cobrás distinto, lo
+// cambiás y ese queda con su propio margen.
+const MARGEN_RENTAZ_DEFECTO = 20000;
+
 function desgloseFlete(clave){
   const d = FLETES_OVERRIDE.desglose || {};
   return d[clave] || null;
 }
+function margenDeFlete(clave){
+  const d = desgloseFlete(clave);
+  return (d && d.margen != null) ? d.margen : MARGEN_RENTAZ_DEFECTO;
+}
 function calcularFleteFijo(clave){
   const d = desgloseFlete(clave);
   if(!d || d.costo == null) return null;              // sin desglose cargado
-  return Math.round(d.costo * 2 + (d.margen || 0));
+  return Math.round(d.costo * 2 + margenDeFlete(clave));
 }
+
+// ── Anotar en el historial, pero esperando a que termines de escribir ──────
+// Un flete se carga en dos pasos (costo y margen). Si se anotara cada tecleo,
+// el historial quedaría con valores intermedios que nunca existieron de verdad:
+// "180.000 -> 380.000 -> 200.000". Por eso se espera unos segundos sin cambios
+// y recién ahí se guarda UNA línea, del valor con el que arrancaste al final.
+const HIST_PENDIENTE = {};
+function anotarCambioDeFlete(clave, etiqueta, valorAntesDeEditar){
+  if(!HIST_PENDIENTE[clave]) HIST_PENDIENTE[clave] = { anterior: valorAntesDeEditar, etiqueta };
+  clearTimeout(HIST_PENDIENTE[clave].timer);
+  HIST_PENDIENTE[clave].timer = setTimeout(()=>{
+    const p = HIST_PENDIENTE[clave];
+    delete HIST_PENDIENTE[clave];
+    const final = calcularFleteFijo(clave);
+    if(p.anterior !== final) registrarCambioPrecio('flete', clave, p.etiqueta, p.anterior, final);
+  }, 4000);
+}
+
 function guardarDesgloseFlete(clave, campo, val, etiqueta, input){
   const antesFinal = calcularFleteFijo(clave);
-  const num = val==='' ? null : parseFloat(val);
+  const num = val==='' ? null : parseFloat(String(val).replace(/\./g,'').replace(',','.'));
   const v = (num===null || isNaN(num)) ? null : num;
   if(!FLETES_OVERRIDE.desglose) FLETES_OVERRIDE.desglose = {};
   if(!FLETES_OVERRIDE.desglose[clave]) FLETES_OVERRIDE.desglose[clave] = {costo:null, margen:null};
   FLETES_OVERRIDE.desglose[clave][campo] = v;
   guardarFletesOverride();
 
-  // En el historial se anota el PRECIO FINAL, que es el que importa seguir
-  // para la inflación — no el costo suelto del fletero.
-  const despuesFinal = calcularFleteFijo(clave);
-  if(antesFinal !== despuesFinal) registrarCambioPrecio('flete', clave, etiqueta, antesFinal, despuesFinal);
+  anotarCambioDeFlete(clave, etiqueta, antesFinal);
   avisarGuardado(input);
   if(typeof renderPrecios==='function' && document.getElementById('precios-cont')) renderPrecios();
 }
@@ -6190,8 +6247,7 @@ function poblarSelectsFlete(){
   poblarRossoSelect('cot2-rosso-dest','cot2-rosso-tipo');
 }
 function setFleteOverride(grupo, tipoOClave, clave, val, input){
-  const num = val===''? null : parseFloat(val);
-  const v = (num===null || isNaN(num)) ? null : num;
+  const v = sinMiles(val);
   const DEST = {rafaela:'Rafaela', susana:'Susana', bellaItalia:'Bella Italia'};
   let anterior, etiqueta, claveHist;
 
