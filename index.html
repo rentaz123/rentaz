@@ -1413,12 +1413,26 @@ if ('serviceWorker' in navigator) {
     <div class="screen" id="screen-reportes">
       <div class="sec-title">Reportes</div>
       <div class="sec-sub">Ventas, fletes y ranking de clientes</div>
+
+      <!-- Selector de período: manda sobre todas las solapas. Antes cada una
+           sumaba TODO desde siempre, así que un cliente que facturó fuerte en
+           enero seguía apareciendo primero en septiembre. -->
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:.9rem">
+        <span style="font-size:.68rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;font-weight:700">Período</span>
+        <div class="rb-group" id="rep-periodos" style="flex:1;min-width:230px">
+          <button class="rb" id="rep-per-15" onclick="repSetPeriodo(15)" style="flex:1">15 días</button>
+          <button class="rb sel" id="rep-per-30" onclick="repSetPeriodo(30)" style="flex:1">30 días</button>
+          <button class="rb" id="rep-per-60" onclick="repSetPeriodo(60)" style="flex:1">60 días</button>
+          <button class="rb" id="rep-per-90" onclick="repSetPeriodo(90)" style="flex:1">90 días</button>
+          <button class="rb" id="rep-per-0"  onclick="repSetPeriodo(0)"  style="flex:1">Todo</button>
+        </div>
+      </div>
+      <div id="rep-rango-txt" style="font-size:.74rem;color:var(--txt3);margin:-.5rem 0 .9rem"></div>
+
       <div class="rb-group" style="margin-bottom:1rem" id="rep-tabs">
-        <button class="rb sel" id="rep-tab-ventas" onclick="setRepTab('ventas')" style="flex:1;min-width:0">Clientes: facturación</button>
+        <button class="rb sel" id="rep-tab-ventas" onclick="setRepTab('ventas')" style="flex:1;min-width:0">Clientes</button>
         <button class="rb" id="rep-tab-maquinas" onclick="setRepTab('maquinas')" style="flex:1;min-width:0">Máquinas</button>
         <button class="rb" id="rep-tab-fletes" onclick="setRepTab('fletes')" style="flex:1;min-width:0">Fletes</button>
-        <button class="rb" id="rep-tab-ranking" onclick="setRepTab('ranking')" style="flex:1;min-width:0">Clientes: N° alquileres</button>
-        <button class="rb" id="rep-tab-historial" onclick="setRepTab('historial')" style="flex:1;min-width:0">Historial</button>
         <button class="rb" id="rep-tab-perdidas" onclick="setRepTab('perdidas')" style="flex:1;min-width:0">Oportunidades perdidas</button>
       </div>
       <div id="rep-cont"></div>
@@ -5903,7 +5917,11 @@ async function renderHistorialPrecios(){
   }).join('');
 
   // ── Detalle ──────────────────────────────────────────────────────────────
-  const detalle = filas.map(f=>{
+  // Solo los cambios de verdad. Las líneas de "precio vigente" son el punto de
+  // partida, no movimientos: si se listaran, 46 de 49 filas serían relleno y no
+  // se vería lo único que importa, que es lo que se movió.
+  const soloCambios = filas.filter(f=>f.valor_anterior != null);
+  const detalle = soloCambios.map(f=>{
     const p = pct(f.valor_anterior, f.valor_nuevo);
     const fecha = new Date(f.cambiado_en);
     const fStr = String(fecha.getDate()).padStart(2,'0')+'/'+String(fecha.getMonth()+1).padStart(2,'0')+'/'+String(fecha.getFullYear()).slice(2);
@@ -5926,11 +5944,14 @@ async function renderHistorialPrecios(){
   cont.innerHTML =
     (resumen ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px;margin-bottom:1rem">${resumen}</div>` : '') +
     tablaEvolucion(filas, pct, colorPct, fmtPct) +
-    `<div style="font-size:.72rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:1.4rem 0 .5rem">Cambio por cambio</div>
-     <div style="background:var(--bg2);border-radius:12px;padding:.3rem 1rem;box-shadow:var(--sombra)">${detalle}</div>
-     <p style="font-size:.74rem;color:var(--txt3);margin-top:.6rem">
-       Se muestran los últimos 300 cambios. El porcentaje compara contra el valor que
-       tenía ese mismo precio justo antes.</p>`;
+    (soloCambios.length
+      ? `<details style="margin-top:1.2rem">
+           <summary style="cursor:pointer;font-size:.72rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;list-style:none">
+             Ver cambio por cambio (${soloCambios.length})
+           </summary>
+           <div style="background:var(--bg2);border-radius:12px;padding:.3rem 1rem;box-shadow:var(--sombra);margin-top:.5rem">${detalle}</div>
+         </details>`
+      : '');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -5967,14 +5988,21 @@ function tablaEvolucion(filas, pct, colorPct, fmtPct){
   }
   if(meses.length < 2) return '';                 // con un solo mes no hay evolución que mostrar
 
-  const claves = Object.keys(series).sort((a,b)=> series[a].etiqueta.localeCompare(series[b].etiqueta));
+  // Solo se listan los precios que efectivamente se movieron alguna vez. Los que
+  // solo tienen la foto inicial repetirían el mismo número en todas las columnas
+  // y con 49 equipos eso es un choclo donde no se ve lo que importa.
+  // Los demás quedan disponibles en "ver todos".
+  const cambiaron = Object.keys(series).filter(c=> series[c].puntos.some(p=>p.antes != null));
+  const quietos   = Object.keys(series).filter(c=> !series[c].puntos.some(p=>p.antes != null));
+  const ordenar = arr => arr.sort((a,b)=> series[a].etiqueta.localeCompare(series[b].etiqueta));
+  const claves = ordenar(cambiaron);
 
   const encabezado = meses.map(m=>{
     const p = m.split('-');
     return `<th style="text-align:right;padding:7px 9px;font-size:.68rem;color:var(--txt3);font-weight:700;white-space:nowrap">${MES_CORTO[+p[1]-1]} ${p[0].slice(2)}</th>`;
   }).join('');
 
-  const cuerpo = claves.map(c=>{
+  const armarFila = c=>{
     const s = series[c];
     // De dónde arranca la fila. Si el primer registro es un cambio normal, se
     // usa su valor anterior. Si es una foto de precio vigente (sin valor
@@ -5995,22 +6023,54 @@ function tablaEvolucion(filas, pct, colorPct, fmtPct){
       ${celdas}
       <td style="text-align:right;padding:7px 9px;font-size:.78rem;font-weight:700;white-space:nowrap;color:${total!=null?colorPct(total):'var(--txt3)'}">${total!=null?fmtPct(total):'—'}</td>
     </tr>`;
-  }).join('');
+  };
+  const cuerpo = claves.map(armarFila).join('');
+  const cuerpoQuietos = ordenar(quietos).map(armarFila).join('');
 
-  return `<div style="font-size:.72rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:0 0 .5rem">Evolución</div>
-    <div style="background:var(--bg2);border-radius:12px;box-shadow:var(--sombra);overflow-x:auto">
-      <table style="border-collapse:collapse;width:100%;min-width:520px">
-        <thead><tr style="border-bottom:1px solid var(--border)">
-          <th style="text-align:left;padding:7px 9px;font-size:.68rem;color:var(--txt3);font-weight:700;position:sticky;left:0;background:var(--bg2)">Precio</th>
-          ${encabezado}
-          <th style="text-align:right;padding:7px 9px;font-size:.68rem;color:var(--txt3);font-weight:700">Total</th>
-        </tr></thead>
-        <tbody>${cuerpo}</tbody>
-      </table>
+  const cabecera = `<thead><tr style="border-bottom:1px solid var(--border)">
+      <th style="text-align:left;padding:7px 9px;font-size:.68rem;color:var(--txt3);font-weight:700;position:sticky;left:0;background:var(--bg2)">Precio</th>
+      ${encabezado}
+      <th style="text-align:right;padding:7px 9px;font-size:.68rem;color:var(--txt3);font-weight:700">Total</th>
+    </tr></thead>`;
+  const caja = c=>`<div style="background:var(--bg2);border-radius:12px;box-shadow:var(--sombra);overflow-x:auto">
+      <table style="border-collapse:collapse;width:100%;min-width:520px">${cabecera}<tbody>${c}</tbody></table>
+    </div>`;
+
+  // ── Agrupado en Equipos y Fletes ────────────────────────────────────────
+  // Mezclados en una sola tabla eran 49 filas donde no se encontraba nada.
+  // Separados, cada grupo se abre y se cierra por su cuenta.
+  const grupo = (clavesDelGrupo, titulo, abiertoPorDefecto)=>{
+    if(!clavesDelGrupo.length) return '';
+    const filasHtml = clavesDelGrupo.map(armarFila).join('');
+    return `<details ${abiertoPorDefecto?'open':''} style="margin-bottom:.6rem">
+      <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:.55rem .8rem;background:var(--bg3);border-radius:9px;font-size:.78rem;font-weight:700;color:var(--txt)">
+        <span>${titulo}</span>
+        <span style="color:var(--txt3);font-weight:600">${clavesDelGrupo.length}</span>
+      </summary>
+      <div style="margin-top:.45rem">${caja(filasHtml)}</div>
+    </details>`;
+  };
+  const porTipo = (arr, t)=> arr.filter(c=> series[c].tipo === t);
+
+  return `<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:0 0 .6rem">
+      <span style="font-size:.72rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;font-weight:700">Precios que se movieron</span>
+      <span style="font-size:.72rem;color:var(--txt3)">${claves.length} de ${claves.length + quietos.length}</span>
     </div>
-    <p style="font-size:.74rem;color:var(--txt3);margin:.5rem 0 0">
-      En negrita, los meses en que ese precio se modificó. Los demás repiten el último
-      valor vigente. La última columna es el aumento acumulado desde el primer registro.</p>`;
+    ${claves.length
+      ? grupo(porTipo(claves,'flete'), 'Fletes', true) + grupo(porTipo(claves,'equipo'), 'Equipos', true)
+      : `<p style="font-size:.8rem;color:var(--txt3)">Todavía no se movió ningún precio.</p>`}
+    <p style="font-size:.74rem;color:var(--txt3);margin:.4rem 0 0">
+      En negrita, el mes en que ese precio se tocó. Los demás repiten el valor que
+      siguió vigente. La última columna es el aumento acumulado.</p>
+    ${quietos.length ? `<details style="margin-top:1rem">
+      <summary style="cursor:pointer;font-size:.72rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;list-style:none">
+        Ver los ${quietos.length} precios que siguen igual
+      </summary>
+      <div style="margin-top:.55rem">
+        ${grupo(porTipo(quietos,'flete'), 'Fletes sin cambios', false)}
+        ${grupo(porTipo(quietos,'equipo'), 'Equipos sin cambios', false)}
+      </div>
+    </details>` : ''}`;
 }
 // ═══════════════════════════════════════════════════════════════════════════
 //  HISTORIAL DE PRECIOS
@@ -11592,7 +11652,11 @@ function cerrarCtrl(){ document.getElementById('modal-ctrl').style.display='none
 let repTab='ventas';
 function setRepTab(t){
   repTab=t;
-  ['ventas','maquinas','fletes','ranking','historial','perdidas'].forEach(x=>document.getElementById('rep-tab-'+x).classList.remove('sel'));
+  // "historial" ya no existe como solapa: cada una de las otras ES el historial,
+  // pero mirado con el período elegido, que es lo que sirve para decidir.
+  ['ventas','maquinas','fletes','perdidas'].forEach(x=>{
+    const b=document.getElementById('rep-tab-'+x); if(b) b.classList.remove('sel');
+  });
   document.getElementById('rep-tab-'+t).classList.add('sel');
   renderReportes();
 }
@@ -11668,13 +11732,93 @@ function chunkEnMesInicio(chunk, rangoInicio, rangoFin){
   return {dias:0, monto:0};
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  PERÍODO DE LOS REPORTES
+//
+//  Antes cada solapa sumaba todo el historial completo. Eso hacía que un
+//  cliente que facturó fuerte a principio de año siguiera encabezando el
+//  ranking en septiembre, cuando hace meses que no alquila. Para decidir hoy,
+//  lo que sirve es mirar una ventana de tiempo.
+//
+//  El período manda sobre todas las solapas a la vez: se elige una vez arriba y
+//  vale para facturación, máquinas, fletes y ranking.
+// ═══════════════════════════════════════════════════════════════════════════
+let repPeriodo = 30;      // 15 | 30 | 60 | 90 | 0 = todo
+
+function repRango(){
+  if(!repPeriodo) return null;                    // "Todo": sin filtro
+  const f = d => d.toISOString().slice(0,10);
+  const hasta = new Date();
+  const desde = new Date();
+  desde.setDate(desde.getDate() - repPeriodo + 1);
+  return { desde: f(desde), hasta: f(hasta) };
+}
+
+function repSetPeriodo(d){
+  repPeriodo = d;
+  ['15','30','60','90','0'].forEach(x=>{
+    const b = document.getElementById('rep-per-'+x);
+    if(b) b.classList.toggle('sel', String(d)===x);
+  });
+  renderReportes();
+}
+
+// Cuánto aportó un alquiler DENTRO del período, prorrateando por días.
+// Un alquiler de 30 días que arrancó hace 40 solo cuenta los días que caen
+// adentro de la ventana, no el contrato entero: si no, un contrato viejo y
+// largo inflaría el mes actual.
+function repAporteEnRango(a, rango){
+  if(!rango) return { dias: (a.dias||1), monto: (a.tot||0) };
+  const finEfectivo = a.retiradoAnticipado || a.fin;
+  if(!a.inicio || !finEfectivo) return { dias:0, monto:0 };
+
+  const dif = (desde, hasta) =>
+    Math.round((new Date(hasta+'T00:00:00') - new Date(desde+'T00:00:00'))/86400000) + 1;
+
+  // Se prorratea sobre los días REALES que duró el alquiler, no sobre los días
+  // facturados del contrato. Si un alquiler se extendió (diasAgregados), los
+  // reales son más que los facturados, y dividir por los facturados hacía que
+  // la parte que cae en el período valiera más que el alquiler entero: por eso
+  // "90 días" daba más plata que "Todo", que es imposible.
+  const diasReales = Math.max(1, dif(a.inicio, finEfectivo));
+
+  const ini = a.inicio > rango.desde ? a.inicio : rango.desde;
+  const fin = finEfectivo < rango.hasta ? finEfectivo : rango.hasta;
+  if(ini > fin) return { dias:0, monto:0 };
+  const dias = dif(ini, fin);
+
+  return { dias, monto: (a.tot||0) * dias / diasReales };
+}
+
+function repTextoRango(){
+  const el = document.getElementById('rep-rango-txt');
+  if(!el) return;
+  const r = repRango();
+  if(!r){ el.textContent = 'Mostrando todo el historial, sin límite de fechas.'; return; }
+  const d = s => { const p = s.split('-'); return p[2]+'/'+p[1]+'/'+p[0].slice(2); };
+  el.textContent = `Del ${d(r.desde)} al ${d(r.hasta)} · los alquileres que cruzan el período cuentan solo los días que caen adentro.`;
+}
+
 function renderReportes(){
   const cont=document.getElementById('rep-cont');
+  // Máquinas se mira por mes de facturación, no por ventana de días: se le
+  // esconde el selector de arriba para que no queden dos controles peleando
+  // por lo mismo. Tiene su propio navegador de meses adentro.
+  const usaPeriodo = repTab !== 'maquinas';
+  ['rep-periodos','rep-rango-txt'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.parentElement.style.display = '';
+  });
+  const cajaPer = document.getElementById('rep-periodos');
+  if(cajaPer) cajaPer.parentElement.style.display = usaPeriodo ? '' : 'none';
+  const txtPer = document.getElementById('rep-rango-txt');
+  if(txtPer) txtPer.style.display = usaPeriodo ? '' : 'none';
+
+  if(usaPeriodo) repTextoRango();
+
   if(repTab==='ventas') cont.innerHTML=renderRepVentas();
   else if(repTab==='maquinas') cont.innerHTML=renderRepMaquinas();
   else if(repTab==='fletes') cont.innerHTML=renderRepFletes();
-  else if(repTab==='ranking') cont.innerHTML=renderRepRanking();
-  else if(repTab==='historial') cont.innerHTML=renderRepHistorial();
   else if(repTab==='perdidas') cont.innerHTML=renderRepPerdidas();
 }
 let repMaquinasVista='mensual'; // 'mensual' | 'total'
@@ -11727,108 +11871,86 @@ function alqMeta(a){
 function renderRepMaquinas(){
   if(!EQUIPOS.length && !ALQUILERES.length) return '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">No hay equipos cargados.</p>';
 
-  const tabsHtml=`<div class="rb-group" style="margin-bottom:.7rem">
-    <button class="rb${repMaquinasVista==='mensual'?' sel':''}" onclick="repMaquinasSetVista('mensual')" style="flex:1">Por mes</button>
-    <button class="rb${repMaquinasVista==='total'?' sel':''}" onclick="repMaquinasSetVista('total')" style="flex:1">Histórico total</button>
-  </div>`;
-
-  if(repMaquinasVista==='total'){
-    const porGrupo={};
-    repMaquinasFilasPorGrupo={};
-    ALQUILERES.forEach(a=>{
-      const chunks=chunksFacturablesAlq(a);
-      if(!chunks.length) return;
-      const totalMonto=chunks.reduce((s,c)=>s+c.monto,0);
-      const totalDias=chunks.reduce((s,c)=>s+c.dias,0);
-      const meta=alqMeta(a);
-      const key=grupoKey(meta);
-      if(!porGrupo[key]) porGrupo[key]={key, label:grupoLabel(meta), cantidad:0, dias:0, monto:0, sustituciones:0};
-      porGrupo[key].cantidad+=1;
-      porGrupo[key].dias+=totalDias;
-      porGrupo[key].monto+=totalMonto; // valor de la máquina, sin flete
-      if(a.sustituido) porGrupo[key].sustituciones+=1;
-      if(!repMaquinasFilasPorGrupo[key]) repMaquinasFilasPorGrupo[key]=[];
-      repMaquinasFilasPorGrupo[key].push({a, dias:totalDias, monto:totalMonto});
-    });
-    const stats=Object.values(porGrupo).sort((a,b)=>b.monto-a.monto);
-    if(!stats.length) return tabsHtml + '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">Todavía no hay alquileres cargados.</p>';
-    const granTotal=stats.reduce((s,x)=>s+x.monto,0);
-    return tabsHtml + `<div style="margin-bottom:.8rem;font-size:.85rem;color:var(--txt2)">Valor total de máquinas (sin envío): <b style="color:var(--verde)">${fmt(granTotal)}</b></div>` +
-      stats.map(x=>`<div class="eq-item" style="cursor:pointer;flex-direction:column;align-items:flex-start;gap:4px" onclick="mostrarDetalleGrupoMaquina('${x.key}')">
-        <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-          <h4 style="font-size:.9rem">${x.label}</h4>
-          <span style="font-weight:800;color:var(--verde);font-size:.9rem">${fmt(x.monto)}</span>
-        </div>
-        <div style="font-size:.78rem;color:var(--txt2)">${x.cantidad} alquiler${x.cantidad!==1?'es':''} · ${x.dias} día${x.dias!==1?'s':''} alquilada${x.sustituciones?` · ⚠ ${x.sustituciones} entregada${x.sustituciones!==1?'s':''} como sustituto de otra`:''} · Tocá para ver el detalle</div>
-      </div>`).join('');
-  }
-
-  // Vista mensual: dos modalidades de conteo posibles
-  const [y,m]=repMaquinasMes.split('-').map(Number);
-  const mesInicio=`${repMaquinasMes}-01`;
-  const ultimoDia=new Date(y,m,0).getDate();
-  const mesFin=`${repMaquinasMes}-${String(ultimoDia).padStart(2,'0')}`;
-  const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
-  const tituloMes=`${MESES[m-1]} ${y}`;
-
-  const modoHtml=`<div class="rb-group" style="margin-bottom:.7rem">
-    <button class="rb${repMaquinasModo==='prorrateado'?' sel':''}" onclick="repMaquinasSetModo('prorrateado')" style="flex:1;font-size:.78rem">Prorrateado por día</button>
-    <button class="rb${repMaquinasModo==='inicio'?' sel':''}" onclick="repMaquinasSetModo('inicio')" style="flex:1;font-size:.78rem">Todo en mes de inicio</button>
-  </div>`;
+  // ═════════════════════════════════════════════════════════════════════════
+  //  Simplificada el 8/9/2026.
+  //
+  //  Antes tenía cuatro botones y un navegador de meses propio: "Por mes /
+  //  Histórico total" y "Prorrateado por día / Todo en mes de inicio". Los dos
+  //  primeros quedaron de más cuando apareció el selector de período de arriba,
+  //  y los otros dos eran una sutileza contable que casi nunca cambia el número
+  //  y que solo confundía.
+  //
+  //  Ahora manda el período de arriba y se contesta lo único que importa:
+  //  cuánta plata generó cada máquina y a qué promedio por día se alquiló.
+  //
+  //  Se cuenta sobre los "chunks facturables" (la parte base más cada factura
+  //  parcial), así lo que se ve acá cuadra con lo que se factura. Si un chunk
+  //  tiene un mes de facturación marcado a mano, manda ese mes.
+  // ═════════════════════════════════════════════════════════════════════════
+  // ── Acá se cuenta por MES DE FACTURACIÓN, no por ventana de días ──────────
+  // Es distinto del resto de los reportes a propósito. Un alquiler que arrancó
+  // el 28 de agosto pero se facturó en septiembre tiene que contar entero en
+  // septiembre, para que este número cuadre con lo que efectivamente facturaste.
+  // Repartirlo por días daría un número que no coincide con ninguna factura.
+  const mesElegido = repMaquinasMes;
+  const mesDelChunk = (chunk, a) => chunk.mes ? chunk.mes : String(a.inicio||'').slice(0,7);
 
   const porGrupo={};
   repMaquinasFilasPorGrupo={};
+
   ALQUILERES.forEach(a=>{
     const chunks=chunksFacturablesAlq(a);
     if(!chunks.length) return;
-    // Cada chunk (porción base + cada factura parcial) se evalúa por separado contra el
-    // mes que se está mirando. El mes marcado a mano en CADA chunk manda siempre, sin
-    // importar el modo elegido: un chunk facturado en julio cuenta entero para julio y
-    // nada para junio/agosto, tanto en "Prorrateado por día" como en "Todo en mes de inicio".
-    // Así, si un alquiler abierto tiene una factura de julio y otra de agosto, cada una
-    // aparece solo en el reporte de su propio mes.
     let mDias=0, mMonto=0;
     chunks.forEach(chunk=>{
-      const r = chunk.mes
-        ? chunkEnMesInicio(chunk, mesInicio, mesFin)
-        : (repMaquinasModo==='inicio' ? chunkEnMesInicio(chunk, mesInicio, mesFin) : overlapChunkEnRango(chunk, mesInicio, mesFin));
-      mDias+=r.dias; mMonto+=r.monto;
+      if(mesDelChunk(chunk, a) !== mesElegido) return;
+      mDias += chunk.dias||0;
+      mMonto += chunk.monto||0;
     });
-    const r = {dias:mDias, monto:mMonto};
-    if(r.dias>0){
+    if(mDias>0){
       const meta=alqMeta(a);
       const key=grupoKey(meta);
       if(!porGrupo[key]) porGrupo[key]={key, label:grupoLabel(meta), cantidad:0, dias:0, monto:0};
       porGrupo[key].cantidad+=1;
-      porGrupo[key].dias+=r.dias;
-      porGrupo[key].monto+=r.monto;
+      porGrupo[key].dias+=mDias;
+      porGrupo[key].monto+=mMonto;
       if(!repMaquinasFilasPorGrupo[key]) repMaquinasFilasPorGrupo[key]=[];
-      repMaquinasFilasPorGrupo[key].push({a, dias:r.dias, monto:r.monto});
+      repMaquinasFilasPorGrupo[key].push({a, dias:mDias, monto:mMonto});
     }
   });
-  const stats=Object.values(porGrupo).map(x=>({...x, promedio: x.dias>0 ? x.monto/x.dias : 0})).sort((a,b)=>b.monto-a.monto);
 
+  const stats=Object.values(porGrupo)
+    .map(x=>({...x, promedio: x.dias>0 ? x.monto/x.dias : 0}))
+    .sort((a,b)=>b.monto-a.monto);
+
+  const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const [yy,mm] = mesElegido.split('-').map(Number);
+  const tituloMes = `${MESES[mm-1]} ${yy}`;
+  const nav = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:.9rem">
+      <button onclick="repMaquinasNavMes(-1)" class="btn-lim" style="padding:7px 14px;width:auto">◀</button>
+      <div style="font-weight:700;color:var(--txt);font-size:1rem;letter-spacing:-.02em">${tituloMes}</div>
+      <button onclick="repMaquinasNavMes(1)" class="btn-lim" style="padding:7px 14px;width:auto">▶</button>
+    </div>
+    <div style="font-size:.72rem;color:var(--txt3);margin:-.5rem 0 .8rem">Contado por mes de facturación: cada alquiler entra entero en el mes en que se facturó.</div>`;
+
+  if(!stats.length) return nav + `<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">Ninguna máquina facturó en ${tituloMes}.</p>`;
+
+  // Solo el total. Los días alquilados y el promedio por día van en cada fila,
+  // que es donde sirven: un promedio general que mezcla una tijera de 6m con un
+  // brazo de 16m no significa nada — son máquinas de precios muy distintos.
   const granTotal=stats.reduce((s,x)=>s+x.monto,0);
-  const nav=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.7rem">
-      <button onclick="repMaquinasNavMes(-1)" class="btn-lim" style="padding:6px 12px">◀</button>
-      <div style="font-weight:800;color:var(--txt)">${tituloMes}</div>
-      <button onclick="repMaquinasNavMes(1)" class="btn-lim" style="padding:6px 12px">▶</button>
-    </div>`;
 
-  const notaModo = repMaquinasModo==='inicio'
-    ? '<div style="font-size:.72rem;color:var(--txt3);margin-bottom:.6rem">Modalidad: todos los días y el monto de cada alquiler se cargan a un solo mes — el mes de facturación () si fue marcado, o si no, el mes en que arrancó.</div>'
-    : '<div style="font-size:.72rem;color:var(--txt3);margin-bottom:.6rem">Modalidad: cada alquiler reparte sus días y su monto entre los meses que efectivamente ocupa. Excepción: si tiene un mes de facturación () marcado a mano, va entero a ese mes.</div>';
-
-  if(!stats.length) return tabsHtml + modoHtml + nav + notaModo + '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">Ninguna máquina trabajó este mes.</p>';
-
-  return tabsHtml + modoHtml + nav + notaModo +
-    `<div style="margin-bottom:.8rem;font-size:.85rem;color:var(--txt2)">Valor de máquinas en ${tituloMes} (sin envío): <b style="color:var(--verde)">${fmt(granTotal)}</b></div>` +
+  return nav + `<div style="margin-bottom:.9rem;font-size:.85rem;color:var(--txt2)">
+      Facturado en ${tituloMes}:
+      <b style="color:var(--txt);font-size:1.05rem">${fmt(granTotal)}</b>
+      <span style="color:var(--txt3);font-size:.76rem"> · valores de máquina, sin flete</span>
+    </div>` +
     stats.map(x=>`<div class="eq-item" style="cursor:pointer;flex-direction:column;align-items:flex-start;gap:4px" onclick="mostrarDetalleGrupoMaquina('${x.key}')">
       <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
         <h4 style="font-size:.9rem">${x.label}</h4>
-        <span style="font-weight:800;color:var(--verde);font-size:.9rem">${fmt(x.monto)}</span>
+        <span style="font-weight:700;color:var(--txt);font-size:.9rem">${fmt(x.monto)}</span>
       </div>
-      <div style="font-size:.78rem;color:var(--txt2)">${x.dias} día${x.dias!==1?'s':''} trabajados en el mes · ${x.cantidad} alquiler${x.cantidad!==1?'es':''} · promedio ${fmt(x.promedio)}/día · Tocá para ver el detalle</div>
+      <div style="font-size:.78rem;color:var(--txt3)">${x.dias} día${x.dias!==1?'s':''} alquilada · ${x.cantidad} alquiler${x.cantidad!==1?'es':''} · promedio <b style="color:var(--txt2)">${fmt(x.promedio)}/día</b> · Tocá para ver el detalle</div>
     </div>`).join('');
 }
 // Drill-down: qué alquileres arman un renglón del reporte de Máquinas. Sirve para
@@ -11852,24 +11974,55 @@ function mostrarDetalleGrupoMaquina(key){
     : '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:1rem">No hay alquileres en este grupo.</p>';
   document.getElementById('modal-repgrupo-det').style.display='flex';
 }
+// ═══════════════════════════════════════════════════════════════════════════
+//  CLIENTES
+//  Antes esto eran dos solapas — "Clientes: facturación" y "Clientes: N° de
+//  alquileres" — que mostraban exactamente los mismos clientes con los mismos
+//  dos números, cambiando nada más el orden. Ahora es una sola con un botón
+//  para ordenar por plata o por cantidad.
+// ═══════════════════════════════════════════════════════════════════════════
+let repClientesOrden = 'plata';   // 'plata' | 'cantidad'
+function repSetOrdenClientes(o){ repClientesOrden = o; renderReportes(); }
+
 function renderRepVentas(){
   const rivReportes = alquileresRivParaReportes();
   if(!ALQUILERES.length && !rivReportes.length) return '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">Todavía no hay alquileres cargados.</p>';
+  const rango = repRango();
   const porCliente={};
   const sumar=a=>{
+    const ap = repAporteEnRango(a, rango);
+    if(ap.dias <= 0) return;                       // no tocó el período
     if(!porCliente[a.cliente]) porCliente[a.cliente]={cliente:a.cliente, total:0, cantidad:0};
-    porCliente[a.cliente].total += a.tot||0;
+    porCliente[a.cliente].total += ap.monto;
     porCliente[a.cliente].cantidad += 1;
   };
   ALQUILERES.forEach(a=>{ if(alqCuentaParaReportes(a)) sumar(a); });
   rivReportes.forEach(sumar);
-  const lista=Object.values(porCliente).sort((a,b)=>b.total-a.total);
-  if(!lista.length) return '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">Todavía no hay alquileres facturados (o cargados sin factura). Cuando facturación marque un alquiler como facturado, o se cargue uno sin factura, aparece acá.</p>';
+
+  const orden = `<div class="rb-group" style="margin-bottom:.8rem">
+      <button class="rb${repClientesOrden==='plata'?' sel':''}" onclick="repSetOrdenClientes('plata')" style="flex:1">Por facturación</button>
+      <button class="rb${repClientesOrden==='cantidad'?' sel':''}" onclick="repSetOrdenClientes('cantidad')" style="flex:1">Por cantidad de alquileres</button>
+    </div>`;
+
+  const lista=Object.values(porCliente).sort((a,b)=>
+    repClientesOrden==='cantidad'
+      ? (b.cantidad-a.cantidad || b.total-a.total)
+      : (b.total-a.total || b.cantidad-a.cantidad));
+
+  if(!lista.length) return orden + `<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">No hubo alquileres en ${repPeriodo? 'los últimos '+repPeriodo+' días' : 'el historial'}.</p>`;
+
   const granTotal=lista.reduce((s,x)=>s+x.total,0);
-  return `<div style="margin-bottom:.8rem;font-size:.85rem;color:var(--txt2)">Total facturado: <b style="color:var(--verde)">${fmt(granTotal)}</b> · ${lista.length} cliente${lista.length!==1?'s':''}</div>` +
-    lista.map(x=>`<div class="eq-item" style="cursor:default">
+  const totalAlq=lista.reduce((s,x)=>s+x.cantidad,0);
+
+  return orden +
+    `<div style="margin-bottom:.8rem;font-size:.85rem;color:var(--txt2)">
+      <b style="color:var(--txt);font-size:1.05rem">${fmt(granTotal)}</b> ·
+      ${totalAlq} alquiler${totalAlq!==1?'es':''} · ${lista.length} cliente${lista.length!==1?'s':''}
+    </div>` +
+    lista.map((x,i)=>`<div class="eq-item" style="cursor:default">
+      <div style="width:26px;text-align:center;font-weight:700;color:var(--txt3);font-size:.85rem;flex:none">${i+1}</div>
       <div class="eq-info"><h4>${x.cliente}</h4><p>${x.cantidad} alquiler${x.cantidad!==1?'es':''}</p></div>
-      <span style="font-weight:800;color:var(--verde);font-size:.9rem">${fmt(x.total)}</span>
+      <span style="font-weight:700;color:var(--txt);font-size:.9rem;white-space:nowrap">${fmt(x.total)}</span>
     </div>`).join('');
 }
 // Mes que corresponde a un alquiler para el reporte de fletes: el mes de facturación si ya
@@ -11926,11 +12079,15 @@ function fleteEventos(a){
 }
 
 function renderRepFletes(){
+  const rango = repRango();
   const conFlete=ALQUILERES.filter(a=>a.fTransportista && a.fTransportista!=='Sin flete');
   const porMes={};
   let huboAlgo=false;
   conFlete.forEach(a=>{
     fleteEventos(a).forEach(ev=>{
+      // Un flete es un hecho puntual (sale tal día), así que se cuenta entero
+      // si su fecha cae adentro del período. No se prorratea como los alquileres.
+      if(rango && (!ev.fecha || ev.fecha < rango.desde || ev.fecha > rango.hasta)) return;
       huboAlgo=true;
       if(!porMes[ev.mes]) porMes[ev.mes]={};
       const nombre=ev.transportista;
@@ -11940,7 +12097,7 @@ function renderRepFletes(){
       f.monto += ev.monto;
     });
   });
-  if(!huboAlgo) return '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">Todavía no hay fletes registrados.</p>';
+  if(!huboAlgo) return `<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">No hubo fletes en ${repPeriodo? 'los últimos '+repPeriodo+' días' : 'el historial'}.</p>`;
   const meses=Object.keys(porMes).sort().reverse(); // más reciente primero
   const esc=s=>String(s).replace(/'/g,"\\'").replace(/"/g,'&quot;');
   return meses.map(mes=>{
@@ -11993,16 +12150,19 @@ function verDetalleFletero(nombre, mes){
 function renderRepRanking(){
   const rivReportes = alquileresRivParaReportes();
   if(!ALQUILERES.length && !rivReportes.length) return '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">Todavía no hay alquileres cargados.</p>';
+  const rango = repRango();
   const porCliente={};
   const sumar=a=>{
+    const ap = repAporteEnRango(a, rango);
+    if(ap.dias <= 0) return;
     if(!porCliente[a.cliente]) porCliente[a.cliente]={cliente:a.cliente, cantidad:0, total:0};
     porCliente[a.cliente].cantidad += 1;
-    porCliente[a.cliente].total += a.tot||0;
+    porCliente[a.cliente].total += ap.monto;
   };
   ALQUILERES.forEach(a=>{ if(alqCuentaParaReportes(a)) sumar(a); });
   rivReportes.forEach(sumar);
   const lista=Object.values(porCliente).sort((a,b)=>b.cantidad-a.cantidad||b.total-a.total);
-  if(!lista.length) return '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">Todavía no hay alquileres facturados (o cargados sin factura) para rankear.</p>';
+  if(!lista.length) return `<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">No hubo alquileres en ${repPeriodo? 'los últimos '+repPeriodo+' días' : 'el historial'}.</p>`;
   return lista.map((x,i)=>`<div class="eq-item" style="cursor:default">
       <div style="width:28px;text-align:center;font-weight:900;color:var(--txt3);font-size:.95rem">${i+1}</div>
       <div class="eq-info"><h4>${x.cliente}</h4><p>${fmt(x.total)} facturados</p></div>
