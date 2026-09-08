@@ -5249,9 +5249,9 @@ function fleteParaEquipoSinTotal(tipo, fValGlobal){
   const kmInput=parseFloat(document.getElementById('rosso-km-val').value)||0;
   if(!kmInput) return fValGlobal;
   const esPesada=PESADAS.includes(tipo);
-  const tkm=esPesada?3400:3000;
-  const kmTotal=(kmInput+5)*2;
-  const conRecargo=kmTotal*tkm*1.25;
+  const tkm=esPesada?fleteKmParam('pesada'):fleteKmParam('liviana');
+  const kmTotal=(kmInput+fleteKmParam('kmExtra'))*2;
+  const conRecargo=kmTotal*tkm*(1+fleteKmParam('recargo')/100);
   return Math.round(conRecargo);
 }
 
@@ -5339,18 +5339,18 @@ function cotizar(){
       const kmInput=parseFloat(document.getElementById('rosso-km-val').value)||0;
       const tipoKm=document.getElementById('rosso-tipo').value;
       const localidadKm=(document.getElementById('cot-localidad').value||'').trim();
-      const tkm=tipoKm==='pesada'?3400:3000;
+      const tkm=tipoKm==='pesada'?fleteKmParam('pesada'):fleteKmParam('liviana');
       if(!kmInput){document.getElementById('res-card').style.display='none';return;}
-      const kmTotal=(kmInput+5)*2;
+      const kmTotal=(kmInput+fleteKmParam('kmExtra'))*2;
       const sinRecargo=kmTotal*tkm;
-      const conRecargo=sinRecargo*1.25;
+      const conRecargo=sinRecargo*(1+fleteKmParam('recargo')/100);
       fVal=Math.round(conRecargo);
       // Si cargó la localidad de destino, la usamos para el label (así "Traslado ida y
       // vuelta" muestra el nombre de la ciudad, igual que con Alejandro o Rosso fijo).
       fLabel=localidadKm?`Flete Rosso: ${localidadKm}`:`Flete Rosso por km (${tipoKm})`;
-      fDesglose=`Google Maps: ${kmInput} km (un tramo) → total: ${kmTotal} km (ida y vuelta + 5 km extra c/tramo)<br>`+
+      fDesglose=`Google Maps: ${kmInput} km (un tramo) → total: ${kmTotal} km (ida y vuelta + ${fleteKmParam('kmExtra')} km extra c/tramo)<br>`+
                 `${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)}<br>`+
-                `Recargo 25%: ${fmt(conRecargo-sinRecargo)}<br>`+
+                `Recargo ${fleteKmParam('recargo')}%: ${fmt(conRecargo-sinRecargo)}<br>`+
                 `<strong>= ${fmt(fVal)}</strong>`;
       const dsd=document.getElementById('rosso-km-desglose');
       dsd.innerHTML=fDesglose; dsd.style.display='block';
@@ -5403,16 +5403,16 @@ function cotizar(){
         const kmInput2=parseFloat(document.getElementById('cot2-rosso-km-val').value)||0;
         const tipoKm2=document.getElementById('cot2-rosso-tipo').value;
         const localidadKm2=(document.getElementById('cot2-localidad').value||'').trim();
-        const tkm2=tipoKm2==='pesada'?3400:3000;
+        const tkm2=tipoKm2==='pesada'?fleteKmParam('pesada'):fleteKmParam('liviana');
         if(!kmInput2){document.getElementById('res-card').style.display='none';return;}
-        const kmTotal2=(kmInput2+5)*2;
+        const kmTotal2=(kmInput2+fleteKmParam('kmExtra'))*2;
         const sinRecargo2=kmTotal2*tkm2;
-        const conRecargo2=sinRecargo2*1.25;
+        const conRecargo2=sinRecargo2*(1+fleteKmParam('recargo')/100);
         fVal2=Math.round(conRecargo2);
         fLabel2=localidadKm2?`Flete Rosso: ${localidadKm2}`:`Flete Rosso por km (${tipoKm2})`;
-        const desg2=`Google Maps: ${kmInput2} km (un tramo) → total: ${kmTotal2} km (ida y vuelta + 5 km extra c/tramo)<br>`+
+        const desg2=`Google Maps: ${kmInput2} km (un tramo) → total: ${kmTotal2} km (ida y vuelta + ${fleteKmParam('kmExtra')} km extra c/tramo)<br>`+
                   `${kmTotal2} km × ${fmt(tkm2)}/km = ${fmt(sinRecargo2)}<br>`+
-                  `Recargo 25%: ${fmt(conRecargo2-sinRecargo2)}<br>`+
+                  `Recargo ${fleteKmParam('recargo')}%: ${fmt(conRecargo2-sinRecargo2)}<br>`+
                   `<strong>= ${fmt(fVal2)}</strong>`;
         const dsd2=document.getElementById('cot2-rosso-km-desglose');
         if(dsd2){ dsd2.innerHTML=desg2; dsd2.style.display='block'; }
@@ -5753,23 +5753,66 @@ function renderPrecios(){
     ? `<div><label class="flabel">${label}</label><div style="font-weight:800;color:var(--txt);padding:.3rem 0">${val!=null?fmt(val):'—'}</div></div>`
     : `<div><label class="flabel">${label}</label><input type="number" value="${val!=null?val:''}" onchange="${onchange}"></div>`;
 
+  // ── Un destino con su desglose: lo que cobra el fletero + lo que suma Rentaz ──
+  // Solo se toca el costo del fletero cuando llama; el final se calcula solo.
+  const filaDestino=(clave, etiqueta, finalActual)=>{
+    const d = desgloseFlete(clave) || {};
+    const calc = calcularFleteFijo(clave);
+    const sinCargar = calc == null;
+    if(esTaller){
+      return `<div style="display:flex;justify-content:space-between;padding:.45rem 0;font-size:.85rem">
+        <span style="color:var(--txt2)">${etiqueta}</span><b>${fmt(finalActual)}</b></div>`;
+    }
+    return `<div style="padding:.7rem 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:.82rem;font-weight:600;color:var(--txt);margin-bottom:.45rem">${etiqueta}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:9px;align-items:end">
+        <div><label class="flabel">Cobra el fletero (1 viaje)</label>
+          <input type="number" value="${d.costo!=null?d.costo:''}" placeholder="—"
+            onchange="guardarDesgloseFlete('${clave}','costo',this.value,'${etiqueta.replace(/'/g,"\\'")}',this)"></div>
+        <div><label class="flabel">Margen Rentaz</label>
+          <input type="number" value="${d.margen!=null?d.margen:''}" placeholder="—"
+            onchange="guardarDesgloseFlete('${clave}','margen',this.value,'${etiqueta.replace(/'/g,"\\'")}',this)"></div>
+        <div style="text-align:right;padding-bottom:.35rem;min-width:120px">
+          <div style="font-size:.62rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;font-weight:700">Precio final</div>
+          <div style="font-size:1.05rem;font-weight:700;color:${sinCargar?'var(--txt3)':'var(--txt)'};letter-spacing:-.02em">${fmt(finalActual)}</div>
+        </div>
+      </div>
+      ${sinCargar
+        ? `<div style="font-size:.7rem;color:var(--txt3);margin-top:.35rem">Todavía sin desglose — se usa el precio final de siempre. Cargá lo que cobra el fletero y se calcula solo.</div>`
+        : `<div style="font-size:.7rem;color:var(--txt3);margin-top:.35rem">${fmt(d.costo)} × 2 = ${fmt(d.costo*2)} + ${fmt(d.margen||0)} de margen</div>`}
+    </div>`;
+  };
+
+  const tarjetaDestinos=(titulo, filas)=>`<div style="background:var(--bg2);border-radius:var(--radio);padding:.9rem 1.1rem;margin-bottom:.7rem;box-shadow:var(--sombra)">
+    <div style="font-weight:700;color:var(--txt);margin-bottom:.3rem">${titulo}</div>${filas}</div>`;
+
   const fletesHtml = `<div class="sec-divider" style="margin:1rem 0 .5rem">Fletes</div>` +
-    fleteCard('Alejandro', [
-      campoFlete('Rafaela', fleteAlejandro('rafaela'), `setFleteOverride('alejandro','rafaela',null,this.value,this)`),
-      campoFlete('Susana', fleteAlejandro('susana'), `setFleteOverride('alejandro','susana',null,this.value,this)`),
-      campoFlete('Bella Italia', fleteAlejandro('bellaItalia'), `setFleteOverride('alejandro','bellaItalia',null,this.value,this)`),
+    tarjetaDestinos('Alejandro', [
+      filaDestino('alejandro.rafaela',     'Alejandro — Rafaela',      fleteAlejandro('rafaela')),
+      filaDestino('alejandro.susana',      'Alejandro — Susana',       fleteAlejandro('susana')),
+      filaDestino('alejandro.bellaItalia', 'Alejandro — Bella Italia', fleteAlejandro('bellaItalia')),
     ].join('')) +
-    fleteCard('Rosso — Liviana', [
-      campoFlete('Rafaela', fleteRosso('liviana','rafaela'), `setFleteOverride('rosso','liviana','rafaela',this.value,this)`),
-      campoFlete('Susana', fleteRosso('liviana','susana'), `setFleteOverride('rosso','liviana','susana',this.value,this)`),
-      campoFlete('Bella Italia', fleteRosso('liviana','bellaItalia'), `setFleteOverride('rosso','liviana','bellaItalia',this.value,this)`),
+    tarjetaDestinos('Rosso — Liviana', [
+      filaDestino('rosso.liviana.rafaela',     'Rosso Liviana — Rafaela',      fleteRosso('liviana','rafaela')),
+      filaDestino('rosso.liviana.susana',      'Rosso Liviana — Susana',       fleteRosso('liviana','susana')),
+      filaDestino('rosso.liviana.bellaItalia', 'Rosso Liviana — Bella Italia', fleteRosso('liviana','bellaItalia')),
     ].join('')) +
-    fleteCard('Rosso — Pesada', [
-      campoFlete('Rafaela', fleteRosso('pesada','rafaela'), `setFleteOverride('rosso','pesada','rafaela',this.value,this)`),
-      campoFlete('Susana', fleteRosso('pesada','susana'), `setFleteOverride('rosso','pesada','susana',this.value,this)`),
-      campoFlete('Bella Italia', fleteRosso('pesada','bellaItalia'), `setFleteOverride('rosso','pesada','bellaItalia',this.value,this)`),
+    tarjetaDestinos('Rosso — Pesada', [
+      filaDestino('rosso.pesada.rafaela',     'Rosso Pesada — Rafaela',      fleteRosso('pesada','rafaela')),
+      filaDestino('rosso.pesada.susana',      'Rosso Pesada — Susana',       fleteRosso('pesada','susana')),
+      filaDestino('rosso.pesada.bellaItalia', 'Rosso Pesada — Bella Italia', fleteRosso('pesada','bellaItalia')),
     ].join('')) +
-    `<p style="font-size:.75rem;color:var(--txt3);margin-top:.5rem">Estos son los valores fijos por destino. El modo "Por km" de Rosso sigue calculándose aparte con la fórmula de siempre.</p>`;
+    fleteCard('Rosso — Por km', [
+      campoFlete('Pesada ($/km)',      fleteKmParam('pesada'),  `setFleteKmParam('pesada',this.value,this)`),
+      campoFlete('Liviana ($/km)',     fleteKmParam('liviana'), `setFleteKmParam('liviana',this.value,this)`),
+      campoFlete('Km extra por tramo', fleteKmParam('kmExtra'), `setFleteKmParam('kmExtra',this.value,this)`),
+      campoFlete('Recargo (%)',        fleteKmParam('recargo'), `setFleteKmParam('recargo',this.value,this)`),
+    ].join('')) +
+    `<p style="font-size:.75rem;color:var(--txt3);margin-top:.5rem;line-height:1.65">
+       Arriba están los valores fijos por destino.<br>
+       El de <b>por km</b> sale de esta cuenta:
+       <b>(km + ${fleteKmParam('kmExtra')}) × 2 × $/km + ${fleteKmParam('recargo')}%</b>.
+       Los cuatro valores se editan acá y el cotizador los toma al instante.</p>`;
 
   const histHtml = esTaller ? '' : `
     <div class="sec-divider" style="margin:1.4rem 0 .5rem">Historial de cambios</div>
@@ -6022,11 +6065,93 @@ const FLETES_BASE = {
   }
 };
 let FLETES_OVERRIDE = JSON.parse(localStorage.getItem('rtz_fletes_override') || '{}');
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  FLETE ROSSO "POR KM" — los cuatro numeros de la formula
+//
+//  Estaban escritos a mano en SIETE lugares distintos del codigo (cotizador,
+//  segundo equipo, alquiler, alquiler 2, etc.) y ademas dentro del texto que ve
+//  el cliente. Cambiar la tarifa obligaba a tocar los siete y acordarse del
+//  texto: con olvidarse de uno, la misma cotizacion daba distinto segun desde
+//  que pantalla se hiciera.
+//
+//  Ahora salen todos de aca, y se pueden editar desde la pantalla de Precios
+//  como cualquier otro valor.
+//
+//  La cuenta es: (km + kmExtra) x 2  x  $/km  +  recargo%
+// ═══════════════════════════════════════════════════════════════════════════
+const FLETE_KM_BASE = {
+  pesada:  3400,   // $ por km, equipo pesado
+  liviana: 3000,   // $ por km, equipo liviano
+  kmExtra: 5,      // km que se suman a cada tramo
+  recargo: 25      // % sobre el total
+};
+function fleteKmParam(clave){
+  const ov = FLETES_OVERRIDE.km || {};
+  return ov[clave] != null ? ov[clave] : FLETE_KM_BASE[clave];
+}
+function setFleteKmParam(clave, val, input){
+  const anterior = fleteKmParam(clave);
+  const num = val==='' ? null : parseFloat(val);
+  const nuevo = (num===null || isNaN(num)) ? null : num;
+  if(!FLETES_OVERRIDE.km) FLETES_OVERRIDE.km = {};
+  FLETES_OVERRIDE.km[clave] = nuevo;
+  guardarFletesOverride();
+  const NOMBRE = { pesada:'Rosso por km — Pesada ($/km)', liviana:'Rosso por km — Liviana ($/km)',
+                   kmExtra:'Rosso por km — Km extra por tramo', recargo:'Rosso por km — Recargo (%)' };
+  registrarCambioPrecio('flete', 'rosso.km.'+clave, NOMBRE[clave]||clave, anterior, nuevo!=null?nuevo:FLETE_KM_BASE[clave]);
+  avisarGuardado(input);
+}
+// ═══════════════════════════════════════════════════════════════════════════
+//  FLETES FIJOS — de lo que cobra el fletero al precio que cobra Rentaz
+//
+//  Antes se guardaba directamente el precio final y la cuenta la hacías vos a
+//  mano cada vez. Ahora se guardan las dos piezas que la componen:
+//
+//      costo por tramo  x 2 (ida y vuelta)  +  margen Rentaz  =  precio final
+//
+//  Ejemplo: Rosso te pasa 70.000 el viaje. 70.000 x 2 = 140.000, más 20.000 de
+//  margen = 160.000, que es lo que ve el cliente. Cuando Rosso te actualiza,
+//  tocás solo los 70.000 y el resto se recalcula.
+//
+//  Los fletes que todavía no tengan el desglose cargado siguen funcionando con
+//  el precio final de siempre: nada se rompe mientras los vas pasando.
+// ═══════════════════════════════════════════════════════════════════════════
+function desgloseFlete(clave){
+  const d = FLETES_OVERRIDE.desglose || {};
+  return d[clave] || null;
+}
+function calcularFleteFijo(clave){
+  const d = desgloseFlete(clave);
+  if(!d || d.costo == null) return null;              // sin desglose cargado
+  return Math.round(d.costo * 2 + (d.margen || 0));
+}
+function guardarDesgloseFlete(clave, campo, val, etiqueta, input){
+  const antesFinal = calcularFleteFijo(clave);
+  const num = val==='' ? null : parseFloat(val);
+  const v = (num===null || isNaN(num)) ? null : num;
+  if(!FLETES_OVERRIDE.desglose) FLETES_OVERRIDE.desglose = {};
+  if(!FLETES_OVERRIDE.desglose[clave]) FLETES_OVERRIDE.desglose[clave] = {costo:null, margen:null};
+  FLETES_OVERRIDE.desglose[clave][campo] = v;
+  guardarFletesOverride();
+
+  // En el historial se anota el PRECIO FINAL, que es el que importa seguir
+  // para la inflación — no el costo suelto del fletero.
+  const despuesFinal = calcularFleteFijo(clave);
+  if(antesFinal !== despuesFinal) registrarCambioPrecio('flete', clave, etiqueta, antesFinal, despuesFinal);
+  avisarGuardado(input);
+  if(typeof renderPrecios==='function' && document.getElementById('precios-cont')) renderPrecios();
+}
+
 function fleteAlejandro(destino){
+  const calc = calcularFleteFijo('alejandro.'+destino);
+  if(calc != null) return calc;
   const ov = FLETES_OVERRIDE.alejandro || {};
   return ov[destino]!=null ? ov[destino] : FLETES_BASE.alejandro[destino];
 }
 function fleteRosso(tipo, destino){
+  const calc = calcularFleteFijo('rosso.'+tipo+'.'+destino);
+  if(calc != null) return calc;
   const ov = (FLETES_OVERRIDE.rosso && FLETES_OVERRIDE.rosso[tipo]) || {};
   return ov[destino]!=null ? ov[destino] : FLETES_BASE.rosso[tipo][destino];
 }
@@ -8798,17 +8923,17 @@ function calcFlete2(){
     } else {
       const kmInput=parseFloat(document.getElementById('alq2-rosso-km-val').value)||0;
       const tipoKm=document.getElementById('alq2-rosso-tipo').value;
-      const tkm=tipoKm==='pesada'?3400:3000;
+      const tkm=tipoKm==='pesada'?fleteKmParam('pesada'):fleteKmParam('liviana');
       if(kmInput){
-        const kmTotal=(kmInput+5)*2;
+        const kmTotal=(kmInput+fleteKmParam('kmExtra'))*2;
         const sinRecargo=kmTotal*tkm;
-        const conRecargo=sinRecargo*1.25;
+        const conRecargo=sinRecargo*(1+fleteKmParam('recargo')/100);
         fVal2=conRecargo;
         fLabel2=`Flete Rosso por km (${tipoKm})`;
         if(dsd2){
-          dsd2.innerHTML=`Google Maps: ${kmInput} km (un tramo) → total: ${kmTotal} km (ida y vuelta + 5 km extra c/tramo)<br>`+
+          dsd2.innerHTML=`Google Maps: ${kmInput} km (un tramo) → total: ${kmTotal} km (ida y vuelta + ${fleteKmParam('kmExtra')} km extra c/tramo)<br>`+
             `${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)}<br>`+
-            `Recargo 25%: ${fmt(conRecargo-sinRecargo)}<br>`+
+            `Recargo ${fleteKmParam('recargo')}%: ${fmt(conRecargo-sinRecargo)}<br>`+
             `<strong>= ${fmt(Math.round(fVal2))}</strong>`;
           dsd2.style.display='block';
         }
@@ -8903,16 +9028,16 @@ function calcTotalAlq(){
     } else {
       const kmInput=parseFloat(document.getElementById('alq-rosso-km-val').value)||0;
       const tipoKm=document.getElementById('alq-rosso-tipo').value;
-      const tkm=tipoKm==='pesada'?3400:3000;
+      const tkm=tipoKm==='pesada'?fleteKmParam('pesada'):fleteKmParam('liviana');
       if(kmInput){
-        const kmTotal=(kmInput+5)*2;
+        const kmTotal=(kmInput+fleteKmParam('kmExtra'))*2;
         const sinRecargo=kmTotal*tkm;
-        const conRecargo=sinRecargo*1.25;
+        const conRecargo=sinRecargo*(1+fleteKmParam('recargo')/100);
         fVal=Math.round(conRecargo);
         fLabel=`Flete Rosso por km (${tipoKm})`;
-        fDesglose=`Google Maps: ${kmInput} km (un tramo) → total: ${kmTotal} km (ida y vuelta + 5 km extra c/tramo)<br>`+
+        fDesglose=`Google Maps: ${kmInput} km (un tramo) → total: ${kmTotal} km (ida y vuelta + ${fleteKmParam('kmExtra')} km extra c/tramo)<br>`+
                   `${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)}<br>`+
-                  `Recargo 25%: ${fmt(conRecargo-sinRecargo)}<br>`+
+                  `Recargo ${fleteKmParam('recargo')}%: ${fmt(conRecargo-sinRecargo)}<br>`+
                   `<strong>= ${fmt(fVal)}</strong>`;
         dsd.innerHTML=fDesglose; dsd.style.display='block';
       } else { dsd.style.display='none'; }
@@ -9275,12 +9400,12 @@ async function guardarAlq(){
     } else {
       const kmInput=parseFloat(document.getElementById('alq-rosso-km-val').value)||0;
       const tipoKm=document.getElementById('alq-rosso-tipo').value;
-      const tkm=tipoKm==='pesada'?3400:3000;
-      const kmTotal=(kmInput+5)*2;
+      const tkm=tipoKm==='pesada'?fleteKmParam('pesada'):fleteKmParam('liviana');
+      const kmTotal=(kmInput+fleteKmParam('kmExtra'))*2;
       const sinRecargo=kmTotal*tkm;
-      const conRecargo=sinRecargo*1.25;
+      const conRecargo=sinRecargo*(1+fleteKmParam('recargo')/100);
       fVal=Math.round(conRecargo);
-      fLabel=`Por km (${tipoKm}): ${kmInput} km × 2 (ida/vuelta) + 5 km extra c/tramo = ${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)} + 25% recargo = ${fmt(fVal)}`;
+      fLabel=`Por km (${tipoKm}): ${kmInput} km × 2 (ida/vuelta) + ${fleteKmParam('kmExtra')} km extra c/tramo = ${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)} + ${fleteKmParam('recargo')}% recargo = ${fmt(fVal)}`;
     }
     fTransportista='Rosso';
   } else if(alqFleteMode==='otro'){
@@ -9318,12 +9443,12 @@ async function guardarAlq(){
       } else {
         const kmInput=parseFloat(document.getElementById('alq2-rosso-km-val').value)||0;
         const tipoKm=document.getElementById('alq2-rosso-tipo').value;
-        const tkm=tipoKm==='pesada'?3400:3000;
-        const kmTotal=(kmInput+5)*2;
+        const tkm=tipoKm==='pesada'?fleteKmParam('pesada'):fleteKmParam('liviana');
+        const kmTotal=(kmInput+fleteKmParam('kmExtra'))*2;
         const sinRecargo=kmTotal*tkm;
-        const conRecargo=sinRecargo*1.25;
+        const conRecargo=sinRecargo*(1+fleteKmParam('recargo')/100);
         fVal2=Math.round(conRecargo);
-        fLabel2=`Por km (${tipoKm}): ${kmInput} km × 2 (ida/vuelta) + 5 km extra c/tramo = ${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)} + 25% recargo = ${fmt(fVal2)}`;
+        fLabel2=`Por km (${tipoKm}): ${kmInput} km × 2 (ida/vuelta) + ${fleteKmParam('kmExtra')} km extra c/tramo = ${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)} + ${fleteKmParam('recargo')}% recargo = ${fmt(fVal2)}`;
       }
       fTransportista2='Rosso';
     } else if(alqFleteMode2==='otro'){
