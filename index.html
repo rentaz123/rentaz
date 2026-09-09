@@ -628,6 +628,9 @@ if ('serviceWorker' in navigator) {
 
       <!-- Stats -->
       <div class="stat-grid" id="dash-stats"></div>
+      <!-- Aviso de máquinas trabadas. Se llena solo desde renderDashboard() y queda
+           vacío cuando no hay ninguna, así el panel no se ensucia. -->
+      <div id="dash-puesta-al-dia"></div>
 
       <!-- Para entregar (equipos con alquiler cargado pero todavía no salieron físicamente del depósito) -->
       <div class="dash-collapse" id="dc-para-entregar" style="border-color:var(--azul)">
@@ -1659,8 +1662,10 @@ if ('serviceWorker' in navigator) {
             </div>
           </div>
           <div id="alq-dias-resumen" style="font-size:.75rem;color:var(--verde);font-weight:700;margin-bottom:.3rem;display:none;"></div>
-          <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--txt2);cursor:pointer;margin-bottom:.6rem">
-            <input type="checkbox" id="alq-tarifa-clasica" onchange="calcDiasAlq()"> Tarifa clásica (días sueltos, sin descuento por semana/mes)
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:.6rem">
+            <input type="checkbox" id="alq-tarifa-clasica" onchange="calcDiasAlq()" style="margin-top:2px">
+            <span><span style="font-size:.83rem;font-weight:700;color:var(--txt)">Tarifa clásica</span>
+            <span style="display:block;font-size:.74rem;color:var(--txt2);margin-top:1px">Días sueltos, sin descuento por semana o mes</span></span>
           </label>
           <div id="alq-disponibilidad-aviso" style="display:none;font-size:.78rem;color:#fff;background:var(--rojo);border-radius:8px;padding:8px 10px;margin-bottom:.7rem;font-weight:700;"></div>
 
@@ -1681,8 +1686,9 @@ if ('serviceWorker' in navigator) {
               <button class="rb" id="alq-rb-otro" onclick="setFleteAlq('otro')">Otro</button>
             </div>
             <div id="alq-pesada-aviso" style="display:none;font-size:.75rem;color:var(--azul);background:rgba(30,136,229,.1);border-radius:6px;padding:5px 10px;margin-bottom:.5rem;">⚠ Máquina pesada — solo Rosso</div>
-            <label style="display:flex;align-items:center;gap:8px;font-size:.78rem;font-weight:700;color:var(--txt2);cursor:pointer;margin-bottom:.5rem;">
-              <input type="checkbox" id="alq-flete-especial-check" onchange="toggleFleteEspecialAlq()"> Flete especial / bonificado
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:.5rem;">
+              <input type="checkbox" id="alq-flete-especial-check" onchange="toggleFleteEspecialAlq()">
+              <span style="font-size:.83rem;font-weight:700;color:var(--txt)">Flete especial o bonificado</span>
             </label>
             <div id="alq-flete-especial-box" style="display:none;margin-bottom:.5rem">
               <label class="flabel">Valor de flete acordado</label>
@@ -1806,27 +1812,27 @@ if ('serviceWorker' in navigator) {
             <div id="alq-total-detalle"></div>
           </div>
 
-          <!-- ENTREGA Y RETIRO -->
-          <div style="margin-bottom:.7rem;background:var(--bg3);border-radius:8px;padding:.6rem .8rem;">
-            <div style="font-size:.72rem;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Entrega y retiro</div>
-            <div id="alq-retiro-resumen" style="font-size:.78rem;color:var(--verde);font-weight:700;margin-bottom:6px"></div>
-            <label style="display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--txt2);cursor:pointer">
-              <input type="checkbox" id="alq-abierto" onchange="calcDiasAlq()"> Alquiler abierto (sin fecha de retorno definida)
+          <!-- OPCIONES DEL ALQUILER
+               Antes eran tres cajas sueltas, cada una con su título en mayúscula, su
+               color y su párrafo de explicación. Tres marcos para tres tildes. Ahora
+               van juntas y con el mismo formato: etiqueta corta arriba, aclaración en
+               gris chico debajo. Los id y los onchange quedaron igual. -->
+          <div id="alq-retiro-resumen" style="font-size:.78rem;color:var(--verde);font-weight:700;margin-bottom:.5rem"></div>
+          <div style="margin-bottom:.7rem;background:var(--bg3);border-radius:8px;padding:.7rem .85rem;display:flex;flex-direction:column;gap:.65rem">
+            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+              <input type="checkbox" id="alq-abierto" onchange="calcDiasAlq()" style="margin-top:2px">
+              <span><span style="font-size:.83rem;font-weight:700;color:var(--txt)">Alquiler abierto</span>
+              <span style="display:block;font-size:.74rem;color:var(--txt2);margin-top:1px">Todavía no se sabe cuándo lo devuelven</span></span>
             </label>
-          </div>
-
-          <!-- SIN FACTURA -->
-          <div style="margin-bottom:.7rem;background:rgba(229,168,59,0.08);border:1px solid rgba(229,168,59,0.3);border-radius:8px;padding:.6rem .8rem;">
-            <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;font-weight:700;color:var(--txt);cursor:pointer;">
-              <input type="checkbox" id="alq-sin-factura"> Este alquiler va SIN factura
+            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+              <input type="checkbox" id="alq-sin-factura" style="margin-top:2px">
+              <span><span style="font-size:.83rem;font-weight:700;color:var(--txt)">Va sin factura</span>
+              <span style="display:block;font-size:.74rem;color:var(--txt2);margin-top:1px">Entra a reportes sin esperar a que Walter facture</span></span>
             </label>
-            <div style="font-size:.72rem;color:var(--txt2);margin-top:5px">Marcalo si ya sabés de antemano que este cliente no necesita factura. Queda aclarado en el alquiler y no espera la facturación de Walter para entrar a reportes.</div>
-          </div>
-
-          <!-- REFERENCIA USD (interno) -->
-          <div style="margin-bottom:.7rem">
-            <label style="display:flex;align-items:center;gap:8px;font-size:.83rem;font-weight:700;color:var(--txt);cursor:pointer;">
-              <input type="checkbox" id="alq-usd-check" onchange="toggleUsdAlq()"> Referencia en dólares (uso interno, no va al cliente)
+            <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+              <input type="checkbox" id="alq-usd-check" onchange="toggleUsdAlq()" style="margin-top:2px">
+              <span><span style="font-size:.83rem;font-weight:700;color:var(--txt)">Referencia en dólares</span>
+              <span style="display:block;font-size:.74rem;color:var(--txt2);margin-top:1px">Uso interno, no va al cliente</span></span>
             </label>
             <div id="alq-usd-box" style="display:none;margin-top:.5rem">
               <div class="row2">
@@ -2031,6 +2037,31 @@ if ('serviceWorker' in navigator) {
         </select>
       </div>
       <button onclick="guardarEquipoNuevo()" class="btn-nuevo" style="width:100%;padding:.75rem">Agregar a la flota</button>
+    </div>
+  </div>
+
+  <!-- PUESTA AL DÍA DE LA FLOTA (9/9/2026)
+       Repaso de una sola pasada: máquina por máquina, se confirma dónde está de verdad.
+       Es una LISTA DE TAREAS, no un formulario que escribe por su cuenta: cada acción
+       abre el modal que la app ya usa para eso (cerrar alquiler abierto, retiro
+       anticipado, nuevo alquiler). Así el cálculo de días y plata sigue siendo el
+       mismo de siempre y no hay una segunda forma de cerrar un alquiler.
+       Lo único que guarda por su cuenta es "esta ya la revisé", en el navegador. -->
+  <div id="modal-puesta-al-dia" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:390;align-items:center;justify-content:center;">
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:640px;max-width:94vw;max-height:90vh;display:flex;flex-direction:column;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:.5rem;">
+        <div>
+          <div style="font-size:1.05rem;font-weight:800;color:var(--txt);">Puesta al día de la flota</div>
+          <div style="font-size:.8rem;color:var(--txt2);margin-top:2px">Confirmá dónde está cada máquina hoy. Nada se toca hasta que lo confirmes vos.</div>
+        </div>
+        <button onclick="cerrarPuestaAlDia()" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
+      </div>
+      <div id="pd-progreso" style="font-size:.8rem;color:var(--txt2);margin-bottom:.9rem"></div>
+      <div id="pd-lista" style="overflow-y:auto;flex:1;margin:0 -.3rem;padding:0 .3rem"></div>
+      <div style="display:flex;gap:8px;margin-top:1rem;padding-top:.9rem;border-top:1px solid var(--border)">
+        <button onclick="pdReiniciarRepaso()" class="btn-lim" style="padding:8px 14px;font-size:.8rem">Empezar el repaso de nuevo</button>
+        <button onclick="cerrarPuestaAlDia()" class="btn-nuevo" style="flex:1;padding:8px;font-size:.85rem">Listo</button>
+      </div>
     </div>
   </div>
 
@@ -4010,6 +4041,28 @@ function renderDashboard(){
     <div class="stat-card rojo"><div class="num">${tall.length}</div><div class="lbl">Fuera de servicio</div></div>
     <div class="stat-card gris"><div class="num">${EQUIPOS.length}</div><div class="lbl">Total flota</div></div>
   `;
+
+  // Aviso de máquinas trabadas: alquileres que siguen "en curso" mucho después de
+  // lo pactado. Cada una es una máquina que no se puede alquilar sin que se note.
+  // El cartel se va solo cuando no queda ninguna; no hay que acordarse de sacarlo.
+  const cajaPD=document.getElementById('dash-puesta-al-dia');
+  if(cajaPD){
+    const hoyPD=new Date().toISOString().slice(0,10);
+    const trabadas=alq.filter(x=>{
+      const a=x.r.alquiler; if(!a || !a.inicio) return false;
+      const diasCorriendo=Math.round((new Date(hoyPD)-new Date(a.inicio))/86400000);
+      const vencido = !a.abierto && a.fin && a.fin < hoyPD;
+      return diasCorriendo>45 || vencido;
+    }).length;
+    cajaPD.innerHTML = trabadas ? `
+      <div style="background:rgba(201,106,94,.09);border-left:3px solid var(--rojo);border-radius:0 9px 9px 0;padding:11px 15px;margin-bottom:1rem;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="font-size:.83rem;color:var(--txt2);line-height:1.5">
+          <b style="color:var(--txt)">${trabadas} máquina${trabadas!==1?'s':''} figura${trabadas!==1?'n':''} alquilada${trabadas!==1?'s':''} hace mucho.</b><br>
+          Si ya volvieron y nadie cerró el alquiler, no las podés volver a alquilar.
+        </div>
+        <button onclick="abrirPuestaAlDia()" class="btn-nuevo" style="padding:8px 15px;font-size:.8rem;flex-shrink:0">Repasar la flota</button>
+      </div>` : '';
+  }
   // Alquileres: separados en "hoy" (en curso) y "semana" (arrancan esta semana o la próxima)
   const hoyStr2=new Date().toISOString().slice(0,10);
   const hoyD=new Date(); hoyD.setHours(0,0,0,0);
@@ -7005,6 +7058,137 @@ function generarPDFDisponibilidadFlota(){
   setTimeout(()=>{ w.print(); URL.revokeObjectURL(url); }, 700);
 }
 
+// ── PUESTA AL DÍA DE LA FLOTA ──────────────────────────────────────────────
+// Al 9/9/2026 había 10 máquinas trabadas por alquileres que nunca se cerraron —
+// una de junio llevaba 72 días "en obra". Mientras figuran ocupadas, la app no
+// deja alquilarlas y nadie se entera. Esto es el repaso para arrancar con la
+// foto real, sin tener que reconstruir todo lo que pasó en el medio.
+//
+// "Revisada" se guarda en el navegador (no en la base): es una tarea de una vez
+// y de cada uno, no un dato de la empresa.
+const PD_CLAVE='rtz_puesta_al_dia';
+function pdRevisadas(){
+  try{ return JSON.parse(localStorage.getItem(PD_CLAVE)||'[]'); }catch(e){ return []; }
+}
+function pdMarcarRevisada(eqId){
+  const l=pdRevisadas();
+  if(!l.includes(eqId)){ l.push(eqId); localStorage.setItem(PD_CLAVE, JSON.stringify(l)); }
+  renderPuestaAlDia();
+}
+function pdReiniciarRepaso(){
+  if(!confirm('Empezar el repaso de nuevo.\n\nSolo se borran las tildes de "revisada" — los alquileres y los estados que ya confirmaste quedan como están.')) return;
+  localStorage.removeItem(PD_CLAVE);
+  renderPuestaAlDia();
+}
+function abrirPuestaAlDia(){
+  document.getElementById('modal-puesta-al-dia').style.display='flex';
+  renderPuestaAlDia();
+}
+function cerrarPuestaAlDia(){
+  document.getElementById('modal-puesta-al-dia').style.display='none';
+  renderDashboard();
+}
+
+function renderPuestaAlDia(){
+  const cont=document.getElementById('pd-lista');
+  if(!cont) return;
+  const revisadas=pdRevisadas();
+  const hoy=new Date().toISOString().slice(0,10);
+  const dias=(d)=>Math.round((new Date(hoy)-new Date(d))/86400000);
+  const fmtD=s=>{const[y,m,d]=String(s).split('-');return`${d}/${m}/${y.slice(2)}`;};
+
+  // Primero las que la app cree alquiladas hace más tiempo: son las que más
+  // probablemente estén mal y las que más plata trababan.
+  const filas=equiposOrdenados().map(e=>({e, r:estadoRealEq(e)}))
+    .sort((x,y)=>{
+      const px=x.r.estado==='alquilado'?0:x.r.estado==='taller'?1:2;
+      const py=y.r.estado==='alquilado'?0:y.r.estado==='taller'?1:2;
+      if(px!==py) return px-py;
+      if(px===0) return String(x.r.alquiler.inicio).localeCompare(String(y.r.alquiler.inicio));
+      return x.e.nombre.localeCompare(y.e.nombre);
+    });
+
+  const hechas=filas.filter(f=>revisadas.includes(f.e.id)).length;
+  document.getElementById('pd-progreso').innerHTML =
+    hechas>=filas.length
+      ? `<span style="color:var(--verde);font-weight:700">Listo — repasaste las ${filas.length} máquinas.</span>`
+      : `Repasadas <b style="color:var(--txt)">${hechas}</b> de ${filas.length}. Faltan ${filas.length-hechas}.`;
+
+  cont.innerHTML = filas.map(({e,r})=>{
+    const ok=revisadas.includes(e.id);
+    const estilo=ok?'opacity:.5':'';
+    let dice, acciones;
+
+    if(r.estado==='alquilado'){
+      const a=r.alquiler;
+      const d=dias(a.inicio);
+      const alerta = d>45;
+      dice=`<span style="color:#2e9e52;font-weight:700">Alquilada</span> a ${a.cliente} · desde ${fmtD(a.inicio)}
+        <b style="color:${alerta?'var(--rojo)':'var(--txt2)'}">(hace ${d} días)</b>`;
+
+      // Cada caso tiene su propia función en la app y NO son intercambiables.
+      // Usar la que no va deja el alquiler a medio cerrar o factura mal los días:
+      //  · abierto (sin fecha pactada) → hay que calcular los días y facturarlos
+      //  · con fecha, ya vencido       → los días ya están; solo falta decir que volvió
+      //  · con fecha, todavía vigente  → devuelve antes de tiempo, puede haber descuento
+      const vencido = !a.abierto && a.fin && a.fin < hoy;
+      let cerrar, etiqueta, ayuda;
+      if(a.abierto){
+        cerrar=`abrirModalCerrarAbierto(${a.id})`;
+        etiqueta='Ya volvió';
+        ayuda='Te va a pedir la fecha de retiro y calcula los días a facturar';
+      } else if(vencido){
+        cerrar=`marcarEquipoRetiradoFisico(${a.id})`;
+        etiqueta='Ya volvió';
+        ayuda='El alquiler ya venció: solo confirma que la máquina está de vuelta';
+      } else {
+        cerrar=`marcarRetiroAnticipado(${a.id})`;
+        etiqueta='Volvió antes';
+        ayuda='Devuelve antes de la fecha pactada — puede corresponder descuento';
+      }
+      acciones=`
+        <button onclick="pdMarcarRevisada(${e.id});${cerrar}" class="btn-lim" title="${ayuda}" style="padding:5px 11px;font-size:.76rem;color:var(--azul);border-color:var(--azul)">${etiqueta}</button>
+        <button onclick="pdMarcarRevisada(${e.id})" class="btn-lim" style="padding:5px 11px;font-size:.76rem">Sigue en obra</button>`;
+    } else if(r.estado==='taller'){
+      dice=`<span style="color:var(--rojo);font-weight:700">Fuera de servicio</span>`;
+      acciones=`
+        <button onclick="pdVolvioAlServicio(${e.id})" class="btn-lim" style="padding:5px 11px;font-size:.76rem;color:var(--azul);border-color:var(--azul)">Ya está arreglada</button>
+        <button onclick="pdMarcarRevisada(${e.id})" class="btn-lim" style="padding:5px 11px;font-size:.76rem">Sigue rota</button>`;
+    } else {
+      dice=`<span style="color:var(--azul);font-weight:700">Libre en el taller</span>`;
+      acciones=`
+        <button onclick="pdMarcarRevisada(${e.id});abrirModalAlq()" class="btn-lim" style="padding:5px 11px;font-size:.76rem;color:#2e9e52;border-color:#2e9e52">Está alquilada</button>
+        <button onclick="pdMarcarRevisada(${e.id})" class="btn-lim" style="padding:5px 11px;font-size:.76rem">Sí, está acá</button>
+        <button onclick="pdMandarAFueraDeServicio(${e.id})" class="btn-lim" style="padding:5px 11px;font-size:.76rem;color:var(--rojo);border-color:var(--rojo)">Está rota</button>`;
+    }
+
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 0;border-bottom:1px solid var(--border);${estilo}">
+      <div style="flex:1;min-width:220px">
+        <div style="font-size:.86rem;font-weight:800;color:var(--txt)">${ok?'✓ ':''}${e.nombre}</div>
+        <div style="font-size:.76rem;color:var(--txt2);margin-top:1px">La app dice: ${dice}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${acciones}</div>
+    </div>`;
+  }).join('');
+}
+
+// Los dos únicos cambios que esta pantalla hace sola. Son el estado del equipo,
+// no tocan alquileres ni plata, y se pueden revertir desde la ficha del equipo.
+function pdVolvioAlServicio(eqId){
+  const eq=EQUIPOS.find(e=>e.id===eqId); if(!eq) return;
+  if(!confirm(`"${eq.nombre}" pasa a DISPONIBLE.\n\nVa a aparecer libre para alquilar.`)) return;
+  eq.estado='disponible'; eq.cliente='';
+  guardar(); renderEq();
+  pdMarcarRevisada(eqId);
+}
+function pdMandarAFueraDeServicio(eqId){
+  const eq=EQUIPOS.find(e=>e.id===eqId); if(!eq) return;
+  if(!confirm(`"${eq.nombre}" pasa a FUERA DE SERVICIO.\n\nNo se va a poder alquilar hasta que la marques como arreglada.`)) return;
+  eq.estado='taller'; eq.cliente='';
+  guardar(); renderEq();
+  pdMarcarRevisada(eqId);
+}
+
 function editEq(id){
   const eq=EQUIPOS.find(e=>e.id===id);if(!eq)return;
   const r=estadoRealEq(eq);
@@ -8870,6 +9054,17 @@ function abrirModalAlq(){
   document.getElementById('alq-dias-resumen').style.display='none';
   document.getElementById('alq-total-box').style.display='none';
   document.getElementById('alq-rosso-km-desglose').style.display='none';
+
+  // Estos tres quedaban con el cálculo del alquiler ANTERIOR: al abrir "Nuevo
+  // alquiler" se veía el precio de la vez pasada, con el equipo todavía sin elegir
+  // y las fechas vacías. Además de ensuciar, es peligroso: parece un precio válido.
+  document.getElementById('alq-precio-box').style.display='none';
+  document.getElementById('alq-precio-detalle').textContent='';
+  document.getElementById('alq-precio-val').textContent='';
+  // Los desgloses de flete Rosso arrastraban lo mismo.
+  ['alq-rosso-fijo','alq-rosso-km','alq2-rosso-fijo','alq2-rosso-km'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='none';
+  });
   document.getElementById('modal-alq').style.display='flex';
 }
 
