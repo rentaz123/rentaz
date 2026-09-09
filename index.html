@@ -110,9 +110,9 @@ h1,h2,h3,h4{font-weight:700;}
 .eq-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:1.5rem;}
 .eq-card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem;display:flex;align-items:center;gap:10px;}
 .eq-card .dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
-.eq-card .dot.disponible{background:var(--verde);box-shadow:0 0 6px var(--verde);}
-.eq-card .dot.alquilado{background:var(--rojo);box-shadow:0 0 6px var(--rojo);}
-.eq-card .dot.taller{background:var(--azul);box-shadow:0 0 6px var(--azul);}
+.eq-card .dot.disponible{background:var(--azul);box-shadow:0 0 6px var(--azul);}
+.eq-card .dot.alquilado{background:var(--verde);box-shadow:0 0 6px var(--verde);}
+.eq-card .dot.taller{background:var(--rojo);box-shadow:0 0 6px var(--rojo);}
 .eq-card .eq-name{font-size:.82rem;font-weight:700;color:var(--txt);line-height:1.3;}
 .eq-card .eq-cliente{font-size:.72rem;color:var(--txt2);margin-top:2px;}
 
@@ -179,9 +179,14 @@ select:focus,input:focus{border-color:var(--verde);}
 .eq-info h4{font-size:.88rem;font-weight:800;}
 .eq-info p{font-size:.72rem;color:var(--txt2);margin-top:1px;}
 .eq-badge{font-size:.68rem;font-weight:700;border-radius:5px;padding:3px 7px;}
-.bd-disp{background:rgba(61,168,32,0.15);color:var(--verde);}
-.bd-alq{background:rgba(229,57,53,0.15);color:var(--rojo);}
-.bd-tall{background:rgba(30,136,229,0.15);color:var(--azul);}
+/* Estados, en flota y en alquileres. Los colores se leen igual en toda la app:
+   Verde = está alquilado, generando plata.
+   Azul  = libre, o todavía no arrancó (programado, para entregar).
+   Rojo  = hay algo que resolver (fuera de servicio, falta retirar el equipo).
+   Reemplazan a bd-disp/bd-alq/bd-tall, que tenían el verde y el rojo al revés. */
+.eq-alquilado{background:rgba(61,168,32,0.15);color:var(--verde);}
+.eq-libre{background:rgba(30,136,229,0.15);color:var(--azul);}
+.eq-fuera{background:rgba(229,57,53,0.15);color:var(--rojo);}
 .flt-row{display:flex;gap:6px;margin-bottom:.8rem;flex-wrap:wrap;}
 .flt-btn{border:1.5px solid var(--border2);background:var(--bg2);border-radius:7px;padding:4px 10px;font-size:.75rem;font-weight:700;cursor:pointer;color:var(--txt2);}
 .flt-btn.active{background:var(--verde);color:#fff;border-color:var(--verde);}
@@ -394,14 +399,14 @@ body{background:var(--bg);}
   display:inline-flex;align-items:center;gap:6px;white-space:nowrap;
 }
 .eq-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:#c4beb5;flex:none;}
-.bd-disp::before{background:#2e9e52;}
-.bd-alq::before {background:var(--rojo);}
-.bd-tall::before{background:var(--azul);}
+.eq-alquilado::before{background:#2e9e52;}
+.eq-libre::before    {background:var(--azul);}
+.eq-fuera::before    {background:var(--rojo);}
 /* Los puntitos del panel de inicio, del mismo tamaño y sin el resplandor. */
 .eq-card .dot,.dot-sm,.eq-dot{width:8px;height:8px;box-shadow:none !important;}
-.eq-card .dot.disponible{background:#2e9e52;}
-.eq-card .dot.alquilado {background:var(--rojo);}
-.eq-card .dot.taller    {background:var(--azul);}
+.eq-card .dot.disponible{background:var(--azul);}
+.eq-card .dot.alquilado {background:#2e9e52;}
+.eq-card .dot.taller    {background:var(--rojo);}
 
 /* ── BOTONES ──────────────────────────────────────────────────────────────*/
 .btn-nuevo,.btn-nuevo-pago{background:#1c1b19;border-radius:9px;font-weight:600;}
@@ -4000,9 +4005,9 @@ function renderDashboard(){
   const alq=estados.filter(x=>x.r.estado==='alquilado');
   const tall=estados.filter(x=>x.r.estado==='taller');
   document.getElementById('dash-stats').innerHTML=`
-    <div class="stat-card verde"><div class="num">${disp.length}</div><div class="lbl">Disponibles</div></div>
-    <div class="stat-card rojo"><div class="num">${alq.length}</div><div class="lbl">Alquilados</div></div>
-    <div class="stat-card azul"><div class="num">${tall.length}</div><div class="lbl">Fuera de servicio</div></div>
+    <div class="stat-card verde"><div class="num">${alq.length}</div><div class="lbl">Alquilados</div></div>
+    <div class="stat-card azul"><div class="num">${disp.length}</div><div class="lbl">Disponibles</div></div>
+    <div class="stat-card rojo"><div class="num">${tall.length}</div><div class="lbl">Fuera de servicio</div></div>
     <div class="stat-card gris"><div class="num">${EQUIPOS.length}</div><div class="lbl">Total flota</div></div>
   `;
   // Alquileres: separados en "hoy" (en curso) y "semana" (arrancan esta semana o la próxima)
@@ -6807,9 +6812,25 @@ function guardar(){
   localStorage.setItem('rtz_alq',JSON.stringify(ALQUILERES));
   sincronizarFirebase();
 }
-let calRef=new Date();
-function navCal(d){calRef.setMonth(calRef.getMonth()+d);renderCal();}
-function initCal(){calRef=new Date();renderCal();}
+// Siempre apuntando al día 1 del mes que se está mirando.
+let calRef=new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+// Antes esto hacía calRef.setMonth(calRef.getMonth()+d) sobre la fecha de hoy,
+// y ahí estaba el bug: si hoy es 31 de agosto y pedís "mes siguiente", setMonth
+// intenta armar el 31 de septiembre. Septiembre tiene 30 días, así que JavaScript
+// lo desborda al 1 de octubre — y el calendario se saltea septiembre entero.
+//
+// Armando la fecha desde cero con día 1, el desborde no puede pasar: el día 1
+// existe en todos los meses.
+function navCal(d){
+  calRef = new Date(calRef.getFullYear(), calRef.getMonth()+d, 1);
+  renderCal();
+}
+function initCal(){
+  const h = new Date();
+  calRef = new Date(h.getFullYear(), h.getMonth(), 1);
+  renderCal();
+}
 // Para alquileres cerrados, pinta de inicio a fin. Para alquileres ABIERTOS (sin fecha de
 // retiro confirmada), "fin" sigue guardando el período ya confirmado (ej: el mes que avisó
 // el cliente al entregar el equipo). Mientras ese período confirmado no haya vencido, se
@@ -6905,8 +6926,9 @@ function filtEq(f,btn){filtroEq=f;document.querySelectorAll('.flt-btn').forEach(
 function renderEq(){
   const listaConEstado=equiposOrdenados().map(e=>({e, r:estadoRealEq(e)}));
   let lista=listaConEstado.filter(x=>filtroEq==='todos'||x.r.estado===filtroEq);
-  const col={disponible:'var(--verde)',alquilado:'var(--rojo)',taller:'var(--azul)'};
-  const bd={disponible:'bd-disp',alquilado:'bd-alq',taller:'bd-tall'};
+  // Verde = alquilado (generando plata), azul = libre, rojo = fuera de servicio.
+  const col={disponible:'var(--azul)',alquilado:'#2e9e52',taller:'var(--rojo)'};
+  const bd={disponible:'eq-libre',alquilado:'eq-alquilado',taller:'eq-fuera'};
   const txt={disponible:'Disponible',alquilado:'Alquilado',taller:'Fuera de servicio'};
   document.getElementById('lista-eq').innerHTML=lista.map(({e,r})=>{
     const problemas=EQ_INCIDENCIAS.filter(i=>i.equipoId===e.id && i.estado==='abierta').length;
@@ -7065,7 +7087,7 @@ function renderEqFichaHeader(id){
   const eq=EQUIPOS.find(e=>e.id===id); if(!eq) return;
   const r=estadoRealEq(eq);
   const txt={disponible:'Disponible',alquilado:'Alquilado',taller:'Fuera de servicio'};
-  const col={disponible:'var(--verde)',alquilado:'var(--rojo)',taller:'var(--azul)'};
+  const col={disponible:'var(--azul)',alquilado:'#2e9e52',taller:'var(--rojo)'};
   document.getElementById('eq-ficha-nombre').textContent=eq.nombre;
   document.getElementById('eq-ficha-sub').innerHTML=
     `<span style="font-weight:700;color:${col[r.estado]}">${txt[r.estado]}</span>`+
@@ -8619,7 +8641,9 @@ function poblarOpcionesEquipoAlq(excludeAlqId, excludeEqIds){
       const tallerHoy = r.estado==='taller';
       const yaElegido = excl.includes(e.id);
       const etiqueta = yaElegido ? ' — YA AGREGADO' : ocupadoHoy ? ' — OCUPADO HOY' : tallerHoy ? ' — FUERA DE SERVICIO' : '';
-      const estilo = yaElegido ? ' style="color:var(--txt2);font-style:italic"' : ocupadoHoy ? ' style="color:#e53935;font-weight:700"' : tallerHoy ? ' style="color:#1e88e5;font-weight:700"' : '';
+      // Ocupado va en ámbar (es un aviso, no un problema) y fuera de servicio en rojo,
+      // para no chocar con el verde=alquilado del resto de la app.
+      const estilo = yaElegido ? ' style="color:var(--txt2);font-style:italic"' : ocupadoHoy ? ' style="color:#e5a83b;font-weight:700"' : tallerHoy ? ' style="color:#e53935;font-weight:700"' : '';
       return `<option value="${e.id}"${estilo}${yaElegido?' disabled':''}>${e.nombre}${etiqueta}</option>`;
     }).join('');
 }
@@ -9720,10 +9744,15 @@ async function guardarAlq(){
   guardar(); cerrarModalAlq(); renderAlq(); renderDashboard(); renderEq();
   if(editando){
     alert('Alquiler actualizado correctamente');
-  } else if(primerAlqId && ROL_ACTUAL==='taller'){
+  } else if(primerAlqId && ROL_ACTUAL==='taller' && arrancaHoyOAntes(primerAlqId)){
     // El contrato + checklist de salida los arma taller — si el alquiler lo cargó
     // oficina (admin/facturación), no se le abre esta ventana: le va a llegar el
     // aviso a taller para que lo complete él.
+    //
+    // Y solo se abre si el equipo sale HOY. Antes se abría siempre: si taller
+    // cargaba un alquiler para dentro de una semana, le exigía el checklist con
+    // fotos en ese momento, cuando la máquina todavía ni se había preparado.
+    // Cuando llegue el día, el alquiler aparece en "Para entregar" con su botón.
     setTimeout(()=>abrirContrato(primerAlqId), 150);
   } else {
     alert('Alquiler guardado correctamente');
@@ -9936,35 +9965,88 @@ function resumenAlquilerHTML(a){
     else { estadoLbl='Retirado anticipadamente'; estadoColor='var(--azul)'; }
   }
   else if(a.entregaPendiente && a.inicio<=hoy){ estadoLbl='Para entregar — pendiente que taller lo entregue'; estadoColor='var(--azul)'; }
-  else if(a.abierto && a.inicio<=hoy){ estadoLbl='Abierto — sin retorno definido'; estadoColor='var(--rojo)'; }
-  else if(a.inicio<=hoy&&a.fin>=hoy){ estadoLbl='En curso'; estadoColor='var(--rojo)'; }
+  // Verde para lo que está facturando; el rojo queda reservado a lo que hay que resolver.
+  else if(a.abierto && a.inicio<=hoy){ estadoLbl='Abierto — sin retorno definido'; estadoColor='#2e9e52'; }
+  // Mismo criterio que la etiqueta de la tarjeta: si venció y el equipo sigue en obra
+  // no está "Finalizado". Sin esto quedaban máquinas en la calle marcadas como cerradas.
+  else if(a.pickupPendiente && a.fin && a.fin<hoy){ estadoLbl='Falta retirar el equipo'; estadoColor='var(--rojo)'; }
+  else if(a.inicio<=hoy&&a.fin>=hoy){ estadoLbl='En curso'; estadoColor='#2e9e52'; }
   else if(a.inicio>hoy){ estadoLbl='Próximo'; estadoColor='var(--azul)'; }
 
   // Datos completos del cliente (busco por id por si cambió algún dato suelto)
+  // Van todos en un renglón chico debajo del nombre, no como cinco filas sueltas.
   const cl = CLIENTES.find(c=>c.id===a.clienteId);
-  const clDatos = [];
+  const clPartes = [];
   if(cl){
-    if(cl.cuit&&cl.cuit!=='-') clDatos.push(fila('CUIT', cl.cuit));
-    if(cl.dir) clDatos.push(fila('Dirección', cl.dir + (cl.ciudad?', '+cl.ciudad:'')));
-    else if(cl.ciudad) clDatos.push(fila('Ciudad', cl.ciudad));
-    if(cl.tel) clDatos.push(fila('Teléfono', cl.tel));
-    if(cl.email) clDatos.push(fila('Email', cl.email));
+    if(cl.cuit&&cl.cuit!=='-') clPartes.push('CUIT '+cl.cuit);
+    if(cl.dir) clPartes.push(cl.dir + (cl.ciudad?', '+cl.ciudad:''));
+    else if(cl.ciudad) clPartes.push(cl.ciudad);
+    if(cl.tel) clPartes.push(cl.tel);
+    if(cl.email) clPartes.push(cl.email);
+  }
+  const clLinea = clPartes.join(' · ');
+
+  // Encabezado: equipo + cliente + estado juntos arriba. Antes el equipo y el cliente
+  // eran dos filas más entre las otras veinte, y el nombre del equipo volvía a aparecer
+  // en el desglose del precio. Acá se dicen una sola vez.
+  const duracionTxt = a.abierto && !a.retiradoAnticipado
+    ? 'abierto' : (a.dias ? `${a.dias} día${a.dias!==1?'s':''}` : '');
+
+  // Entrega y retiro en dos filas. Antes las mismas fechas salían tres veces:
+  // en "Período", en "Entrega" y en "Retiro". Ahora se dicen una vez cada una.
+  const txtEntrega = `${fmtD(a.inicio)}${a.horaEntrega?' · '+a.horaEntrega:''}`
+    + (a.entregaPendiente ? ' · pendiente de que taller lo entregue'
+      : (a.entregaFisicaFecha
+        ? ' · salió '+fmtD(a.entregaFisicaFecha)+(a.entregaFisicaHora?' '+a.entregaFisicaHora:'')+(a.entregaFisicaPor?' por '+a.entregaFisicaPor:'')
+        : ''));
+
+  let txtRetiro;
+  if(a.retiradoAnticipado){
+    txtRetiro = `${fmtD(a.retiradoAnticipado)} (anticipado)`
+      + (a.pickupPendiente?' · pendiente de que taller lo confirme':'');
+  } else if(a.abierto){
+    txtRetiro = 'A confirmar (alquiler abierto)';
+  } else if(a.fechaRetiro){
+    txtRetiro = `${fmtD(a.fechaRetiro)} · ${a.horaRetiro||'08:00'}`
+      + (a.pickupPendiente ? ' · pendiente de que taller lo retire'
+        : (a.retiroFisicoFecha
+          ? ' · retirado '+fmtD(a.retiroFisicoFecha)+(a.retiroFisicoHora?' '+a.retiroFisicoHora:'')+(a.retiroFisicoPor?' por '+a.retiroFisicoPor:'')
+          : ''));
+  } else {
+    // Sin fecha de retiro cargada, la del contrato es la única que hay.
+    txtRetiro = a.fin ? fmtD(a.fin) : '—';
   }
 
+  // El desglose venía como "Marketlift S-15 (6m): 1 día × $130.000". El nombre del
+  // equipo ya está en el título, así que acá se saca y queda "1 día × $130.000".
+  let detalleSinEquipo = a.precioDetalle || '';
+  if(a.equipoNombre && detalleSinEquipo.startsWith(a.equipoNombre+':')){
+    detalleSinEquipo = detalleSinEquipo.slice(a.equipoNombre.length+1).trim();
+  }
+
+  // Si el desglose ya dice la nota del precio especial, la fila aparte sobra.
+  // (Ojo: varias notas vienen con espacios al final, por eso el trim en los dos lados.)
+  const notaEsp = (a.precioEspecialNota||'').trim();
+  const notaYaEstaEnDetalle = !!notaEsp && detalleSinEquipo.trim().includes(notaEsp);
+
+  // El "Por km ..." de Rosso era una fila aparte; va como aclaración del flete.
+  const detalleFlete = (a.fLabel && a.fVal && a.fTransportista==='Rosso' && a.fLabel.startsWith('Por km')) ? a.fLabel : '';
+
   return `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;">
-      <span style="font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${estadoColor};background:${estadoColor}18;padding:3px 9px;border-radius:10px">${estadoLbl}</span>
+    <div style="margin-bottom:.7rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
+        <div style="font-size:1.05rem;font-weight:800;color:var(--txt);line-height:1.25">${a.equipoNombre}${duracionTxt?`<span style="font-weight:600;color:var(--txt2);font-size:.85rem"> · ${duracionTxt}</span>`:''}</div>
+        <span style="flex-shrink:0;font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${estadoColor};background:${estadoColor}18;padding:3px 9px;border-radius:10px;text-align:center">${estadoLbl}</span>
+      </div>
+      <div style="font-size:.9rem;font-weight:700;color:var(--txt);margin-top:.35rem">${a.cliente}</div>
+      ${clLinea?`<div style="font-size:.78rem;color:var(--txt2);margin-top:2px;line-height:1.45">${clLinea}</div>`:''}
     </div>
-    ${fila('Cliente', a.cliente)}
-    ${clDatos.join('')}
-    ${fila('Equipo', a.equipoNombre)}
     ${a.grupoId?(()=>{const hermanos=ALQUILERES.filter(x=>x.grupoId===a.grupoId&&x.id!==a.id);return hermanos.length?`<div style="font-size:.78rem;color:var(--verde);background:var(--verde-light);border-radius:6px;padding:5px 10px;margin:4px 0">Mismo alquiler que: ${hermanos.map(h=>h.equipoNombre).join(', ')}</div>`:'';})():''}
     ${a.sustituido?`<div style="font-size:.78rem;color:var(--azul);background:rgba(30,136,229,.1);border-radius:6px;padding:5px 10px;margin:4px 0">⚠ Sustituido — cotizado originalmente: ${a.equipoOriginalNombre}${a.precioCambiadoPorSustitucion?'':' (precio sin cambios)'}${a.sustitucionNota?`<div style="margin-top:4px;font-weight:400">Motivo: ${a.sustitucionNota}</div>`:''}${a.precioCambiadoPorSustitucion?`<div style="margin-top:4px;font-weight:700">Precio actualizado — aprobado por el cliente (antes: ${fmt(a.precioOriginalAlCambiar)})</div>`:''}</div>`:''}
-    ${fila('Período', `${fmtD(a.inicio)} al ${fmtD(a.fin)} · ${a.dias} día${a.dias!==1?'s':''}`)}
+    ${fila('Entrega', txtEntrega)}
+    ${fila('Retiro', txtRetiro)}
     ${a.pausado?fila('Pausado desde', `${fmtD(a.pausadoDesde)}${a.pausadoMotivo?' — '+a.pausadoMotivo:''}`):''}
-    ${a.sinFactura && !a.mesFacturado
-      ? fila('Facturación', 'SIN factura (cargado así de entrada — ya cuenta en reportes)')
-      : fila('Mes de facturación', a.mesFacturado ? mesLabel(a.mesFacturado)+' (marcado)' : mesLabel(a.inicio.slice(0,7))+' (por defecto, mes de inicio — todavía sin marcar)')}
+    ${a.sinFactura && !a.mesFacturado ? fila('Facturación', 'SIN factura (cargado así de entrada — ya cuenta en reportes)') : ''}
     ${a.diasCompensados?fila('Días compensados (sin cargo)', `${a.diasCompensados} día${a.diasCompensados!==1?'s':''}`+((a.compensaciones&&a.compensaciones.length)?': '+a.compensaciones.map(c=>`${c.dias}d${c.motivo?' — '+c.motivo:''}`).join('; '):'')):''}
     ${(a.diasAgregados&&a.diasAgregados.length)?`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem">
       <div style="color:var(--txt2);margin-bottom:5px">Facturas cargadas</div>
@@ -9984,9 +10066,7 @@ function resumenAlquilerHTML(a){
     </div>`:''}
     ${a.ajusteRetiroAnticipado?fila('Descuento por retiro anticipado', `${a.ajusteRetiroAnticipado.diasReales} día${a.ajusteRetiroAnticipado.diasReales!==1?'s':''} usados de ${a.ajusteRetiroAnticipado.diasContratados} facturados = -${fmt(a.ajusteRetiroAnticipado.monto)}`):''}
     ${a.modoHoras?fila('Facturación por hora', `${String(a.minutosUso/60).replace('.',',')} hs usadas → ${a.bloques30} bloque${a.bloques30!==1?'s':''} de 30' → ${String(a.horasFacturadas).replace('.',',')} hora${a.horasFacturadas!==1?'s':''} facturada${a.horasFacturadas!==1?'s':''}`):''}
-    ${a.horaEntrega?fila('Entrega', `${fmtD(a.inicio)} a las ${a.horaEntrega}${a.entregaPendiente?' · pendiente de que taller lo entregue':(a.entregaFisicaFecha?' · salió '+fmtD(a.entregaFisicaFecha)+' '+(a.entregaFisicaHora||'')+(a.entregaFisicaPor?' por '+a.entregaFisicaPor:''):'')}`):''}
-    ${a.retiradoAnticipado?fila('Retiro real', `${fmtD(a.retiradoAnticipado)} (anticipado)${a.pickupPendiente?' · pendiente de que taller lo confirme':''}`):(a.abierto?fila('Retiro', 'A confirmar (alquiler abierto)'):(a.fechaRetiro?fila('Retiro', `${fmtD(a.fechaRetiro)} a las ${a.horaRetiro||'08:00'}${a.pickupPendiente?' · pendiente de que taller lo retire':(a.retiroFisicoFecha?' · retirado '+fmtD(a.retiroFisicoFecha)+' '+(a.retiroFisicoHora||'')+(a.retiroFisicoPor?' por '+a.retiroFisicoPor:''):'')}`):''))}
-    ${(!a.abierto && !a.retiradoAnticipado && !a.modoHoras && a.fin && finFacturableAlq(a)!==a.fin)?fila('Período a facturar', `${fmtD(a.inicio)} al ${fmtD(finFacturableAlq(a))} (${a.dias||''} días) — el equipo se retira recién el ${fmtD(a.fin)}, ese día no se factura`):''}
+    ${(!a.abierto && !a.retiradoAnticipado && !a.modoHoras && a.fin && finFacturableAlq(a)!==a.fin)?fila('Se factura hasta', `${fmtD(finFacturableAlq(a))} — el día del retiro no se cobra`):''}
     ${(a.abierto && !a.retiradoAnticipado)?(()=>{
       // Días transcurridos hasta ESTE momento, con la misma regla del mediodía que se usa
       // para facturar (ver diasAlquilerPorFecha) — así el número que ve Mateo acá es
@@ -10005,18 +10085,16 @@ function resumenAlquilerHTML(a){
         : `${diasHastaAhora} días (dentro de los ${diasEnPrecioBase} ya incluidos en el precio base)`;
       return fila('Lleva', detalle);
     })():''}
-    ${a.precio?fila('Valor alquiler', fmt(a.precio)):''}
-    ${a.precioDetalle?fila('Desglose', a.precioDetalle):''}
-    ${a.precioEspecial?fila('Precio especial', a.precioEspecialNota || 'Sí (negociado con el cliente)'):''}
-    ${a.fVal?fila('Flete ('+a.fTransportista+')', fmt(a.fVal)):''}
-    ${(a.fTransportistaIda && a.fTransportistaIda!==a.fTransportista)?fila('Ida real', `${a.fTransportistaIda}${a.fCostoIdaOverride!=null?' — '+fmt(a.fCostoIdaOverride):''}`):''}
-    ${(a.fTransportistaRetiro && a.fTransportistaRetiro!==a.fTransportista)?fila('Retiro real', `${a.fTransportistaRetiro}${a.fCostoVueltaOverride!=null?' — '+fmt(a.fCostoVueltaOverride):''}`):''}
+    ${a.precio?fila('Alquiler', fmt(a.precio)+(detalleSinEquipo?`<div style="font-weight:500;color:var(--txt2);font-size:.78rem;margin-top:1px">${detalleSinEquipo}</div>`:'')):''}
+    ${(a.precioEspecial && !notaYaEstaEnDetalle)?fila('Precio especial', (a.precioEspecialNota||'').trim() || 'Sí (negociado con el cliente)'):''}
+    ${a.fVal?fila('Flete ('+a.fTransportista+')', fmt(a.fVal)+(detalleFlete?`<div style="font-weight:500;color:var(--txt2);font-size:.78rem;margin-top:1px">${detalleFlete}</div>`:'')):''}
+    ${(a.fTransportistaIda && a.fTransportistaIda!==a.fTransportista)?fila('Transportista de ida', `${a.fTransportistaIda}${a.fCostoIdaOverride!=null?' — '+fmt(a.fCostoIdaOverride):''}`):''}
+    ${(a.fTransportistaRetiro && a.fTransportistaRetiro!==a.fTransportista)?fila('Transportista del retiro', `${a.fTransportistaRetiro}${a.fCostoVueltaOverride!=null?' — '+fmt(a.fCostoVueltaOverride):''}`):''}
     ${a.fleteViajaConId?fila('Viaje compartido', `Va en el mismo camión que otro equipo${a.fleteEsElPrincipal?' — el costo del flete cuenta acá':' — el costo del flete cuenta en el otro alquiler, no acá'}`):''}
     ${a.fleteEspecial?fila('Flete especial', a.fleteEspecialNota || 'Sí (negociado con el cliente)'):''}
     ${(a.fExtras&&a.fExtras.length)?a.fExtras.map(x=>fila(x.concepto, fmt(x.monto))).join(''):''}
     ${a.usdValor?fila('Referencia USD', `U$D ${a.usdValor.toLocaleString('es-AR')} (dólar ${a.usdTipo}${a.usdCotizacion?': $'+a.usdCotizacion.toLocaleString('es-AR'):''})`):''}
     ${a.localidad?fila('Localidad de destino', a.localidad):''}
-    ${(a.fLabel&&a.fVal&&a.fTransportista==='Rosso'&&a.fLabel.startsWith('Por km'))?fila('Detalle del flete', a.fLabel):''}
     ${a.sub?fila('Subtotal', fmt(a.sub)):''}
     ${a.iva?fila('IVA (21%)', fmt(a.iva)):''}
     ${a.tot?`<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:900;color:var(--verde)"><span>TOTAL</span><span>${fmt(a.tot)}</span></div>`:''}
@@ -10072,11 +10150,15 @@ function verDetalleAlq(id){
   // pantalla de Facturación — tenerlo también acá duplicaba el punto de acción y era
   // fuente de error (alquileres marcados facturados sin pasar por la cola de Walter,
   // sin N° cargado, o en el mes que no correspondía). Acá solo mostramos el estado.
-  if(a.mesFacturado || (a.diasAgregados&&a.diasAgregados.length)){
+  // Este renglón es ahora el ÚNICO lugar del detalle donde se habla de facturación
+  // (antes también había una fila "Mes de facturación" más arriba, que decía lo mismo).
+  // Por eso se muestra siempre, incluso cuando todavía no se facturó.
+  if(!a.sinFactura){
     const ultimoChunk = (!a.mesFacturado && a.diasAgregados && a.diasAgregados.length) ? a.diasAgregados[a.diasAgregados.length-1] : null;
     const mesMostrar = a.mesFacturado || (ultimoChunk?ultimoChunk.mesFacturado:null);
     const numMostrar = a.mesFacturado ? a.numeroFactura : (ultimoChunk?ultimoChunk.numeroFactura:null);
-    botones+=`<div style="width:100%;font-size:.78rem;color:var(--txt2);padding:6px 2px">${mesMostrar?'Facturado '+mesLabel(mesMostrar):'Facturación pendiente'}${numMostrar?' · N° '+numMostrar:''} — se gestiona desde "Facturación"</div>`;
+    const pendienteTxt = a.inicio ? `Facturación pendiente — por ahora contaría en ${mesLabel(a.inicio.slice(0,7))}` : 'Facturación pendiente';
+    botones+=`<div style="width:100%;font-size:.78rem;color:var(--txt2);padding:6px 2px">${mesMostrar?'Facturado '+mesLabel(mesMostrar):pendienteTxt}${numMostrar?' · N° '+numMostrar:''} — se gestiona desde "Facturación"</div>`;
   } else {
     botones+=`<div style="width:100%;font-size:.78rem;color:var(--txt3);padding:6px 2px">Sin facturar — se marca desde "Facturación"</div>`;
   }
@@ -11125,6 +11207,14 @@ async function marcarEquipoRetiradoFisico(id){
 // de salida para ESE alquiler puntual (por ahora no exigimos fotos — eso lo sumamos
 // más adelante, cuando esté resuelto el tema de sacar/cargar fotos desde el celular
 // de taller) — ver flujo en marcarEquipoEntregado.
+// ¿Este alquiler sale hoy o ya salió? Sirve para no pedirle a taller el checklist
+// de salida de un equipo que todavía no se entrega.
+function arrancaHoyOAntes(alqId){
+  const a = ALQUILERES.find(x=>x.id===alqId);
+  if(!a || !a.inicio) return false;
+  return a.inicio <= new Date().toISOString().slice(0,10);
+}
+
 function checklistSalidaListo(alqId){
   const c=CONTRATOS[alqId];
   return !!(c && c.checklistSalida && c.checklistSalida.guardadoEn);
@@ -11427,10 +11517,24 @@ function renderAlq(){
     const enCurso=alqEstaActivoHoy(a,hoy) && !a.entregaPendiente;
     const futuro=a.inicio>hoy;
     let badgeClass,badgeTxt;
+    // El alquiler ya venció por fecha (sin contar la extensión que se le hace
+    // mientras el equipo no vuelve).
+    const vencioPorFecha = (a.retiradoAnticipado || a.fin) < hoy;
+
     if(a.pausado){badgeClass='';badgeTxt='Pausado';}
-    else if(a.entregaPendiente && a.inicio<=hoy){badgeClass='bd-tall';badgeTxt='Para entregar hoy';}
-    else if(enCurso){badgeClass='bd-alq';badgeTxt=a.abierto?'Abierto — en curso':'En curso';}
-    else if(futuro){badgeClass='bd-tall';badgeTxt='Programado';}
+    else if(a.entregaPendiente && a.inicio<=hoy){badgeClass='eq-libre';badgeTxt='Para entregar hoy';}
+    // El período terminó pero el equipo sigue en lo del cliente: taller todavía no
+    // confirmó el retiro. Va ANTES de "en curso" a propósito. Estos alquileres
+    // decían "En curso" aunque hubieran vencido hacía una semana, porque para
+    // pintar el calendario se les estira el fin hasta que la máquina vuelve.
+    // Resultado: parecían andando y en realidad estaban esperando que los retiren,
+    // con el equipo bloqueado para volver a alquilar sin que se notara.
+    // Misma lógica de color que la flota: verde = está facturando, azul = todavía no
+    // arrancó o está por moverse, rojo = algo hay que resolver.
+    else if(a.pickupPendiente && vencioPorFecha){badgeClass='eq-fuera';badgeTxt='Falta retirar el equipo';}
+    else if(enCurso){badgeClass='eq-alquilado';badgeTxt=a.abierto?'Abierto — en curso':'En curso';}
+    else if(futuro){badgeClass='eq-libre';badgeTxt='Programado';}
+    else if(a.pickupPendiente){badgeClass='eq-fuera';badgeTxt='Falta retirar el equipo';}
     else{badgeClass='';badgeTxt='Finalizado';}
     return`<div class="eq-item" style="flex-direction:column;align-items:flex-start;gap:6px;cursor:pointer" onclick="verDetalleAlq(${a.id})">
       <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
@@ -11582,7 +11686,7 @@ function renderCtrl(){
     const retorno = d.retorno || retornoAuto;
     const turnoR = d.turnoRetorno || '';
     const obs = d.obs || '';
-    const dotColor = r.estado==='disponible'?'var(--verde)':r.estado==='alquilado'?'var(--rojo)':'var(--azul)';
+    const dotColor = r.estado==='alquilado'?'#2e9e52':r.estado==='disponible'?'var(--azul)':'var(--rojo)';
     const problemas = EQ_INCIDENCIAS.filter(i=>i.equipoId===eq.id && i.estado==='abierta').length;
 
     return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s" onclick="editarCtrl(${eq.id})" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
@@ -11668,7 +11772,35 @@ function setRepTab(t){
 //   3) es un alquiler abierto con al menos una FACTURA PARCIAL ya marcada con su mes
 //      (ver agregarDiasFacturablesAlq) — aunque la porción base todavía esté pendiente.
 // Mientras nada de esto pase, el alquiler NO figura en reportes.
+// ── ARRANQUE LIMPIO DE REPORTES ────────────────────────────────────────────
+// Decisión de Mateo (9/9/2026): los reportes arrancan de cero desde esta fecha.
+// Junio, julio y agosto quedaron cargados con datos incompletos (alquileres
+// abiertos que nunca se cerraron, facturas sin marcar), así que los números de
+// esos meses no eran confiables. En vez de borrarlos —se perderían contratos,
+// números de factura e historial de cada cliente— se dejan guardados y se los
+// saca de los reportes.
+//
+// La regla: cuenta el alquiler cuya FECHA DE INICIO sea igual o posterior a esta.
+// Es la fecha del alquiler, no la del día que se cargó: si mañana carga uno que
+// arrancó el 5/9, no va a contar. Es a propósito.
+//
+// PARA VOLVER ATRÁS: poner REPORTES_DESDE = '' y todo el historial vuelve a
+// sumar, tal cual estaba. No hace falta nada más, no se borró ningún dato.
+const REPORTES_DESDE = '2026-09-09';
+
+function entraEnElCorteDeReportes(a){
+  if(!REPORTES_DESDE) return true;
+  return (a.inicio || '') >= REPORTES_DESDE;
+}
+
+// Única lista que deben usar los reportes. Todas las solapas pasan por acá para
+// que el corte no dependa de acordarse de filtrar en cada una.
+function alquileresParaReportes(){
+  return ALQUILERES.filter(entraEnElCorteDeReportes);
+}
+
 function alqCuentaParaReportes(a){
+  if(!entraEnElCorteDeReportes(a)) return false;
   if(a.mesFacturado || a.sinFactura) return true;
   if(a.diasAgregados && a.diasAgregados.some(d=>d.mesFacturado)) return true;
   return false;
@@ -11816,10 +11948,23 @@ function renderReportes(){
 
   if(usaPeriodo) repTextoRango();
 
-  if(repTab==='ventas') cont.innerHTML=renderRepVentas();
-  else if(repTab==='maquinas') cont.innerHTML=renderRepMaquinas();
-  else if(repTab==='fletes') cont.innerHTML=renderRepFletes();
-  else if(repTab==='perdidas') cont.innerHTML=renderRepPerdidas();
+  // Aviso del arranque limpio. Sin esto, ver los reportes en cero después de
+  // meses con movimiento parece un error de la app y no una decisión tomada.
+  let aviso='';
+  if(REPORTES_DESDE){
+    const quedaronAfuera = ALQUILERES.filter(a=>!entraEnElCorteDeReportes(a)).length;
+    const [y,m,d]=REPORTES_DESDE.split('-');
+    aviso=`<div style="background:rgba(47,111,208,.08);border-left:3px solid var(--azul);border-radius:0 8px 8px 0;padding:9px 13px;margin-bottom:1rem;font-size:.8rem;color:var(--txt2);line-height:1.5">
+      Los reportes cuentan <b style="color:var(--txt)">desde el ${d}/${m}/${y}</b>.
+      ${quedaronAfuera} alquiler${quedaronAfuera!==1?'es':''} anterior${quedaronAfuera!==1?'es':''} quedaron guardados pero no se suman acá —
+      los seguís viendo en la pantalla de Alquileres y en la solapa Historial.
+    </div>`;
+  }
+
+  if(repTab==='ventas') cont.innerHTML=aviso+renderRepVentas();
+  else if(repTab==='maquinas') cont.innerHTML=aviso+renderRepMaquinas();
+  else if(repTab==='fletes') cont.innerHTML=aviso+renderRepFletes();
+  else if(repTab==='perdidas') cont.innerHTML=aviso+renderRepPerdidas();
 }
 let repMaquinasVista='mensual'; // 'mensual' | 'total'
 let repMaquinasMes=new Date().toISOString().slice(0,7); // YYYY-MM
@@ -11898,7 +12043,7 @@ function renderRepMaquinas(){
   const porGrupo={};
   repMaquinasFilasPorGrupo={};
 
-  ALQUILERES.forEach(a=>{
+  alquileresParaReportes().forEach(a=>{
     const chunks=chunksFacturablesAlq(a);
     if(!chunks.length) return;
     let mDias=0, mMonto=0;
@@ -12080,7 +12225,7 @@ function fleteEventos(a){
 
 function renderRepFletes(){
   const rango = repRango();
-  const conFlete=ALQUILERES.filter(a=>a.fTransportista && a.fTransportista!=='Sin flete');
+  const conFlete=alquileresParaReportes().filter(a=>a.fTransportista && a.fTransportista!=='Sin flete');
   const porMes={};
   let huboAlgo=false;
   conFlete.forEach(a=>{
@@ -12123,7 +12268,7 @@ function verDetalleFletero(nombre, mes){
   // Recorremos TODOS los alquileres con flete (no solo los que tienen a.fTransportista===nombre)
   // porque un evento de "vuelta" puede pertenecer a un fletero distinto del que figura como
   // transportista principal del alquiler (ver fTransportistaRetiro / fleteEventos).
-  ALQUILERES.filter(a=>a.fTransportista && a.fTransportista!=='Sin flete').forEach(a=>{
+  alquileresParaReportes().filter(a=>a.fTransportista && a.fTransportista!=='Sin flete').forEach(a=>{
     fleteEventos(a).forEach(ev=>{
       if(ev.transportista!==nombre) return;
       if(mes && ev.mes!==mes) return;
@@ -12166,7 +12311,7 @@ function renderRepRanking(){
   return lista.map((x,i)=>`<div class="eq-item" style="cursor:default">
       <div style="width:28px;text-align:center;font-weight:900;color:var(--txt3);font-size:.95rem">${i+1}</div>
       <div class="eq-info"><h4>${x.cliente}</h4><p>${fmt(x.total)} facturados</p></div>
-      <span class="eq-badge bd-alq">${x.cantidad} alquiler${x.cantidad!==1?'es':''}</span>
+      <span class="eq-badge eq-alquilado">${x.cantidad} alquiler${x.cantidad!==1?'es':''}</span>
     </div>`).join('');
 }
 // Historial agrupado por modelo/tipo (mismo criterio que el reporte Máquinas: categoría +
