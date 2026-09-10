@@ -509,7 +509,7 @@ if ('serviceWorker' in navigator) {
       </button>
       <div class="nav-sub" id="g-alquileres">
         <button id="nav-cotizador" onclick="goTo('cotizador')">Cotizador</button>
-        <button id="nav-alquileres" onclick="goTo('alquileres')">Listado</button>
+        <button id="nav-alquileres" onclick="goTo('alquileres')">Alquileres activos</button>
         <button id="nav-calendario" onclick="goTo('calendario')">Calendario</button>
         <button id="nav-rivadavia" onclick="goTo('rivadavia')">Planilla Rivadavia</button>
       </div>
@@ -1339,6 +1339,19 @@ if ('serviceWorker' in navigator) {
     <div class="screen" id="screen-control">
       <div class="sec-title">Control de Máquinas</div>
       <div class="sec-sub">Estado actual de la flota · editá haciendo click</div>
+      <!-- Referencia de los puntitos. Sin esto hay que acordarse qué significa cada
+           color, y el verde y el azul son los dos que más cuesta separar. -->
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:.8rem;font-size:.76rem;color:var(--txt2)">
+        <span style="display:inline-flex;align-items:center;gap:6px">
+          <span style="width:14px;height:14px;border-radius:50%;box-sizing:border-box;background:#218a45;border:2px solid #fff;box-shadow:0 0 0 1.5px #218a45"></span>Alquilada
+        </span>
+        <span style="display:inline-flex;align-items:center;gap:6px">
+          <span style="width:14px;height:14px;border-radius:50%;box-sizing:border-box;background:#fff;border:3px solid #1667d6"></span>Libre
+        </span>
+        <span style="display:inline-flex;align-items:center;gap:6px">
+          <span style="width:14px;height:14px;border-radius:50%;box-sizing:border-box;background:#d33c2c;border:2px solid #fff;box-shadow:0 0 0 1.5px #d33c2c"></span>Fuera de servicio
+        </span>
+      </div>
       <div style="overflow-x:auto;">
         <table id="ctrl-tabla" style="width:100%;border-collapse:collapse;min-width:600px;background:var(--bg2);border-radius:12px;overflow:hidden;border:1px solid var(--border);">
           <thead>
@@ -7123,8 +7136,17 @@ function renderPuestaAlDia(){
       const a=r.alquiler;
       const d=dias(a.inicio);
       const alerta = d>45;
+      // Hasta cuándo está facturado: es el dato que Mateo no puede rastrear a mano.
+      // La app lo sabe — es el "hasta" de la última factura parcial, o el fin del
+      // tramo base si todavía no hay parciales. Mostrarlo acá le ahorra el rastreo.
+      const parciales=(a.diasAgregados||[]).filter(c=>c.hasta);
+      const facturadoHasta = parciales.length ? parciales[parciales.length-1].hasta
+        : ((a.mesFacturado && a.fin) ? a.fin : null);
       dice=`<span style="color:#2e9e52;font-weight:700">Alquilada</span> a ${a.cliente} · desde ${fmtD(a.inicio)}
-        <b style="color:${alerta?'var(--rojo)':'var(--txt2)'}">(hace ${d} días)</b>`;
+        <b style="color:${alerta?'var(--rojo)':'var(--txt2)'}">(hace ${d} días)</b>`
+        + (facturadoHasta
+            ? `<span style="display:block;color:var(--txt2)">Facturada hasta el <b style="color:var(--txt)">${fmtD(facturadoHasta)}</b></span>`
+            : `<span style="display:block;color:var(--rojo)">Sin ninguna factura cargada todavía</span>`);
 
       // Cada caso tiene su propia función en la app y NO son intercambiables.
       // Usar la que no va deja el alquiler a medio cerrar o factura mal los días:
@@ -7146,7 +7168,15 @@ function renderPuestaAlDia(){
         etiqueta='Volvió antes';
         ayuda='Devuelve antes de la fecha pactada — puede corresponder descuento';
       }
+      // Para las que siguen en obra, poder facturar el tramo desde acá mismo: es el
+      // flujo que Mateo ya venía usando (cargar los días de tal fecha a tal fecha,
+      // que pasan a Facturación y de ahí al reporte). Sin esto había que salir del
+      // repaso, buscar el alquiler en la lista y entrar al detalle.
+      const facturar = a.abierto
+        ? `<button onclick="pdMarcarRevisada(${e.id});agregarDiasFacturablesAlq(${a.id})" class="btn-lim" title="Cargar los días de tal fecha a tal fecha — pasa a Facturación y al reporte" style="padding:5px 11px;font-size:.76rem;color:#2e9e52;border-color:#2e9e52">Facturar tramo</button>`
+        : '';
       acciones=`
+        ${facturar}
         <button onclick="pdMarcarRevisada(${e.id});${cerrar}" class="btn-lim" title="${ayuda}" style="padding:5px 11px;font-size:.76rem;color:var(--azul);border-color:var(--azul)">${etiqueta}</button>
         <button onclick="pdMarcarRevisada(${e.id})" class="btn-lim" style="padding:5px 11px;font-size:.76rem">Sigue en obra</button>`;
     } else if(r.estado==='taller'){
@@ -8969,15 +8999,39 @@ function actualizarDisponibilidadAlq(excludeAlqId){
   return true;
 }
 
+// La lista de localidades sale de cómo está escrita la ciudad en cada cliente. Entre
+// 1.400 clientes hay "Rafaela", "RAFAELA" y "rafaela", y las tres aparecían como
+// opciones distintas en el desplegable. Acá se agrupan: una sola entrada por
+// localidad, escrita como se escribe un nombre propio (Rafaela, Bella Italia).
 function poblarLocalidadesDatalist(){
   const dl=document.getElementById('localidades-list');
   if(!dl) return;
-  const set=new Set();
+
+  const capitalizar = txt => txt.toLowerCase().split(/(\s+|-)/)
+    .map(p => /^\s+$|^-$/.test(p) ? p : p.charAt(0).toUpperCase()+p.slice(1))
+    .join('');
+
+  // Se agrupa ignorando mayúsculas y espacios de más: "RAFAELA", "Rafaela" y
+  // "rafaela " son la misma localidad y tienen que dar una sola opción.
+  const porLocalidad=new Map();
   CLIENTES.forEach(c=>{
-    const ciu=(c.ciudad||'').trim();
-    if(ciu && ciu!=='-') set.add(ciu);
+    const ciu=(c.ciudad||'').trim().replace(/\s+/g,' ');
+    if(!ciu || ciu==='-') return;
+    const clave=ciu.toLowerCase();
+    const actual=porLocalidad.get(clave);
+    if(actual) actual.veces++;
+    else porLocalidad.set(clave, {veces:1, original:ciu});
   });
-  const lista=[...set].sort((a,b)=>a.localeCompare(b,'es'));
+
+  // Si la forma más usada ya está bien escrita (ni TODO EN MAYÚSCULAS ni todo en
+  // minúsculas) se respeta tal cual — puede tener una mayúscula intencional que
+  // capitalizar() rompería. Si no, se normaliza.
+  const lista=[...porLocalidad.values()].map(({original})=>{
+    const esGrito = original===original.toUpperCase();
+    const esSusurro = original===original.toLowerCase();
+    return (esGrito || esSusurro) ? capitalizar(original) : original;
+  }).sort((a,b)=>a.localeCompare(b,'es'));
+
   dl.innerHTML=lista.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`).join('');
 }
 
@@ -9065,7 +9119,20 @@ function abrirModalAlq(){
   ['alq-rosso-fijo','alq-rosso-km','alq2-rosso-fijo','alq2-rosso-km'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display='none';
   });
+
+  // Los selects de destino se pueblan una sola vez al arrancar la app, así que
+  // conservaban el destino del alquiler anterior. Quedaba "Rafaela" elegida pero sin
+  // precio calculado (abrir el modal no dispara el onchange), y había que cambiar a
+  // otro destino y volver para que apareciera el importe. Ahora arrancan en blanco.
+  ['alq-alej-dest','alq-rosso-dest','alq2-alej-dest','alq2-rosso-dest'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+
   document.getElementById('modal-alq').style.display='flex';
+  // El navegador recuerda dónde estaba el scroll de la ventanita, así que se abría
+  // a mitad de camino y había que subir a mano para empezar por el cliente.
+  const caja=document.querySelector('#modal-alq > div');
+  if(caja) caja.scrollTop=0;
 }
 
 function cerrarModalAlq(){ document.getElementById('modal-alq').style.display='none'; }
@@ -11881,13 +11948,25 @@ function renderCtrl(){
     const retorno = d.retorno || retornoAuto;
     const turnoR = d.turnoRetorno || '';
     const obs = d.obs || '';
-    const dotColor = r.estado==='alquilado'?'#2e9e52':r.estado==='disponible'?'var(--azul)':'var(--rojo)';
+    // A 9 px el azul y el verde se confundían, que es justo lo contrario de lo que esta
+    // tabla tiene que servir. Agrandarlos no alcanza: los dos son colores fríos con
+    // brillo parecido. Así que además del color cambia la FORMA — la máquina que está
+    // trabajando es un círculo lleno, la que está libre es un anillo hueco. Se ve de
+    // reojo, y funciona incluso para alguien que no distingue bien los colores.
+    const DOT = {
+      alquilado:  {color:'#218a45', lleno:true,  nombre:'Alquilada — está facturando'},
+      disponible: {color:'#1667d6', lleno:false, nombre:'Disponible — libre en el taller'},
+      taller:     {color:'#d33c2c', lleno:true,  nombre:'Fuera de servicio'}
+    }[r.estado] || {color:'#9a938a', lleno:false, nombre:''};
+    const dotEstilo = DOT.lleno
+      ? `background:${DOT.color};border:2px solid #fff;box-shadow:0 0 0 1.5px ${DOT.color}`
+      : `background:#fff;border:3px solid ${DOT.color}`;
     const problemas = EQ_INCIDENCIAS.filter(i=>i.equipoId===eq.id && i.estado==='abierta').length;
 
     return `<tr style="border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s" onclick="editarCtrl(${eq.id})" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
       <td style="padding:9px 12px;">
         <div style="display:flex;align-items:center;gap:8px">
-          <div style="width:9px;height:9px;border-radius:50%;background:${dotColor};box-shadow:0 0 5px ${dotColor};flex-shrink:0"></div>
+          <div title="${DOT.nombre}" style="width:14px;height:14px;border-radius:50%;flex-shrink:0;box-sizing:border-box;${dotEstilo}"></div>
           <span style="font-size:.82rem;font-weight:700;color:var(--txt)">${eq.nombre}</span>
           ${problemas?`<span title="Problema pendiente" onclick="event.stopPropagation();abrirFichaEq(${eq.id},'prob')" style="color:var(--rojo);font-size:.78rem;cursor:pointer">⚠️ ${problemas}</span>`:''}
         </div>
@@ -11968,24 +12047,39 @@ function setRepTab(t){
 //      (ver agregarDiasFacturablesAlq) — aunque la porción base todavía esté pendiente.
 // Mientras nada de esto pase, el alquiler NO figura en reportes.
 // ── ARRANQUE LIMPIO DE REPORTES ────────────────────────────────────────────
-// Decisión de Mateo (9/9/2026): los reportes arrancan de cero desde esta fecha.
-// Junio, julio y agosto quedaron cargados con datos incompletos (alquileres
-// abiertos que nunca se cerraron, facturas sin marcar), así que los números de
-// esos meses no eran confiables. En vez de borrarlos —se perderían contratos,
-// números de factura e historial de cada cliente— se dejan guardados y se los
-// saca de los reportes.
+// Decisión de Mateo (9/9/2026): los reportes arrancan de cero en septiembre.
+// Junio, julio y agosto quedaron con datos incompletos (alquileres abiertos que
+// nunca se cerraron, facturas sin marcar), así que esos números no eran
+// confiables. En vez de borrarlos —se perderían contratos, números de factura e
+// historial de cada cliente— se dejan guardados y se los saca de los reportes.
 //
-// La regla: cuenta el alquiler cuya FECHA DE INICIO sea igual o posterior a esta.
-// Es la fecha del alquiler, no la del día que se cargó: si mañana carga uno que
-// arrancó el 5/9, no va a contar. Es a propósito.
+// EL CRITERIO ES EL MES DE LA FACTURA, NO CUÁNDO ARRANCÓ EL ALQUILER.
+// Esto importa y es la corrección de un error: varias máquinas están en obra
+// desde junio y se facturan por tramos cada 10/15 días ("Agregar factura
+// parcial"). Si el corte mirara la fecha de inicio del alquiler, esos tramos
+// facturados en septiembre no aparecerían nunca en ningún reporte, porque el
+// alquiler que los contiene arrancó antes. Mirando el mes de cada factura, cada
+// tramo cae en el mes que le corresponde y el alquiler viejo sigue sirviendo.
 //
-// PARA VOLVER ATRÁS: poner REPORTES_DESDE = '' y todo el historial vuelve a
-// sumar, tal cual estaba. No hace falta nada más, no se borró ningún dato.
-const REPORTES_DESDE = '2026-09-09';
+// PARA VOLVER ATRÁS: poner REPORTES_DESDE_MES = '' y todo el historial vuelve a
+// sumar, tal cual estaba. No se borró ningún dato.
+const REPORTES_DESDE_MES = '2026-09';   // formato AAAA-MM
 
+// ¿Este tramo facturado entra en los reportes?
+// Un tramo sin mes marcado usa la fecha en que arrancó, igual que hacen los
+// reportes por mes de inicio. Que además esté facturado lo decide otra función.
+function chunkEntraEnElCorte(chunk){
+  if(!REPORTES_DESDE_MES) return true;
+  const mes = chunk.mes || String(chunk.inicio||'').slice(0,7);
+  return mes >= REPORTES_DESDE_MES;
+}
+
+// Un alquiler entra si tiene AL MENOS un tramo facturado desde el corte. Un
+// alquiler de junio con una factura parcial de septiembre entra; uno de junio
+// facturado solo en julio, no.
 function entraEnElCorteDeReportes(a){
-  if(!REPORTES_DESDE) return true;
-  return (a.inicio || '') >= REPORTES_DESDE;
+  if(!REPORTES_DESDE_MES) return true;
+  return chunksFacturablesAlq(a).length > 0;
 }
 
 // Única lista que deben usar los reportes. Todas las solapas pasan por acá para
@@ -12028,7 +12122,11 @@ function chunksFacturablesAlq(a){
       chunks.push({monto:d.monto||0, dias:d.dias||0, inicio:d.desde||finBase, fin:d.hasta||finBase, mes:d.mesFacturado});
     }
   });
-  return chunks;
+  // El corte del arranque limpio se aplica ACÁ, sobre los tramos ya armados, para
+  // que valga igual en las cuatro solapas sin tener que filtrar en cada una. Un
+  // alquiler de junio que se sigue facturando por tramos aporta solo los tramos
+  // de septiembre en adelante; los de junio, julio y agosto quedan afuera.
+  return chunks.filter(chunkEntraEnElCorte);
 }
 // Cantidad de días de un CHUNK que caen dentro de [rangoInicio, rangoFin] y su monto
 // proporcional (prorrateando el monto del chunk según sus propios días totales).
@@ -12146,13 +12244,11 @@ function renderReportes(){
   // Aviso del arranque limpio. Sin esto, ver los reportes en cero después de
   // meses con movimiento parece un error de la app y no una decisión tomada.
   let aviso='';
-  if(REPORTES_DESDE){
-    const quedaronAfuera = ALQUILERES.filter(a=>!entraEnElCorteDeReportes(a)).length;
-    const [y,m,d]=REPORTES_DESDE.split('-');
+  if(REPORTES_DESDE_MES){
     aviso=`<div style="background:rgba(47,111,208,.08);border-left:3px solid var(--azul);border-radius:0 8px 8px 0;padding:9px 13px;margin-bottom:1rem;font-size:.8rem;color:var(--txt2);line-height:1.5">
-      Los reportes cuentan <b style="color:var(--txt)">desde el ${d}/${m}/${y}</b>.
-      ${quedaronAfuera} alquiler${quedaronAfuera!==1?'es':''} anterior${quedaronAfuera!==1?'es':''} quedaron guardados pero no se suman acá —
-      los seguís viendo en la pantalla de Alquileres y en la solapa Historial.
+      Los reportes cuentan las facturas <b style="color:var(--txt)">de ${mesLabel(REPORTES_DESDE_MES).toLowerCase()} en adelante</b>.
+      Lo facturado antes quedó guardado pero no se suma acá — lo seguís viendo en Alquileres y en la solapa Historial.<br>
+      Un alquiler que arrancó hace meses <b style="color:var(--txt)">sí cuenta</b>: aporta cada factura parcial en el mes en que la cargues.
     </div>`;
   }
 
