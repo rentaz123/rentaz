@@ -422,6 +422,12 @@ select,input[type=number],input[type=text],input[type=date],textarea{
   border:1px solid var(--border2);background:var(--bg2);border-radius:9px;
 }
 select:focus,input:focus,textarea:focus{border-color:var(--txt2);}
+/* El desplegable de "Ver la app como" vive en el sidebar oscuro, así que el select
+   cerrado tiene letra clara. Pero al abrirlo, la lista de opciones la dibuja el
+   sistema con fondo blanco, y las opciones heredaban ese color claro: letra blanca
+   sobre blanco, ilegible. Se les fija color propio. */
+#ver-como-sel option,
+#sidebar select option{ background:#ffffff; color:#1c1b19; }
 .rb{border:1px solid var(--border2);background:var(--bg2);font-weight:600;}
 .flabel{font-size:.68rem;color:var(--txt3);letter-spacing:.05em;text-transform:uppercase;}
 
@@ -2112,6 +2118,11 @@ if ('serviceWorker' in navigator) {
         <div><label class="flabel">Fecha de retiro real</label><input type="date" id="cerrarab-fecha" oninput="recalcCerrarAbierto()"></div>
         <div><label class="flabel">Hora de retiro real</label><input type="time" id="cerrarab-hora" oninput="recalcCerrarAbierto()"></div>
       </div>
+      <!-- Atajo para el caso de los alquileres que vienen de meses atrás: se cierran
+           para reingresarlos desde el mes en curso, y NO hay que facturar nada más
+           porque esos días ya se facturaron. El campo de fecha arranca en HOY, que en
+           esos casos facturaría decenas de días de más. -->
+      <div id="cerrarab-atajo" style="display:none;margin:-.3rem 0 .8rem"></div>
       <div id="cerrarab-error" style="display:none;color:var(--rojo);font-size:.82rem;font-weight:700;margin-bottom:.7rem"></div>
       <div id="cerrarab-resumen" style="font-size:.85rem;font-weight:700;color:var(--verde);margin-bottom:.8rem"></div>
       <div id="cerrarab-dias-box" style="margin-bottom:1rem">
@@ -9229,6 +9240,17 @@ function actualizarDisponibilidadAlq(excludeAlqId){
   // pisar esta reserva. No se bloquea (la reserva puede ser correcta) pero hay que
   // decirlo, porque el conflicto aparecería recién cuando el equipo no esté.
   const riesgos=[];
+
+  // Cargar con fecha anterior al arranque limpio es la fuente del 90% de los choques:
+  // los alquileres viejos de esos meses siguen ocupando las máquinas, así que el equipo
+  // que hoy está libre puede haber estado en obra entonces. Y encima ese alquiler no
+  // cuenta en reportes (ver REPORTES_DESDE_MES). Se avisa antes de que choque.
+  if(REPORTES_DESDE_MES && desde && desde.slice(0,7) < REPORTES_DESDE_MES){
+    riesgos.push(`La fecha de inicio (<b>${fmtD(desde)}</b>) es anterior a ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}, que es desde cuando arrancamos limpio.
+      Este alquiler <b>no va a contar en los reportes</b>, y las máquinas que hoy están libres pueden haber estado ocupadas en esas fechas.
+      Si lo que querés es facturar de acá en adelante, poné la fecha de inicio en ${mesLabel(REPORTES_DESDE_MES).toLowerCase()} o después.`);
+  }
+
   for(const row of filas){
     const abiertoDelEquipo = ALQUILERES.find(a=>
       a.equipoId===row.eqId && a.abierto && !a.retiradoAnticipado && !a.pausado &&
@@ -9236,14 +9258,15 @@ function actualizarDisponibilidadAlq(excludeAlqId){
       (a.fin||'') < desde);
     if(abiertoDelEquipo){
       const eq=EQUIPOS.find(e=>e.id===row.eqId);
-      riesgos.push(`<b>${eq?eq.nombre:'Este equipo'}</b> está en un alquiler <b>abierto</b> de ${abiertoDelEquipo.cliente}, sin fecha de retorno confirmada`);
+      riesgos.push(`<b>${eq?eq.nombre:'Este equipo'}</b> está en un alquiler <b>abierto</b> de ${abiertoDelEquipo.cliente}, sin fecha de retorno confirmada. Si el cliente lo devuelve más tarde de lo previsto, esta reserva se pisa — conviene confirmar cuándo lo entrega.`);
     }
   }
   if(riesgos.length){
+    // Cada aviso trae su propio cierre: antes había un remate común sobre el cliente
+    // que devuelve tarde, que no tenía nada que ver con el aviso de fecha vieja.
     aviso.style.background='#e5a83b';
-    aviso.innerHTML=`⚠ <b>Se puede cargar, pero ojo.</b><br>
-      <span style="font-weight:400">${riesgos.join('<br>')}.<br>
-      Si el cliente lo devuelve más tarde de lo previsto, esta reserva se pisa. Conviene confirmar cuándo lo entrega.</span>`;
+    aviso.innerHTML=`⚠ <b>Se puede cargar, pero ojo.</b>
+      <span style="display:block;font-weight:400;margin-top:3px">${riesgos.join('<br><br>')}</span>`;
     aviso.style.display='block';
     return true;
   }
@@ -10915,6 +10938,28 @@ async function desmarcarFacturado(id){
 // alquileres pendientes de marcar (con el mes sugerido) y a medida que factura
 // afuera, va tocando "Facturado" uno por uno — sin tener que buscarlos
 // alquiler por alquiler ni depender de quien los cargó originalmente.
+// Días que un alquiler ABIERTO lleva corridos y todavía no se facturaron.
+//
+// Este era el agujero que hacía que los rendimientos del mes no cerraran. Un alquiler
+// abierto se factura por tramos, y con cada tramo su a.fin se corre hasta el último día
+// facturado. La cola de Walter usaba justamente "el último tramo llega hasta a.fin" para
+// decidir que estaba al día — y eso es verdad por definición, apenas se factura. Pero la
+// máquina sigue trabajando: al día siguiente ya hay días nuevos sin facturar y el
+// alquiler NO volvía a aparecer en la cola. Nadie se enteraba, y el reporte del mes
+// mostraba solo lo facturado, siempre menos de lo que la máquina realmente trabajó.
+// Se usa la misma regla del mediodía que se usa para cobrar (diasAlquilerPorFecha).
+function diasSinFacturarAlq(a){
+  if(!a || !a.abierto || a.retiradoAnticipado || a.pausado) return 0;
+  if(a.sinFactura) return 0;
+  if(!a.inicio) return 0;
+  const ahora=new Date();
+  const hoy=ahora.toISOString().slice(0,10);
+  if(a.inicio>hoy) return 0;
+  const hora=ahora.toTimeString().slice(0,5);
+  const corridos=diasAlquilerPorFecha(a.inicio, hoy, hora);
+  return Math.max(0, corridos-(a.dias||0));
+}
+
 function renderFacturacion(){
   const cont=document.getElementById('fact-cont');
   if(!cont) return;
@@ -10935,6 +10980,85 @@ function renderFacturacion(){
   const totalPendiente=pendientes.reduce((s,a)=>s+(a.tot||0),0);
 
   let h = `<div style="font-size:.85rem;color:var(--txt2);margin-bottom:1rem">Pendientes de facturar: <b style="color:${pendientes.length?'var(--rojo)':'var(--verde)'}">${pendientes.length}</b>${pendientes.length?` · Total sin facturar: <b style="color:var(--txt)">${fmt(totalPendiente)}</b>`:''}</div>`;
+
+  // ── CHEQUEO DEL ARRANQUE LIMPIO ──────────────────────────────────────────
+  // ¿Quedó algún alquiler abierto arrastrando desde antes del corte? Es la pregunta
+  // que hay que poder responder de un vistazo después de cerrar y reingresar todo,
+  // porque uno solo que quede sin cerrar desordena el rendimiento de su equipo.
+  if(REPORTES_DESDE_MES){
+    const viejosAbiertos = ALQUILERES.filter(a=>
+      a.abierto && !a.retiradoAnticipado && !a.sinFactura &&
+      a.inicio && a.inicio.slice(0,7) < REPORTES_DESDE_MES);
+
+    h += viejosAbiertos.length
+      ? `<div style="background:rgba(201,106,94,.1);border-left:3px solid var(--rojo);border-radius:0 9px 9px 0;padding:11px 15px;margin-bottom:1.2rem">
+          <div style="font-size:.85rem;font-weight:800;color:var(--txt);margin-bottom:3px">
+            ${viejosAbiertos.length===1
+              ? `Queda 1 alquiler abierto que arrancó antes de ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}`
+              : `Quedan ${viejosAbiertos.length} alquileres abiertos que arrancaron antes de ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}`}
+          </div>
+          <div style="font-size:.78rem;color:var(--txt2);line-height:1.5;margin-bottom:6px">
+            ${viejosAbiertos.length===1?'Hay que cerrarlo y reingresarlo':'Hay que cerrarlos y reingresarlos'} desde ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}, o el rendimiento de esos equipos va a mezclar meses.
+          </div>
+          ${viejosAbiertos.map(a=>`
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--border)">
+              <div style="flex:1;min-width:200px;font-size:.81rem">
+                <b style="color:var(--txt)">${a.equipoNombre}</b> · ${a.cliente}
+                <span style="display:block;color:var(--txt2);font-size:.76rem">Arrancó el ${fmtD(a.inicio)} · facturado hasta el ${fmtD(a.fin)}</span>
+              </div>
+              <button onclick="abrirModalCerrarAbierto(${a.id})" class="btn-nuevo" style="padding:5px 10px;font-size:.75rem;flex-shrink:0">Cerrarlo</button>
+            </div>`).join('')}
+        </div>`
+      : `<div style="background:var(--verde-light);border-left:3px solid var(--verde);border-radius:0 9px 9px 0;padding:10px 15px;margin-bottom:1.2rem;font-size:.82rem;color:var(--txt2)">
+          <b style="color:var(--verde)">Arranque limpio confirmado.</b>
+          No quedó ningún alquiler abierto de antes de ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}.
+        </div>`;
+  }
+
+  // ── ALQUILERES ABIERTOS CON DÍAS CORRIENDO SIN FACTURAR ──────────────────
+  // Van arriba de todo: es plata que la máquina ya generó y que no está en ninguna
+  // factura ni en ningún reporte. Mientras no se cargue, el rendimiento del mes de
+  // ese equipo sale más bajo de lo real.
+  const corriendo = ALQUILERES
+    .map(a=>({a, dias:diasSinFacturarAlq(a)}))
+    .filter(x=>x.dias>0 && matchBusca(x.a))
+    .sort((x,y)=>y.dias-x.dias);
+
+  if(corriendo.length){
+    const totalDias=corriendo.reduce((s,x)=>s+x.dias,0);
+    h += `<div style="background:rgba(229,168,59,.12);border-left:3px solid #e5a83b;border-radius:0 9px 9px 0;padding:11px 15px;margin-bottom:1.2rem">
+      <div style="font-size:.85rem;font-weight:800;color:var(--txt);margin-bottom:3px">
+        ${corriendo.length} alquiler${corriendo.length!==1?'es':''} abierto${corriendo.length!==1?'s':''} con días sin facturar
+        <span style="font-weight:600;color:var(--txt2)">· ${totalDias} día${totalDias!==1?'s':''} en total</span>
+      </div>
+      <div style="font-size:.78rem;color:var(--txt2);line-height:1.5;margin-bottom:8px">
+        Estas máquinas están trabajando y esos días todavía no están en ninguna factura.
+        Hasta que se carguen, el rendimiento del mes de esos equipos va a salir más bajo del real.
+      </div>
+      ${corriendo.map(({a,dias})=>{
+        // Un alquiler que arrancó antes del arranque limpio arrastra días de meses
+        // anteriores. Si se facturan de una, esa plata cae entera en el mes actual y
+        // lo infla con trabajo que no es de este mes. Se marca aparte para que se vea.
+        const viejo = REPORTES_DESDE_MES && a.fin && a.fin.slice(0,7) < REPORTES_DESDE_MES;
+        return `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--border)">
+          <div style="flex:1;min-width:210px;font-size:.81rem">
+            <b style="color:var(--txt)">${a.equipoNombre}</b> · ${a.cliente}
+            <span style="display:block;color:var(--txt2);font-size:.76rem">
+              Facturado hasta el ${fmtD(a.fin)} · <b style="color:#b3791f">${dias} día${dias!==1?'s':''} sin facturar</b>
+            </span>
+            ${viejo?`<span style="display:block;color:var(--rojo);font-size:.74rem;margin-top:2px">
+              ⚠ Viene facturado desde antes de ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}: estos días son de meses anteriores.
+              Si Walter ya los facturó por fuera, no los cargues acá — cerrá el alquiler y abrí uno nuevo desde ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}.
+            </span>`:''}
+          </div>
+          <span style="display:flex;gap:6px;flex-shrink:0">
+            <button onclick="verDetalleAlq(${a.id})" class="btn-lim" style="padding:5px 10px;font-size:.75rem">Ver</button>
+            <button onclick="agregarDiasFacturablesAlq(${a.id})" class="${viejo?'btn-lim':'btn-nuevo'}" style="padding:5px 10px;font-size:.75rem">Facturar ${dias} día${dias!==1?'s':''}</button>
+          </span>
+        </div>`;}).join('')}
+    </div>`;
+  }
 
   if(!pendientes.length){
     h += '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin:1rem 0 2rem">No hay alquileres pendientes de facturar.</p>';
@@ -11541,9 +11665,43 @@ function abrirModalCerrarAbierto(id){
     `Cargado hasta ahora: ${fmtD(a.fin)} (${a.dias||0} día${(a.dias||0)!==1?'s':''})`;
   document.getElementById('cerrarab-fecha').value = new Date().toISOString().slice(0,10);
   document.getElementById('cerrarab-hora').value = a.horaRetiro||a.horaEntrega||'08:00';
+
+  // Atajo "cerrar sin facturar nada más": pone la fecha hasta donde ya está facturado.
+  // Solo aparece si con la fecha de hoy se facturarían días de más, que es justo el caso
+  // de los alquileres que arrastran meses.
+  const atajo=document.getElementById('cerrarab-atajo');
+  const sinFacturar=diasSinFacturarAlq(a);
+  if(atajo){
+    if(sinFacturar>0 && a.fin){
+      const [y,m,d]=String(a.fin).split('-');
+      atajo.innerHTML=`<button type="button" onclick="cerrarAbiertoSinFacturarMas()" class="btn-lim" style="width:100%;padding:8px;font-size:.79rem;color:var(--azul);border-color:var(--azul)">
+        Cerrar sin facturar nada más (poner el ${d}/${m}/${y.slice(2)}, hasta donde ya está facturado)</button>
+        <div style="font-size:.73rem;color:var(--txt2);margin-top:4px;line-height:1.45">Con la fecha de hoy te facturaría <b>${sinFacturar} día${sinFacturar!==1?'s':''} más</b>. Usá este atajo si esos días ya se facturaron aparte o si vas a reingresar el alquiler desde este mes.</div>`;
+      atajo.style.display='block';
+    } else {
+      atajo.style.display='none';
+      atajo.innerHTML='';
+    }
+  }
+
   recalcCerrarAbierto();
   document.getElementById('modal-cerrar-abierto').style.display='flex';
 }
+// Pone la fecha de retiro en el último día ya facturado, así el cierre no agrega ni un
+// peso. Es el caso de los alquileres que vienen de meses atrás y se reingresan desde el
+// mes en curso: los días viejos ya están facturados, no hay que volver a cobrarlos.
+function cerrarAbiertoSinFacturarMas(){
+  const a=ALQUILERES.find(x=>x.id===cerrarAbiertoId); if(!a || !a.fin) return;
+  document.getElementById('cerrarab-fecha').value=a.fin;
+  // La hora importa por la regla del mediodía: antes de las 12:00 el día del retiro no
+  // se cuenta, y entonces el cierre daba un día MENOS que lo ya facturado — saltaba un
+  // aviso de "da menos días de los facturados" que acá no tiene sentido. Se elige la
+  // hora que hace que la cuenta dé exactamente los días que ya están facturados.
+  const conMañana=diasAlquilerPorFecha(a.inicio, a.fin, '08:00');
+  document.getElementById('cerrarab-hora').value = (conMañana < (a.dias||0)) ? '17:00' : '08:00';
+  recalcCerrarAbierto();
+}
+
 // Recalcula en vivo cada vez que se toca la fecha/hora de retiro en el modal — muestra el
 // total (ya cargado + nuevo) y sugiere los días a facturar, editables antes de continuar.
 function recalcCerrarAbierto(){
@@ -11990,8 +12148,23 @@ async function agregarDiasFacturablesAlq(id){
   // Walter. Se marca directo con el mes CALENDARIO actual (el mes en que se está
   // emitiendo esta factura ahora), así ya cuenta para el reporte de ese mes sin ningún
   // paso extra — si hiciera falta, se puede corregir después con "cambiar" en el detalle.
+  // A qué mes se imputa este tramo. Por defecto, el mes en que se está emitiendo —
+  // que es lo normal cuando se factura dentro del mismo mes que los días cubiertos.
+  // Pero si el tramo cubre días de un mes ANTERIOR (Walter factura el 2 de octubre los
+  // días del 20 al 30 de septiembre), imputarlo a octubre le saca esa plata al
+  // rendimiento de septiembre y se lo suma a octubre: los dos meses quedan mal. En ese
+  // caso se pregunta, porque la respuesta correcta depende de cómo se emitió la factura.
   const mesActual = new Date().toISOString().slice(0,7);
-  a.diasAgregados.push({fecha:new Date().toISOString().slice(0,10), desde, hasta:nuevaFin, dias:diasChunk, tarifa, monto:montoChunk, detalle, mesFacturado:mesActual, facturadoEn:Date.now(), numeroFactura});
+  const mesDelPeriodo = String(nuevaFin).slice(0,7);
+  let mesFacturado = mesActual;
+  if(mesDelPeriodo && mesDelPeriodo < mesActual){
+    const alMesDelPeriodo = await confirmSiNo(
+      `Esta factura cubre días que terminan en ${mesLabel(mesDelPeriodo)}, pero hoy estamos en ${mesLabel(mesActual)}.\n\n`+
+      `¿En qué mes tiene que contar para los reportes?`,
+      {si:`${mesLabel(mesDelPeriodo)} (cuando trabajó la máquina)`, no:`${mesLabel(mesActual)} (cuando se emitió la factura)`});
+    if(alMesDelPeriodo) mesFacturado = mesDelPeriodo;
+  }
+  a.diasAgregados.push({fecha:new Date().toISOString().slice(0,10), desde, hasta:nuevaFin, dias:diasChunk, tarifa, monto:montoChunk, detalle, mesFacturado, facturadoEn:Date.now(), numeroFactura});
 
   marcarAccionUndo(`Cargar factura de "${a.equipoNombre}" — ${a.cliente} (${fmtFechaCot(desde)} al ${fmtFechaCot(nuevaFin)})`, 'alquileres');
   guardar(); verDetalleAlq(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderReportes();
