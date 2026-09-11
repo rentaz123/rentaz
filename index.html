@@ -2053,6 +2053,25 @@ if ('serviceWorker' in navigator) {
     </div>
   </div>
 
+  <!-- AGENDA DE MÁQUINAS IGUALES
+       Cuando hay tres máquinas del mismo modelo, saber cuál está dónde mirando la
+       lista de alquileres es imposible: hay que buscar cliente por cliente y cruzar
+       fechas a mano. Acá se ven las tres una debajo de la otra con todo lo que tienen
+       cargado, ordenado por fecha, y se detecta lo que no cierra. Solo lee y linkea a
+       los modales que ya existen para ver o editar cada alquiler. -->
+  <div id="modal-agenda-maq" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:410;align-items:center;justify-content:center;">
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:680px;max-width:94vw;max-height:90vh;display:flex;flex-direction:column;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:.9rem;">
+        <div>
+          <div id="agenda-titulo" style="font-size:1.05rem;font-weight:800;color:var(--txt);">Agenda de las máquinas</div>
+          <div style="font-size:.8rem;color:var(--txt2);margin-top:2px">Todo lo que tiene cargado cada una, ordenado por fecha</div>
+        </div>
+        <button onclick="document.getElementById('modal-agenda-maq').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
+      </div>
+      <div id="agenda-cont" style="overflow-y:auto;flex:1;margin:0 -.3rem;padding:0 .3rem"></div>
+    </div>
+  </div>
+
   <!-- PUESTA AL DÍA DE LA FLOTA (9/9/2026)
        Repaso de una sola pasada: máquina por máquina, se confirma dónde está de verdad.
        Es una LISTA DE TAREAS, no un formulario que escribe por su cuenta: cada acción
@@ -7337,6 +7356,7 @@ function renderEqFichaHeader(id){
     `<span style="font-weight:700;color:${col[r.estado]}">${txt[r.estado]}</span>`+
     (r.estado==='alquilado'&&r.cliente?` · Cliente: ${r.cliente}`:'')+
     ` · <a href="javascript:void(0)" onclick="editEq(${id})" style="color:var(--verde);font-weight:700">Cambiar estado</a>`+
+    ` · <a href="javascript:void(0)" onclick="verAgendaDeMaquinas(${id})" style="color:var(--verde);font-weight:700">Ver su agenda</a>`+
     (ROL_ACTUAL==='admin' ? ` · <a href="javascript:void(0)" onclick="editarCategoriaEq(${id})" style="color:var(--verde);font-weight:700">Cambiar categoría</a>` : '');
   // Quién está esperando este TIPO de equipo (ver SOLICITUDES_ESPERA) — para que no haga
   // falta ir a buscarlo aparte a la pantalla de Alquileres antes de cambiar el estado.
@@ -8878,29 +8898,56 @@ function filtAlq(f, btn){
 
 function poblarOpcionesEquipoAlq(excludeAlqId, excludeEqIds){
   const excl = excludeEqIds||[];
+
+  // Si el formulario ya tiene fechas, el estado que importa es el de ESAS fechas, no el
+  // de hoy. Mostrar el de hoy generaba una contradicción imposible de entender: el
+  // selector ofrecía la #2 como libre (hoy lo está) y al elegirla saltaba "ya está
+  // alquilada del 18/08 al 26/08" (en las fechas pedidas lo estaba). Las dos cosas eran
+  // ciertas y juntas no tenían sentido. Ahora el selector habla del mismo período que
+  // el aviso. Ver charla del 11/9/26 — los tres Genie GS-3246 y PAPEL TECNICA.
+  const desdeF=(document.getElementById('alq-desde')||{}).value||'';
+  const hastaF=(document.getElementById('alq-hasta')||{}).value||'';
+  const porFechas = desdeF && hastaF && hastaF>=desdeF;
+  const exclAlq = excludeAlqId!=null ? excludeAlqId : alqEditandoIds;
+  const fmtDia=s=>{const[y,m,d]=String(s).split('-');return `${d}/${m}`;};
+
   return '<option value="">— Seleccioná el equipo —</option>' +
     equiposOrdenados().map(e=>{
       const r=estadoRealEq(e);
-      const ocupadoHoy = r.estado==='alquilado' && (!excludeAlqId || r.alquiler.id!==excludeAlqId);
       const tallerHoy = r.estado==='taller';
       const yaElegido = excl.includes(e.id);
 
-      // "OCUPADO HOY" hacía pensar que la máquina no se podía elegir, y sí se puede:
-      // lo único que importa es que las fechas no se pisen. Si el alquiler que la tiene
-      // ya tiene fecha de retorno, decir HASTA CUÁNDO alcanza para saber que se puede
-      // reservar para después. Si es un alquiler abierto, no hay fecha que mostrar.
       let etiqueta='';
       if(yaElegido) etiqueta=' — YA AGREGADO';
       else if(tallerHoy) etiqueta=' — FUERA DE SERVICIO';
-      else if(ocupadoHoy){
-        const a=r.alquiler;
-        if(a.abierto || !a.fin){
-          etiqueta=' — ocupada, sin fecha de retorno';
-        } else {
-          const [y,m,d]=String(a.fin).split('-');
-          etiqueta=` — ocupada hasta el ${d}/${m}, libre después`;
+      else if(porFechas){
+        // Con fechas cargadas: ocupada o libre EN ESE PERÍODO.
+        const choque=alquilerSuperpuesto(e.id, desdeF, hastaF, exclAlq);
+        if(choque) etiqueta=` — OCUPADA esas fechas (${choque.cliente})`;
+        else {
+          // Un alquiler ABIERTO tiene un "fin" que es solo el último período facturado,
+          // no la fecha en que vuelve la máquina. Para la flota el equipo sigue ocupado
+          // (ver alqFinEfectivo, que devuelve null), pero el choque de fechas lo daba por
+          // libre pasada esa fecha. Resultado: el equipo aparecía "Alquilado" en Flota y
+          // al mismo tiempo elegible acá, y se podía prometer dos veces la misma máquina.
+          const abierto=ALQUILERES.find(a=>
+            a.equipoId===e.id && a.abierto && !a.retiradoAnticipado && !a.pausado &&
+            !(Array.isArray(exclAlq)?exclAlq:[exclAlq]).includes(a.id) &&
+            a.inicio<=hastaF);
+          if(abierto) etiqueta=` — en obra en ${abierto.cliente}, sin fecha de retorno`;
         }
       }
+      else {
+        // Sin fechas todavía: lo único que se puede decir es cómo está hoy.
+        const ocupadoHoy = r.estado==='alquilado' && (!excludeAlqId || r.alquiler.id!==excludeAlqId);
+        if(ocupadoHoy){
+          const a=r.alquiler;
+          etiqueta = (a.abierto || !a.fin)
+            ? ' — ocupada, sin fecha de retorno'
+            : ` — ocupada hasta el ${fmtDia(a.fin)}, libre después`;
+        }
+      }
+      const ocupadoHoy = !!etiqueta && !yaElegido && !tallerHoy;
       // Ocupado va en ámbar (es un aviso, no un problema) y fuera de servicio en rojo,
       // para no chocar con el verde=alquilado del resto de la app.
       const estilo = yaElegido ? ' style="color:var(--txt2);font-style:italic"' : ocupadoHoy ? ' style="color:#e5a83b;font-weight:700"' : tallerHoy ? ' style="color:#e53935;font-weight:700"' : '';
@@ -9024,11 +9071,106 @@ function alquilerSuperpuesto(eqId, desde, hasta, excludeAlqId){
   }) || null;
 }
 
+// ── AGENDA DE MÁQUINAS IGUALES ─────────────────────────────────────────────
+// Muestra todas las máquinas del mismo modelo con sus alquileres, para poder ver de
+// una sola vez cuál está dónde. Con tres Genie GS-3246 iguales, la lista de alquileres
+// no alcanza: hay que buscar cliente por cliente y cruzar fechas de cabeza.
+function verAgendaDeMaquinas(eqId){
+  const eq=EQUIPOS.find(e=>e.id===eqId);
+  if(!eq) return;
+  const meta=equipoMeta(eq);
+  const hermanas=EQUIPOS.filter(o=>{
+    const m=equipoMeta(o);
+    return m.categoria===meta.categoria && m.altura===meta.altura;
+  });
+  const hoy=new Date().toISOString().slice(0,10);
+  const fmtD=s=>{const[y,m,d]=String(s).split('-');return`${d}/${m}/${y.slice(2)}`;};
+
+  document.getElementById('agenda-titulo').textContent =
+    hermanas.length>1 ? `Las ${hermanas.length} máquinas de ${grupoLabel(meta)}` : eq.nombre;
+
+  document.getElementById('agenda-cont').innerHTML = hermanas.map(m=>{
+    const r=estadoRealEq(m);
+    const suyos=ALQUILERES.filter(a=>a.equipoId===m.id)
+      .sort((a,b)=>String(b.inicio).localeCompare(String(a.inicio)));
+
+    const estado = r.estado==='alquilado'
+      ? `<span style="color:#2e9e52;font-weight:700">Hoy: alquilada a ${r.cliente}</span>`
+      : r.estado==='taller'
+        ? `<span style="color:var(--rojo);font-weight:700">Hoy: fuera de servicio</span>`
+        : `<span style="color:var(--azul);font-weight:700">Hoy: libre en el taller</span>`;
+
+    const filas = suyos.length ? suyos.map(a=>{
+      const enCurso = alqEstaActivoHoy(a,hoy);
+      const finTxt = a.abierto && !a.retiradoAnticipado ? 'sin fecha de retorno' : fmtD(a.retiradoAnticipado||a.fin);
+      // Si el nombre guardado no coincide con esta máquina, el dato está cruzado:
+      // la lista de alquileres lo muestra en otra máquina y acá ocupa esta.
+      const guardado=(a.equipoNombre||'').trim();
+      const cruzado = guardado && guardado!==m.nombre.trim();
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--border)">
+        <div style="flex:1;min-width:200px;font-size:.8rem">
+          <span style="color:var(--txt2)">${fmtD(a.inicio)} → ${finTxt}</span>
+          <b style="color:var(--txt);display:block">${a.cliente}</b>
+          ${enCurso?`<span style="font-size:.72rem;color:#2e9e52;font-weight:700">en curso</span>`:''}
+          ${cruzado?`<span style="font-size:.72rem;color:var(--rojo);font-weight:700;display:block">⚠ en la lista figura como "${guardado}" — apunta a la máquina equivocada</span>`:''}
+        </div>
+        <span style="display:flex;gap:6px;flex-shrink:0">
+          <button onclick="document.getElementById('modal-agenda-maq').style.display='none';verDetalleAlq(${a.id})" class="btn-lim" style="padding:4px 10px;font-size:.74rem">Ver</button>
+          <button onclick="document.getElementById('modal-agenda-maq').style.display='none';editarAlq(${a.id})" class="btn-lim" style="padding:4px 10px;font-size:.74rem;color:var(--azul);border-color:var(--azul)">Corregir</button>
+        </span>
+      </div>`;
+    }).join('') : `<div style="padding:7px 0;border-top:1px solid var(--border);font-size:.79rem;color:var(--txt3)">Sin ningún alquiler cargado.</div>`;
+
+    return `<div style="margin-bottom:1rem;background:var(--bg3);border-radius:9px;padding:.7rem .85rem">
+      <div style="font-size:.88rem;font-weight:800;color:var(--txt)">${m.nombre}</div>
+      <div style="font-size:.78rem;margin:2px 0 4px">${estado}</div>
+      ${filas}
+    </div>`;
+  }).join('');
+
+  document.getElementById('modal-agenda-maq').style.display='flex';
+}
+
+// Reescribe SOLO los textos de las opciones de cada selector de equipo, dejando
+// intacto lo que ya estaba elegido. Hace falta porque las etiquetas dependen de las
+// fechas del formulario: si se cambian las fechas, las etiquetas viejas mienten.
+// No se usa renderEquiposAlqRows() acá a propósito: eso redibuja todas las filas y
+// haría perder el foco mientras se está tipeando una fecha.
+function refrescarEtiquetasEquiposAlq(){
+  const cont=document.getElementById('alq-equipos-list');
+  if(!cont) return;
+  cont.querySelectorAll('select').forEach((sel, idx)=>{
+    const elegido=sel.value;
+    const excl=alqEquiposState.filter((r,i)=>i!==idx && r.eqId).map(r=>r.eqId);
+    sel.innerHTML=poblarOpcionesEquipoAlq(null, excl);
+    sel.value=elegido;
+  });
+}
+
+// Máquinas equivalentes (misma categoría y altura) que SÍ están libres en el rango
+// pedido. Cuando el aviso decía solo "está ocupado", había que ir probando una por una
+// para encontrar cuál servía; en una flota con tres Genie iguales eso es puro tanteo.
+function equiposLibresEquivalentes(eqId, desde, hasta, excl){
+  const eq=EQUIPOS.find(e=>e.id===eqId);
+  if(!eq) return [];
+  const meta=equipoMeta(eq);
+  return EQUIPOS.filter(otro=>{
+    if(otro.id===eqId) return false;
+    if(otro.estado==='taller') return false;
+    const m=equipoMeta(otro);
+    if(m.categoria!==meta.categoria || m.altura!==meta.altura) return false;
+    return !alquilerSuperpuesto(otro.id, desde, hasta, excl);
+  }).map(e=>e.nombre);
+}
+
 function actualizarDisponibilidadAlq(excludeAlqId){
   const excl = excludeAlqId!=null ? excludeAlqId : alqEditandoIds;
   const desde=document.getElementById('alq-desde').value;
   const hasta=document.getElementById('alq-hasta').value;
   const aviso=document.getElementById('alq-disponibilidad-aviso');
+  // Las etiquetas del selector dependen de estas mismas fechas: se refrescan juntas
+  // para que el desplegable y el aviso nunca digan cosas distintas.
+  refrescarEtiquetasEquiposAlq();
   const filas = alqEquiposState.filter(r=>r.eqId);
   if(!filas.length||!desde||!hasta||hasta<desde){ aviso.style.display='none'; return true; }
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
@@ -9060,12 +9202,21 @@ function actualizarDisponibilidadAlq(excludeAlqId){
               const d=new Date(conflicto.fin+'T00:00:00'); d.setDate(d.getDate()+1);
               desdeCuandoLibre=fmtD(d.toISOString().slice(0,10));
             }
+            const libres=equiposLibresEquivalentes(row.eqId, desde, hasta, excl);
             return `⚠ <b>${nombreElegido}</b> ya está alquilado a <b>${conflicto.cliente}</b>
               del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}.<br>
               <span style="font-weight:400">${desdeCuandoLibre
                 ? `Queda libre <b>desde el ${desdeCuandoLibre}</b> — si lo cargás desde esa fecha en adelante, entra sin problema.`
                 : 'Es un alquiler abierto, todavía sin fecha de retorno, así que no se puede reservar para después.'}</span>
-              <button type="button" onclick="verDetalleAlq(${conflicto.id})" style="margin-top:6px;background:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:.75rem;font-weight:700;color:var(--rojo);cursor:pointer">Ver ese alquiler</button>`;
+              ${libres.length
+                ? `<div style="margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.35);font-weight:400">
+                     Para esas mismas fechas <b>sí está libre</b>: ${libres.map(n=>`<b>${n}</b>`).join(' · ')}</div>`
+                : `<div style="margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.35);font-weight:400">
+                     No hay otra máquina igual libre en esas fechas.</div>`}
+              <div style="margin-top:7px;display:flex;gap:6px;flex-wrap:wrap">
+                <button type="button" onclick="verDetalleAlq(${conflicto.id})" style="background:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:.75rem;font-weight:700;color:var(--rojo);cursor:pointer">Ver ese alquiler</button>
+                <button type="button" onclick="verAgendaDeMaquinas(${row.eqId})" style="background:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:.75rem;font-weight:700;color:var(--rojo);cursor:pointer">Ver qué tiene cargada cada una</button>
+              </div>`;
           })();
       aviso.style.display='block';
       aviso.style.background='var(--rojo)';
