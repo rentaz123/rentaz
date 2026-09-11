@@ -10755,6 +10755,11 @@ function verDetalleAlq(id){
     botones+=`<button onclick="abrirViajeCompartido(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem${yaVinculado?';border-color:var(--verde);color:var(--verde)':''}">${yaVinculado?'Viaje de flete compartido (ver/quitar)':'Marcar viaje de flete compartido'}</button>`;
     const fleteroCambiado = a.fTransportistaIda || a.fTransportistaRetiro;
     botones+=`<button onclick="cambiarFletero(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem${fleteroCambiado?';border-color:var(--verde);color:var(--verde)':''}">${fleteroCambiado?'Cambiar fletero (ida/vuelta) — cambiado':'Cambiar fletero (ida o vuelta)'}</button>`;
+    // Viaje en falso: el camión sale y vuelve sin cargar (el cliente no estaba, la obra
+    // no estaba lista). Al transportista se le paga igual. Antes solo se podían cargar
+    // costos extra al crear el alquiler, así que esto —que pasa DESPUÉS— no tenía lugar.
+    const falsos = (a.fExtras||[]).filter(x=>x.tipo==='viaje-falso').length;
+    botones+=`<button onclick="cargarViajeEnFalso(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem${falsos?';border-color:#e5a83b;color:#b3791f':''}">${falsos?`Viaje en falso (${falsos}) — agregar otro`:'Cargar viaje en falso'}</button>`;
   }
   if(ROL_ACTUAL==='taller' || checklistSalidaListo(a.id)){
     botones+=`<button onclick="abrirContrato(${a.id})" class="btn-nuevo" style="flex:1;padding:8px;font-size:.8rem">Contrato / Checklist</button>`;
@@ -10786,6 +10791,113 @@ function verDetalleAlq(id){
 // explícito distinto de la mitad automática. Si se carga el costo de un solo tramo, el otro
 // se ajusta solo para que la suma siga dando el total del flete (a.fVal + extras) — salvo
 // que el otro tramo YA tenga su propio costo cargado, en cuyo caso no se toca.
+// ── EL TOTAL DE UN ALQUILER, EN UN SOLO LUGAR ──────────────────────────────
+// El alquiler y el flete se suman, y sobre esa suma se calcula el IVA. Confirmado por
+// Mateo el 11/9/26: "el flete sale en la factura con IVA; a la suma de las dos cosas se
+// le carga el IVA".
+//
+// Esto estaba escrito de dos formas distintas en cuatro lugares de la app. Al crear o
+// editar un alquiler el flete pagaba IVA; al cargarle una factura parcial o un retiro
+// anticipado, no. El mismo alquiler valía distinto según qué acción se hubiera hecho
+// último: en un alquiler de $1.000.000 con $130.000 de flete y $50.000 de extras, la
+// diferencia medida fue de $37.800. Ahora hay una sola función y todos la usan.
+function recalcularTotalesAlq(a){
+  if(!a) return a;
+  const extras=(a.fExtras||[]).reduce((s,x)=>s+(x.monto||0),0);
+  a.sub=(a.precio||0)+(a.fVal||0)+extras;
+  a.iva=a.sinFactura?0:(a.sub||0)*0.21;
+  a.tot=(a.sub||0)+(a.iva||0);
+  return a;
+}
+
+// Alquileres cuyo total guardado no coincide con la fórmula correcta. Son los que
+// quedaron calculados con la fórmula vieja (el flete sin IVA) antes de unificarla.
+// Se comparan contra una copia, sin tocar el original.
+function alquileresConTotalMalCalculado(){
+  return ALQUILERES.map(a=>{
+    if(!a.precio && !a.fVal) return null;
+    const copia=JSON.parse(JSON.stringify(a));
+    recalcularTotalesAlq(copia);
+    const dif=Math.round((copia.tot||0)-(a.tot||0));
+    if(Math.abs(dif)<1) return null;
+    return {a, totalActual:a.tot||0, totalCorrecto:copia.tot||0, diferencia:dif};
+  }).filter(Boolean);
+}
+
+// Corrige todos de una. Pide confirmación mostrando cuánta plata se mueve, porque
+// cambia el total de alquileres que quizás ya se facturaron.
+async function corregirTotalesMalCalculados(){
+  const malos=alquileresConTotalMalCalculado();
+  if(!malos.length){ alert('No hay totales para corregir.'); return; }
+  const suma=malos.reduce((s,x)=>s+x.diferencia,0);
+  const detalle=malos.slice(0,8).map(x=>`· ${x.a.equipoNombre} — ${x.a.cliente}: ${fmt(x.totalActual)} → ${fmt(x.totalCorrecto)}`).join('\n');
+  const ok=await confirmSiNo(
+    `Se van a recalcular ${malos.length} alquiler${malos.length!==1?'es':''} para que el flete pague IVA.\n\n`+
+    `${detalle}${malos.length>8?`\n· ...y ${malos.length-8} más`:''}\n\n`+
+    `En total suben ${fmt(suma)}.\n\nOjo: si alguno ya se facturó, el papel va a decir otra cosa.`,
+    {si:'Corregir todos', no:'No, dejarlos así'});
+  if(!ok) return;
+  malos.forEach(x=>recalcularTotalesAlq(x.a));
+  marcarAccionUndo(`Recalcular el IVA del flete en ${malos.length} alquiler${malos.length!==1?'es':''}`, 'facturacion');
+  guardar(); renderFacturacion(); renderAlq(); renderReportes(); renderDashboard();
+  alert(`Listo: ${malos.length} alquiler${malos.length!==1?'es':''} recalculado${malos.length!==1?'s':''}.`);
+}
+
+// ── VIAJE EN FALSO ─────────────────────────────────────────────────────────
+// El camión sale, llega y vuelve sin poder cargar: el cliente no estaba, la obra no
+// estaba lista, no había lugar para descargar. El transportista cobra igual, así que
+// para Rentaz es un costo real. Si se le traslada al cliente o no es una decisión
+// comercial que cambia caso por caso, y por eso se preguntan los dos montos por
+// separado: lo que cobra el fletero (siempre se registra, va al reporte de Fletes) y
+// lo que se le factura al cliente (puede ser menos, o nada).
+//
+// Se guarda dentro de fExtras porque ese array ya suma al subtotal y aparece en el
+// detalle, en el contrato y en el total facturado — pero con tipo:'viaje-falso' y el
+// costo real aparte, para poder distinguirlo de un peaje cualquiera.
+async function cargarViajeEnFalso(id){
+  const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
+
+  const quien=(prompt('¿Quién hizo el viaje en falso?', a.fTransportista||'')||'').trim();
+  if(!quien) return;
+
+  const costoStr=prompt(`¿Cuánto te cobra ${quien} por ese viaje?`, '');
+  if(costoStr===null) return;
+  const costo=parseFloat(sinMiles(costoStr))||0;
+  if(costo<=0){ alert('Cargá un importe mayor a 0.'); return; }
+
+  const seLeCobra = await confirmSiNo(
+    `${quien} te cobra ${fmt(costo)} por el viaje en falso.\n\n¿Se lo trasladás al cliente?`,
+    {si:'Sí, se le factura', no:'No, lo absorbe Rentaz'});
+
+  let aCobrar=0;
+  if(seLeCobra){
+    const cobrarStr=prompt('¿Cuánto se le factura al cliente por este viaje?', String(costo));
+    if(cobrarStr===null) return;
+    aCobrar=parseFloat(sinMiles(cobrarStr))||0;
+  }
+
+  const motivo=(prompt('Motivo (opcional — para acordarte por qué fue en falso):', '')||'').trim();
+  const fecha=new Date().toISOString().slice(0,10);
+
+  if(!a.fExtras) a.fExtras=[];
+  a.fExtras.push({
+    concepto: `Viaje en falso (${quien})${motivo?' — '+motivo:''}`,
+    monto: aCobrar,          // lo que se le factura al cliente (0 si lo absorbe Rentaz)
+    tipo: 'viaje-falso',
+    costoReal: costo,        // lo que paga Rentaz, siempre
+    transportista: quien,
+    fecha, motivo
+  });
+
+  recalcularTotalesAlq(a);
+
+  marcarAccionUndo(`Cargar viaje en falso de ${quien} en "${a.equipoNombre}" — ${a.cliente}`, 'alquileres');
+  guardar(); verDetalleAlq(id); renderAlq(); renderDashboard(); renderReportes();
+  alert(seLeCobra
+    ? `Viaje en falso cargado.\n\nCosto de ${quien}: ${fmt(costo)}\nSe le factura al cliente: ${fmt(aCobrar)}`
+    : `Viaje en falso cargado.\n\nCosto de ${quien}: ${fmt(costo)}\nNo se le factura al cliente — lo absorbe Rentaz.`);
+}
+
 async function cambiarFletero(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
   if(!a.fTransportista || a.fTransportista==='Sin flete'){ alert('Este alquiler no tiene flete asignado.'); return; }
@@ -11028,6 +11140,29 @@ function renderFacturacion(){
   const totalPendiente=pendientes.reduce((s,a)=>s+(a.tot||0),0);
 
   let h = `<div style="font-size:.85rem;color:var(--txt2);margin-bottom:1rem">Pendientes de facturar: <b style="color:${pendientes.length?'var(--rojo)':'var(--verde)'}">${pendientes.length}</b>${pendientes.length?` · Total sin facturar: <b style="color:var(--txt)">${fmt(totalPendiente)}</b>`:''}</div>`;
+
+  // ── TOTALES CON EL IVA DEL FLETE MAL CALCULADO ───────────────────────────
+  // Los alquileres tocados con la fórmula vieja quedaron con el flete sin IVA. Hasta
+  // que se corrijan, lo que muestra la app no es lo que va a decir la factura.
+  const totalesMalos = alquileresConTotalMalCalculado();
+  if(totalesMalos.length){
+    const sumaDif = totalesMalos.reduce((s,x)=>s+x.diferencia,0);
+    h += `<div style="background:rgba(229,168,59,.14);border-left:3px solid #e5a83b;border-radius:0 9px 9px 0;padding:11px 15px;margin-bottom:1.2rem">
+      <div style="font-size:.85rem;font-weight:800;color:var(--txt);margin-bottom:3px">
+        ${totalesMalos.length} alquiler${totalesMalos.length!==1?'es':''} con el IVA del flete mal calculado
+      </div>
+      <div style="font-size:.78rem;color:var(--txt2);line-height:1.5;margin-bottom:8px">
+        A estos no se les cobró IVA sobre el flete. Corregidos, suman <b style="color:var(--txt)">${fmt(sumaDif)}</b> más en total.
+      </div>
+      ${totalesMalos.slice(0,6).map(x=>`
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--border);font-size:.8rem">
+          <div style="flex:1;min-width:200px"><b style="color:var(--txt)">${x.a.equipoNombre}</b> · ${x.a.cliente}</div>
+          <span style="color:var(--txt2);white-space:nowrap">${fmt(x.totalActual)} → <b style="color:var(--txt)">${fmt(x.totalCorrecto)}</b></span>
+        </div>`).join('')}
+      ${totalesMalos.length>6?`<div style="font-size:.76rem;color:var(--txt2);padding-top:6px">…y ${totalesMalos.length-6} más</div>`:''}
+      <button onclick="corregirTotalesMalCalculados()" class="btn-nuevo" style="margin-top:9px;padding:7px 14px;font-size:.79rem">Corregir los ${totalesMalos.length}</button>
+    </div>`;
+  }
 
   // ── CHEQUEO DEL ARRANQUE LIMPIO ──────────────────────────────────────────
   // ¿Quedó algún alquiler abierto arrastrando desde antes del corte? Es la pregunta
@@ -11646,9 +11781,7 @@ async function marcarRetiroAnticipado(id){
         const ok=await confirmSiNo(`${avisoTarifa}El equipo tuvo ${diasReales} día${diasReales!==1?'s':''} de uso real (estaba facturado a ${a.dias} días).\n\nPor tarifa, ${diasReales} día${diasReales!==1?'s':''} = ${detalleSug} = ${fmt(base)}.\nYa facturado: ${fmt(a.precio)}.\nDiferencia a favor del cliente: ${fmt(diferencia)}.`, {si:'Descontar diferencia', no:'Cobrar importe ya facturado'});
         if(ok){
           a.precio-=diferencia;
-          a.sub-=diferencia;
-          a.iva=(a.sub||0)*0.21;
-          a.tot=(a.sub||0)+(a.iva||0)+(a.fVal||0)+(a.fExtras?a.fExtras.reduce((s,x)=>s+x.monto,0):0);
+          recalcularTotalesAlq(a);
           a.ajusteRetiroAnticipado={fecha:new Date().toISOString().slice(0,10), diasReales, diasContratados:a.dias, monto:diferencia, tarifaAproximada:!tieneSnapshot};
           detalleAjuste=` Se descontaron ${fmt(diferencia)} (de ${a.dias} días facturados a ${diasReales} usados = ${detalleSug}).`+(tieneSnapshot?'':' ⚠️ Calculado con la tarifa actual, no la original.');
         } else {
@@ -11851,9 +11984,7 @@ async function continuarCerrarAlquilerAbierto(){
       detalleExtra='Días sueltos';
     }
     a.precio=(a.precio||0)+montoExtra;
-    a.sub=(a.sub||0)+montoExtra;
-    a.iva=a.sinFactura?0:(a.sub||0)*0.21;
-    a.tot=(a.sub||0)+(a.iva||0)+(a.fVal||0)+(a.fExtras?a.fExtras.reduce((s,x)=>s+x.monto,0):0);
+    recalcularTotalesAlq(a);
     if(!a.diasAgregados) a.diasAgregados=[];
     a.diasAgregados.push({fecha:new Date().toISOString().slice(0,10), dias:diasAFacturar, diasReales:diasExtra, tarifa, monto:montoExtra, detalle:detalleExtra});
   }
@@ -12276,9 +12407,7 @@ async function agregarDiasFacturablesAlq(id, periodo){
     a.fechaRetiro=retiroD.toISOString().slice(0,10);
   }
 
-  a.sub=a.precio||0;
-  a.iva=a.sinFactura?0:(a.sub||0)*0.21;
-  a.tot=(a.sub||0)+(a.iva||0)+(a.fVal||0)+(a.fExtras?a.fExtras.reduce((s,x)=>s+x.monto,0):0);
+  recalcularTotalesAlq(a);
 
   const numeroFactura = (prompt('N° de factura (opcional, se puede cargar después):', '')||'').trim();
 
