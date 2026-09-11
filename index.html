@@ -7102,9 +7102,39 @@ function cerrarPuestaAlDia(){
   renderDashboard();
 }
 
+// Alquileres cuyo nombre de equipo guardado no coincide con la máquina a la que
+// realmente apuntan. Son los que hacen que la app bloquee una máquina distinta de
+// la que se ve en la lista: la pantalla muestra equipoNombre, pero la disponibilidad
+// se calcula con equipoId. Si no coinciden, el aviso de "ya está alquilado" nombra
+// una máquina y la lista otra, y no hay forma de entenderlo desde afuera.
+function alquileresConEquipoCruzado(){
+  return ALQUILERES.map(a=>{
+    const eq=EQUIPOS.find(e=>e.id===a.equipoId);
+    const guardado=(a.equipoNombre||'').trim();
+    if(!eq || !guardado) return null;
+    if(guardado===eq.nombre.trim()) return null;
+    // Si el alquiler se sustituyó de equipo a propósito, el nombre viejo queda en
+    // equipoOriginalNombre y equipoNombre se actualiza — así que no es este caso.
+    return {alq:a, dice:guardado, apuntaA:eq.nombre};
+  }).filter(Boolean);
+}
+
 function renderPuestaAlDia(){
   const cont=document.getElementById('pd-lista');
   if(!cont) return;
+
+  // Si hay alquileres con la máquina cruzada, van primero: mientras estén así, la
+  // disponibilidad de esas máquinas es mentira y no se puede confiar en el repaso.
+  const cruzados=alquileresConEquipoCruzado();
+  const avisoCruce = cruzados.length ? `
+    <div style="background:rgba(201,106,94,.1);border-left:3px solid var(--rojo);border-radius:0 8px 8px 0;padding:10px 13px;margin-bottom:.9rem;font-size:.8rem;color:var(--txt2);line-height:1.5">
+      <b style="color:var(--txt)">${cruzados.length} alquiler${cruzados.length!==1?'es':''} apunta${cruzados.length!==1?'n':''} a la máquina equivocada.</b>
+      Por eso la app te puede bloquear una máquina que en la lista figura con otro nombre.
+      ${cruzados.map(c=>`<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
+        <b style="color:var(--txt)">${c.alq.cliente}</b> — en la lista dice <b>"${c.dice}"</b> pero ocupa <b>"${c.apuntaA}"</b>
+        <button onclick="cerrarPuestaAlDia();verDetalleAlq(${c.alq.id})" style="margin-left:6px;background:none;border:none;color:var(--rojo);font-weight:700;font-size:.76rem;text-decoration:underline;cursor:pointer">abrirlo y corregir</button>
+      </div>`).join('')}
+    </div>` : '';
   const revisadas=pdRevisadas();
   const hoy=new Date().toISOString().slice(0,10);
   const dias=(d)=>Math.round((new Date(hoy)-new Date(d))/86400000);
@@ -7127,7 +7157,7 @@ function renderPuestaAlDia(){
       ? `<span style="color:var(--verde);font-weight:700">Listo — repasaste las ${filas.length} máquinas.</span>`
       : `Repasadas <b style="color:var(--txt)">${hechas}</b> de ${filas.length}. Faltan ${filas.length-hechas}.`;
 
-  cont.innerHTML = filas.map(({e,r})=>{
+  cont.innerHTML = avisoCruce + filas.map(({e,r})=>{
     const ok=revisadas.includes(e.id);
     const estilo=ok?'opacity:.5':'';
     let dice, acciones;
@@ -8854,7 +8884,23 @@ function poblarOpcionesEquipoAlq(excludeAlqId, excludeEqIds){
       const ocupadoHoy = r.estado==='alquilado' && (!excludeAlqId || r.alquiler.id!==excludeAlqId);
       const tallerHoy = r.estado==='taller';
       const yaElegido = excl.includes(e.id);
-      const etiqueta = yaElegido ? ' — YA AGREGADO' : ocupadoHoy ? ' — OCUPADO HOY' : tallerHoy ? ' — FUERA DE SERVICIO' : '';
+
+      // "OCUPADO HOY" hacía pensar que la máquina no se podía elegir, y sí se puede:
+      // lo único que importa es que las fechas no se pisen. Si el alquiler que la tiene
+      // ya tiene fecha de retorno, decir HASTA CUÁNDO alcanza para saber que se puede
+      // reservar para después. Si es un alquiler abierto, no hay fecha que mostrar.
+      let etiqueta='';
+      if(yaElegido) etiqueta=' — YA AGREGADO';
+      else if(tallerHoy) etiqueta=' — FUERA DE SERVICIO';
+      else if(ocupadoHoy){
+        const a=r.alquiler;
+        if(a.abierto || !a.fin){
+          etiqueta=' — ocupada, sin fecha de retorno';
+        } else {
+          const [y,m,d]=String(a.fin).split('-');
+          etiqueta=` — ocupada hasta el ${d}/${m}, libre después`;
+        }
+      }
       // Ocupado va en ámbar (es un aviso, no un problema) y fuera de servicio en rojo,
       // para no chocar con el verde=alquilado del resto de la app.
       const estilo = yaElegido ? ' style="color:var(--txt2);font-style:italic"' : ocupadoHoy ? ' style="color:#e5a83b;font-weight:700"' : tallerHoy ? ' style="color:#e53935;font-weight:700"' : '';
@@ -8990,12 +9036,69 @@ function actualizarDisponibilidadAlq(excludeAlqId){
     const conflicto=alquilerSuperpuesto(row.eqId, desde, hasta, excl);
     if(conflicto){
       const eq=EQUIPOS.find(e=>e.id===row.eqId);
-      aviso.textContent=`⚠ ${eq?eq.nombre:'Este equipo'} ya está alquilado a ${conflicto.cliente} del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}. Elegí otro equipo u otras fechas.`;
+      const nombreElegido = eq ? eq.nombre : 'Este equipo';
+      // La superposición se decide por el número interno del equipo (equipoId), pero la
+      // lista de alquileres muestra el nombre que quedó guardado en el alquiler
+      // (equipoNombre). Si los dos no coinciden, el aviso resulta incomprensible: la
+      // pantalla dice "#3" y el bloqueo habla del "#2". Cuando pasa, hay que decir que
+      // es un dato mal guardado y no hacer como si fuera un choque normal de fechas.
+      const nombreGuardado = (conflicto.equipoNombre||'').trim();
+      const desajuste = nombreGuardado && eq && nombreGuardado !== eq.nombre.trim();
+
+      aviso.innerHTML = desajuste
+        ? `⚠ <b>Hay un dato mal guardado en un alquiler.</b><br>
+           <span style="font-weight:400">Elegiste <b>${nombreElegido}</b>, pero lo está ocupando un alquiler de
+           <b>${conflicto.cliente}</b> (${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}) que en la lista
+           figura como <b>"${nombreGuardado}"</b>.<br>
+           Ese alquiler apunta a la máquina equivocada. Abrilo, tocá Editar y elegí la máquina correcta.</span>
+           <button type="button" onclick="verDetalleAlq(${conflicto.id})" style="margin-top:6px;background:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:.76rem;font-weight:700;color:var(--rojo);cursor:pointer">Ver ese alquiler</button>`
+        : (()=>{
+            // Si el alquiler que la ocupa ya tiene fecha de retorno, decir desde cuándo
+            // queda libre: la reserva para más adelante es válida y se puede cargar ahora.
+            let desdeCuandoLibre='';
+            if(!conflicto.abierto && conflicto.fin){
+              const d=new Date(conflicto.fin+'T00:00:00'); d.setDate(d.getDate()+1);
+              desdeCuandoLibre=fmtD(d.toISOString().slice(0,10));
+            }
+            return `⚠ <b>${nombreElegido}</b> ya está alquilado a <b>${conflicto.cliente}</b>
+              del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}.<br>
+              <span style="font-weight:400">${desdeCuandoLibre
+                ? `Queda libre <b>desde el ${desdeCuandoLibre}</b> — si lo cargás desde esa fecha en adelante, entra sin problema.`
+                : 'Es un alquiler abierto, todavía sin fecha de retorno, así que no se puede reservar para después.'}</span>
+              <button type="button" onclick="verDetalleAlq(${conflicto.id})" style="margin-top:6px;background:#fff;border:none;border-radius:6px;padding:4px 10px;font-size:.75rem;font-weight:700;color:var(--rojo);cursor:pointer">Ver ese alquiler</button>`;
+          })();
       aviso.style.display='block';
+      aviso.style.background='var(--rojo)';
       return false;
     }
   }
+
+  // No hay choque contra las fechas cargadas. Pero si la máquina está en un alquiler
+  // ABIERTO, la fecha de fin es una estimación: el cliente puede devolverla después y
+  // pisar esta reserva. No se bloquea (la reserva puede ser correcta) pero hay que
+  // decirlo, porque el conflicto aparecería recién cuando el equipo no esté.
+  const riesgos=[];
+  for(const row of filas){
+    const abiertoDelEquipo = ALQUILERES.find(a=>
+      a.equipoId===row.eqId && a.abierto && !a.retiradoAnticipado && !a.pausado &&
+      !(Array.isArray(excl)?excl:[excl]).includes(a.id) &&
+      (a.fin||'') < desde);
+    if(abiertoDelEquipo){
+      const eq=EQUIPOS.find(e=>e.id===row.eqId);
+      riesgos.push(`<b>${eq?eq.nombre:'Este equipo'}</b> está en un alquiler <b>abierto</b> de ${abiertoDelEquipo.cliente}, sin fecha de retorno confirmada`);
+    }
+  }
+  if(riesgos.length){
+    aviso.style.background='#e5a83b';
+    aviso.innerHTML=`⚠ <b>Se puede cargar, pero ojo.</b><br>
+      <span style="font-weight:400">${riesgos.join('<br>')}.<br>
+      Si el cliente lo devuelve más tarde de lo previsto, esta reserva se pisa. Conviene confirmar cuándo lo entrega.</span>`;
+    aviso.style.display='block';
+    return true;
+  }
+
   aviso.style.display='none';
+  aviso.style.background='var(--rojo)';
   return true;
 }
 
