@@ -422,12 +422,14 @@ select,input[type=number],input[type=text],input[type=date],textarea{
   border:1px solid var(--border2);background:var(--bg2);border-radius:9px;
 }
 select:focus,input:focus,textarea:focus{border-color:var(--txt2);}
-/* El desplegable de "Ver la app como" vive en el sidebar oscuro, así que el select
-   cerrado tiene letra clara. Pero al abrirlo, la lista de opciones la dibuja el
-   sistema con fondo blanco, y las opciones heredaban ese color claro: letra blanca
-   sobre blanco, ilegible. Se les fija color propio. */
-#ver-como-sel option,
+/* Si alguna vez queda un <select> en el sidebar oscuro: el popup lo dibuja el sistema
+   con fondo blanco y las opciones heredan la letra clara del sidebar — blanco sobre
+   blanco. El "Ver la app como" ya no es un select, pero la regla queda por si acaso. */
 #sidebar select option{ background:#ffffff; color:#1c1b19; }
+/* El "Ver la app como" usa las mismas clases que los grupos del menú. Esta caja vive
+   en el pie del sidebar, donde el nav no llega, así que se le da el espaciado a mano. */
+#ver-como-caja nav button.nav-grupo{ width:100%; }
+#ver-como-caja .nav-sub button{ margin-left:24px !important; }
 .rb{border:1px solid var(--border2);background:var(--bg2);font-weight:600;}
 .flabel{font-size:.68rem;color:var(--txt3);letter-spacing:.05em;text-transform:uppercase;}
 
@@ -567,16 +569,28 @@ if ('serviceWorker' in navigator) {
 
       <!-- Solo lo ve Mateo: mirar la app como la ve cada uno del equipo, sin
            pedir contraseñas ni cerrar la sesion propia. -->
+      <!-- Era un <select> nativo: sobre el sidebar oscuro Windows lo dibuja con su
+           propio estilo y quedaba como un formulario pegado en el menú. Ahora es un
+           desplegable igual a los del menú (Alquileres, Flota, Gastos), con las mismas
+           clases nav-grupo / nav-sub, así no hay una segunda estética en la app. -->
       <div id="ver-como-caja" style="display:none;margin-bottom:.55rem">
-        <label style="display:block;font-size:.62rem;font-weight:700;color:#8f887e;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px">Ver la app como</label>
-        <select id="ver-como-sel" onchange="verComo(this.value)"
-                style="width:100%;padding:7px 9px;font-size:.78rem;border-radius:8px;border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:#e6e2dc">
-          <option value="">Yo (Mateo)</option>
-          <option value="paloma">Paloma — admin</option>
-          <option value="fabiana">Fabiana — admin</option>
-          <option value="facturacion">Walter — facturación</option>
-          <option value="taller">Taller</option>
-        </select>
+        <nav>
+          <button class="nav-grupo" data-grupo="g-vercomo" onclick="toggleGrupoNav('g-vercomo')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <span id="ver-como-actual">Yo (Mateo)</span>
+            <span class="nav-flecha">▾</span>
+          </button>
+          <!-- La clase nav-vercomo los saca del bucle que esconde botones según el
+               rol (aplicarRestriccionesRol). Sin eso, mirando como taller el
+               desplegable quedaba vacío y no había forma de volver desde el menú. -->
+          <div class="nav-sub" id="g-vercomo">
+            <button class="nav-vercomo" onclick="verComo('')">Yo (Mateo)</button>
+            <button class="nav-vercomo" onclick="verComo('paloma')">Paloma</button>
+            <button class="nav-vercomo" onclick="verComo('fabiana')">Fabiana</button>
+            <button class="nav-vercomo" onclick="verComo('facturacion')">Walter</button>
+            <button class="nav-vercomo" onclick="verComo('taller')">Taller</button>
+          </div>
+        </nav>
       </div>
       <button class="btn-out" onclick="logout()">↩ Cerrar sesión</button>
     </div>
@@ -2056,6 +2070,30 @@ if ('serviceWorker' in navigator) {
         </select>
       </div>
       <button onclick="guardarEquipoNuevo()" class="btn-nuevo" style="width:100%;padding:.75rem">Agregar a la flota</button>
+    </div>
+  </div>
+
+  <!-- PERÍODO DE UNA FACTURA PARCIAL
+       Antes se preguntaba solo "¿cuántos días?" y la app armaba el rango sola, desde
+       el día siguiente al último facturado. Pero la factura que emite Walter puede
+       arrancar en otra fecha (el equipo estuvo parado, la factura corta distinto), y
+       entonces el período del sistema no coincidía con el de la factura en papel.
+       Acá se cargan las fechas tal como están en la factura, y la app avisa si queda
+       un hueco sin facturar o si se pisa con un tramo ya cargado. -->
+  <div id="modal-periodo-factura" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:420;align-items:center;justify-content:center;">
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:430px;max-width:92vw;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <div style="font-size:1rem;font-weight:800;color:var(--txt);">Período de la factura</div>
+        <button onclick="document.getElementById('modal-periodo-factura').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
+      </div>
+      <div id="perfact-info" style="font-size:.82rem;color:var(--txt2);background:var(--bg3);border-radius:8px;padding:.6rem .8rem;margin-bottom:1rem;line-height:1.6"></div>
+      <div class="row2" style="margin-bottom:.7rem">
+        <div><label class="flabel">Desde</label><input type="date" id="perfact-desde" oninput="recalcPeriodoFactura()"></div>
+        <div><label class="flabel">Hasta</label><input type="date" id="perfact-hasta" oninput="recalcPeriodoFactura()"></div>
+      </div>
+      <div id="perfact-resumen" style="font-size:.85rem;font-weight:700;color:var(--verde);margin-bottom:.5rem"></div>
+      <div id="perfact-aviso" style="display:none;font-size:.79rem;border-radius:8px;padding:8px 11px;margin-bottom:.7rem;line-height:1.5"></div>
+      <button id="perfact-btn" onclick="continuarFacturaParcial()" class="btn-nuevo" style="width:100%;padding:.75rem">Continuar</button>
     </div>
   </div>
 
@@ -3714,6 +3752,18 @@ function verComo(usuario){
   // taller quedan a medias.
   if(ROL_ACTUAL==='taller' && !TALLER_RESPONSABLE) TALLER_RESPONSABLE = 'Alejandro';
 
+  // La cabecera del desplegable muestra a quién se está mirando, y el grupo se cierra
+  // después de elegir — igual que un menú, no como un formulario que queda abierto.
+  const etiqueta = document.getElementById('ver-como-actual');
+  if(etiqueta){
+    const NOMBRES_VC = { paloma:'Paloma', fabiana:'Fabiana', facturacion:'Walter', taller:'Taller' };
+    etiqueta.textContent = VIENDO_COMO ? (NOMBRES_VC[VIENDO_COMO]||VIENDO_COMO) : 'Yo (Mateo)';
+  }
+  const grupo = document.getElementById('g-vercomo');
+  if(grupo) grupo.classList.remove('abierto');
+  const cabVC = document.querySelector('.nav-grupo[data-grupo="g-vercomo"]');
+  if(cabVC) cabVC.classList.remove('abierto');
+
   aplicarRestriccionesRol();
   mostrarAvisoVerComo();
   goTo('home');
@@ -3740,9 +3790,7 @@ function mostrarAvisoVerComo(){
 }
 
 function volverAMiVista(){
-  const sel = document.getElementById('ver-como-sel');
-  if(sel) sel.value = '';
-  verComo('');
+  verComo('');   // se encarga de la etiqueta y de cerrar el desplegable
   document.body.style.paddingTop = '';
 }
 
@@ -3786,7 +3834,7 @@ function aplicarRestriccionesRol(){
   if(caja) caja.style.display = (usuarioReal()==='mateo') ? '' : 'none';
   // Ojo: se saltean las cabeceras de grupo (no tienen id de pantalla). Si se
   // las metiera en este bucle, a taller le desaparecerían todos los grupos.
-  document.querySelectorAll('#sidebar nav button:not(.nav-grupo)').forEach(btn=>{
+  document.querySelectorAll('#sidebar nav button:not(.nav-grupo):not(.nav-vercomo)').forEach(btn=>{
     const s = btn.id.replace('nav-','');
     btn.style.display = (!esTaller || PANTALLAS_TALLER.includes(s)) ? '' : 'none';
   });
@@ -12034,8 +12082,109 @@ async function reanudarAlq(id){
 // mes cargados) los días que se cargan SÍ son adicionales sobre lo ya facturado, y el rango
 // arranca al día siguiente del corte anterior — ej: si la anterior llegó hasta el 06/08 y el
 // cliente sigue, la próxima arranca el 07/08.
-async function agregarDiasFacturablesAlq(id){
+// ── PERÍODO DE LA FACTURA PARCIAL ──────────────────────────────────────────
+// Paso previo a facturar un tramo: se cargan las fechas que dice la factura de
+// Walter, en vez de que la app las invente a partir de la cantidad de días. Si el
+// período que él emitió arranca más tarde que el último día facturado, queda un hueco
+// — se avisa, porque esos días no van a estar en ninguna factura y el rendimiento del
+// equipo va a salir más bajo. Si se pisa con un tramo ya cargado, se bloquea.
+let periodoFacturaAlqId = null;
+
+function abrirPeriodoFactura(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
+  periodoFacturaAlqId = id;
+  const fmtD=s=>{const[y,m,d]=String(s).split('-');return`${d}/${m}/${y.slice(2)}`;};
+  const esPrimera = !!a.abierto && (!a.diasAgregados || !a.diasAgregados.length) && !a.mesFacturado;
+
+  document.getElementById('perfact-info').innerHTML =
+    `<b>${a.equipoNombre}</b> · ${a.cliente}<br>`+
+    `Arrancó: ${fmtD(a.inicio)}<br>`+
+    (esPrimera
+      ? `Todavía no tiene ninguna factura cargada.`
+      : `Facturado hasta: <b style="color:var(--txt)">${fmtD(a.fin)}</b>`);
+
+  // Sugerencia: desde el día siguiente al último facturado (o el inicio, si es la
+  // primera) hasta hoy. Es lo más habitual; si la factura dice otra cosa, se cambia.
+  let sugDesde;
+  if(esPrimera){ sugDesde = a.inicio; }
+  else { const d=new Date(a.fin+'T00:00:00'); d.setDate(d.getDate()+1); sugDesde=d.toISOString().slice(0,10); }
+  const hoy=new Date().toISOString().slice(0,10);
+  document.getElementById('perfact-desde').value = sugDesde;
+  document.getElementById('perfact-hasta').value = hoy>sugDesde ? hoy : sugDesde;
+  recalcPeriodoFactura();
+  document.getElementById('modal-periodo-factura').style.display='flex';
+}
+
+function recalcPeriodoFactura(){
+  const a=ALQUILERES.find(x=>x.id===periodoFacturaAlqId); if(!a) return;
+  const desde=document.getElementById('perfact-desde').value;
+  const hasta=document.getElementById('perfact-hasta').value;
+  const resumen=document.getElementById('perfact-resumen');
+  const avisoEl=document.getElementById('perfact-aviso');
+  const btn=document.getElementById('perfact-btn');
+  const fmtD=s=>{const[y,m,d]=String(s).split('-');return`${d}/${m}/${y.slice(2)}`;};
+
+  avisoEl.style.display='none'; btn.disabled=false; btn.style.opacity='1';
+  if(!desde || !hasta){ resumen.textContent=''; btn.disabled=true; btn.style.opacity='.5'; return; }
+  if(hasta<desde){
+    resumen.textContent='';
+    avisoEl.style.cssText='display:block;font-size:.79rem;border-radius:8px;padding:8px 11px;margin-bottom:.7rem;line-height:1.5;background:rgba(201,106,94,.14);color:var(--rojo);font-weight:700';
+    avisoEl.textContent='La fecha "hasta" no puede ser anterior a "desde".';
+    btn.disabled=true; btn.style.opacity='.5';
+    return;
+  }
+
+  // Días de calendario, ambos inclusive: es como se leen los períodos de una factura.
+  const dias=Math.round((new Date(hasta+'T00:00:00')-new Date(desde+'T00:00:00'))/86400000)+1;
+  resumen.textContent=`${dias} día${dias!==1?'s':''} · del ${fmtD(desde)} al ${fmtD(hasta)}`;
+
+  const avisos=[];
+  // ¿Se pisa con un tramo ya cargado?
+  const pisado=(a.diasAgregados||[]).find(c=>c.desde && c.hasta && !(hasta<c.desde || desde>c.hasta));
+  if(pisado){
+    avisoEl.style.cssText='display:block;font-size:.79rem;border-radius:8px;padding:8px 11px;margin-bottom:.7rem;line-height:1.5;background:rgba(201,106,94,.14);color:var(--rojo);font-weight:700';
+    avisoEl.innerHTML=`Este período se pisa con una factura ya cargada (${fmtD(pisado.desde)} al ${fmtD(pisado.hasta)}${pisado.numeroFactura?' · N° '+pisado.numeroFactura:''}). Corregí las fechas.`;
+    btn.disabled=true; btn.style.opacity='.5';
+    return;
+  }
+  // ¿Queda un hueco entre el último día facturado y el arranque de esta factura?
+  const esPrimera = !!a.abierto && (!a.diasAgregados || !a.diasAgregados.length) && !a.mesFacturado;
+  const referencia = esPrimera ? a.inicio : a.fin;
+  if(referencia){
+    const siguiente=new Date(referencia+'T00:00:00');
+    if(!esPrimera) siguiente.setDate(siguiente.getDate()+1);
+    const esperado=siguiente.toISOString().slice(0,10);
+    if(desde>esperado){
+      const huecoDias=Math.round((new Date(desde+'T00:00:00')-new Date(esperado+'T00:00:00'))/86400000);
+      avisos.push(`Quedan <b>${huecoDias} día${huecoDias!==1?'s':''} sin facturar</b> (del ${fmtD(esperado)} al ${fmtD(new Date(new Date(desde+'T00:00:00').getTime()-86400000).toISOString().slice(0,10))}). Si corresponde cobrarlos, cargalos en otra factura.`);
+    } else if(desde<esperado){
+      avisos.push(`Esta factura arranca <b>antes</b> del ${fmtD(esperado)}, que es desde donde quedaba pendiente. Revisá que no estés cobrando dos veces los mismos días.`);
+    }
+  }
+  // ¿El período cruza de mes? Ahí el rendimiento se reparte entre dos meses.
+  if(String(desde).slice(0,7)!==String(hasta).slice(0,7)){
+    avisos.push(`El período abarca dos meses. En el reporte de Máquinas, con la vista "prorrateado", los días se reparten entre ${mesLabel(String(desde).slice(0,7))} y ${mesLabel(String(hasta).slice(0,7))}.`);
+  }
+  if(avisos.length){
+    avisoEl.style.cssText='display:block;font-size:.79rem;border-radius:8px;padding:8px 11px;margin-bottom:.7rem;line-height:1.5;background:rgba(229,168,59,.16);color:#8a6216';
+    avisoEl.innerHTML=avisos.join('<br><br>');
+  }
+}
+
+function continuarFacturaParcial(){
+  const desde=document.getElementById('perfact-desde').value;
+  const hasta=document.getElementById('perfact-hasta').value;
+  if(!desde || !hasta || hasta<desde) return;
+  document.getElementById('modal-periodo-factura').style.display='none';
+  agregarDiasFacturablesAlq(periodoFacturaAlqId, {desde, hasta});
+}
+
+// `periodo` viene del modal de arriba: {desde, hasta} tal como está en la factura.
+// Si no se pasa, se abre ese modal primero — así ningún punto de la app puede
+// terminar creando un tramo con fechas inventadas.
+async function agregarDiasFacturablesAlq(id, periodo){
+  const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
+  if(!periodo){ abrirPeriodoFactura(id); return; }
   // ¿Esta es la primera factura de un alquiler ABIERTO? Solo en ese caso los días
   // cargados representan el TOTAL desde a.inicio (ver comentario arriba). En un alquiler
   // de fecha fija, a.fin ya es un compromiso real con el cliente — acá los días siempre
@@ -12043,12 +12192,10 @@ async function agregarDiasFacturablesAlq(id){
   const esPrimeraFactura = !!a.abierto && (!a.diasAgregados || !a.diasAgregados.length) && !a.mesFacturado;
   const diasBaseActual = a.dias||0;
 
-  const diasStr = esPrimeraFactura
-    ? prompt(`¿Cuántos días en TOTAL (desde el ${fmtFechaCot(a.inicio)}) va a cubrir esta factura?`, String(Math.max(diasBaseActual,1)))
-    : prompt('¿Cuántos días más confirmó el cliente (se facturan en esta factura)?', '1');
-  if(diasStr===null) return;
-  const dias=parseInt(diasStr)||0;
-  if(dias<=0){ alert('Ingresá un número de días mayor a 0'); return; }
+  // Los días salen del período que se cargó en el modal, no de un número a mano: así
+  // la cantidad de días y las fechas de la factura no pueden quedar en desacuerdo.
+  const dias=Math.round((new Date(periodo.hasta+'T00:00:00')-new Date(periodo.desde+'T00:00:00'))/86400000)+1;
+  if(dias<=0) return;
   if(esPrimeraFactura && dias<diasBaseActual){
     alert(`Este alquiler ya tiene ${diasBaseActual} día${diasBaseActual!==1?'s':''} cargado${diasBaseActual!==1?'s':''} desde que se abrió — no puede facturarse por menos días que eso.`);
     return;
@@ -12105,27 +12252,20 @@ async function agregarDiasFacturablesAlq(id){
     a.finBase = a.fin;
   }
 
-  let desde, nuevaFin, diasChunk, montoChunk;
+  // Las fechas son las que se cargaron en el modal, tal cual la factura de Walter.
+  const desde = periodo.desde;
+  const nuevaFin = periodo.hasta;
+  const diasChunk = dias;
+  const montoChunk = montoFactura;
   const finAnterior = a.fin, fechaRetiroAnterior = a.fechaRetiro;
   if(esPrimeraFactura){
-    // Los "dias" son el TOTAL de la factura, contados desde a.inicio — no se suman a lo
-    // que ya había, se REEMPLAZA (ese día base queda absorbido dentro de este total).
-    desde = a.inicio;
-    const finD=new Date(a.inicio+'T00:00:00'); finD.setDate(finD.getDate()+(dias-1));
-    nuevaFin = finD.toISOString().slice(0,10);
-    diasChunk = dias;
-    montoChunk = montoFactura;
+    // Primera factura de un abierto: este período reemplaza al día base con que se
+    // abrió el alquiler (queda absorbido adentro), no se suma.
     a.fin = nuevaFin;
     a.dias = dias;
     a.precio = montoFactura;
   } else {
-    // Los "dias" son ADICIONALES sobre lo ya facturado — se suman al total existente.
-    const desdeD=new Date(a.fin+'T00:00:00'); desdeD.setDate(desdeD.getDate()+1);
-    desde = desdeD.toISOString().slice(0,10);
-    const finD=new Date(a.fin+'T00:00:00'); finD.setDate(finD.getDate()+dias);
-    nuevaFin = finD.toISOString().slice(0,10);
-    diasChunk = dias;
-    montoChunk = montoFactura;
+    // Tramos siguientes: se suman a lo ya facturado.
     a.fin = nuevaFin;
     a.dias = (a.dias||0)+dias;
     a.precio = (a.precio||0)+montoFactura;
