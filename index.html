@@ -9440,9 +9440,23 @@ function abrirModalAlq(){
   document.getElementById('alq-precio-box').style.display='none';
   document.getElementById('alq-precio-detalle').textContent='';
   document.getElementById('alq-precio-val').textContent='';
-  // Los desgloses de flete Rosso arrastraban lo mismo.
-  ['alq-rosso-fijo','alq-rosso-km','alq2-rosso-fijo','alq2-rosso-km'].forEach(id=>{
+  // Los dos bloques de Rosso vuelven al estado inicial: destino fijo visible,
+  // kilómetros oculto. OJO — acá antes los escondía a los DOS, y eso rompía la carga:
+  // el bloque "fijo" contiene el selector de Destino, y solo se vuelve a mostrar si se
+  // toca la Modalidad. Sin ese selector no se puede elegir destino, y sin destino la
+  // localidad queda vacía para siempre, porque es de solo lectura y se autocompleta al
+  // elegirlo (ver actualizarCampoLocalidadAlq). No son datos viejos: son la estructura
+  // del formulario. Lo que sí arrastraba datos era el cuadro del precio, arriba.
+  ['alq-rosso-fijo','alq2-rosso-fijo'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='block';
+  });
+  ['alq-rosso-km','alq2-rosso-km'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display='none';
+  });
+  // Y la modalidad acompaña: si el alquiler anterior quedó "por km", el bloque visible
+  // sería el de destino fijo y el select diría km. Se vuelve a "Precio fijo".
+  ['alq-rosso-modo','alq2-rosso-modo'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='fijo';
   });
 
   // Los selects de destino se pueblan una sola vez al arrancar la app, así que
@@ -11160,7 +11174,10 @@ function renderFacturacion(){
           <span style="color:var(--txt2);white-space:nowrap">${fmt(x.totalActual)} → <b style="color:var(--txt)">${fmt(x.totalCorrecto)}</b></span>
         </div>`).join('')}
       ${totalesMalos.length>6?`<div style="font-size:.76rem;color:var(--txt2);padding-top:6px">…y ${totalesMalos.length-6} más</div>`:''}
-      <button onclick="corregirTotalesMalCalculados()" class="btn-nuevo" style="margin-top:9px;padding:7px 14px;font-size:.79rem">Corregir los ${totalesMalos.length}</button>
+      <div style="margin-top:9px;background:rgba(201,106,94,.14);border-radius:7px;padding:8px 11px;font-size:.78rem;color:var(--rojo);line-height:1.5">
+        <b>Corrección desactivada.</b> En varios de estos el total baja en vez de subir, y eso no cuadra
+        con que falte el IVA del flete. Hasta entender por qué, no se toca nada: acá solo se muestran.
+      </div>
     </div>`;
   }
 
