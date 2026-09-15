@@ -433,9 +433,13 @@ textarea{width:100%;resize:vertical;padding:.5rem .6rem;font-family:inherit;
    con fondo blanco y las opciones heredan la letra clara del sidebar — blanco sobre
    blanco. El "Ver la app como" ya no es un select, pero la regla queda por si acaso. */
 #sidebar select option{ background:#ffffff; color:#1c1b19; }
-/* El "Ver la app como" usa las mismas clases que los grupos del menú. Esta caja vive
-   en el pie del sidebar, donde el nav no llega, así que se le da el espaciado a mano. */
-#ver-como-caja nav button.nav-grupo{ width:100%; }
+/* El "Ver la app como" usa las mismas clases que los grupos del menú, así que va dentro
+   de un <nav> para que los estilos apliquen. Pero ese <nav> heredaba de "#sidebar nav"
+   dos cosas que en el pie no van: "overflow-y:auto", que dibujaba una barra de
+   desplazamiento debajo del botón, y "flex:1", que lo hacía estirarse. Y el ancho al
+   100% sumado al margen lateral de 10px del menú desbordaba, lo que agregaba además una
+   barra horizontal. Se anulan las tres cosas y el ancho lo maneja el menú. */
+#ver-como-caja nav{ flex:none; overflow:visible; padding:0; }
 #ver-como-caja .nav-sub button{ margin-left:24px !important; }
 .rb{border:1px solid var(--border2);background:var(--bg2);font-weight:600;}
 .flabel{font-size:.68rem;color:var(--txt3);letter-spacing:.05em;text-transform:uppercase;}
