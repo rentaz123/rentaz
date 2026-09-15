@@ -3811,26 +3811,51 @@ const GRUPOS_NAV = {
   'g-gastos':     ['impuestos','pagoprov']
 };
 
+// Cierra todos los desplegables del menú. Se leen del DOM en vez de una lista fija:
+// así incluye también el de "Ver la app como", que no es un grupo de pantallas.
+function cerrarGruposNav(exceptoId){
+  document.querySelectorAll('#sidebar .nav-sub').forEach(caja=>{
+    if(caja.id===exceptoId) return;
+    caja.classList.remove('abierto');
+    const cab=document.querySelector('.nav-grupo[data-grupo="'+caja.id+'"]');
+    if(cab) cab.classList.remove('abierto');
+  });
+}
+
+// Acordeón: al abrir un desplegable se cierran los demás. Con cuatro grupos abiertos a
+// la vez el menú se hacía largo y había que scrollear para llegar a Reportes.
 function toggleGrupoNav(id){
   const caja = document.getElementById(id);
   const cabecera = document.querySelector('.nav-grupo[data-grupo="'+id+'"]');
   if(!caja) return;
-  const abierto = caja.classList.toggle('abierto');
-  if(cabecera) cabecera.classList.toggle('abierto', abierto);
+  const abriendo = !caja.classList.contains('abierto');
+  if(abriendo) cerrarGruposNav(id);
+  caja.classList.toggle('abierto', abriendo);
+  if(cabecera) cabecera.classList.toggle('abierto', abriendo);
 }
 
-// Abre el grupo de la pantalla en la que estás y marca su cabecera.
+// Abre el grupo de la pantalla en la que estás y marca su cabecera. También cierra los
+// otros, por el mismo criterio del acordeón: si navegás a Reportes desde Alquileres, el
+// grupo de Alquileres deja de estar desplegado.
 function abrirGrupoDe(pantalla){
+  const grupoDeLaPantalla = Object.keys(GRUPOS_NAV).find(id=>GRUPOS_NAV[id].includes(pantalla));
   Object.keys(GRUPOS_NAV).forEach(id=>{
-    const dentro = GRUPOS_NAV[id].includes(pantalla);
+    const dentro = id===grupoDeLaPantalla;
     const caja = document.getElementById(id);
     const cab = document.querySelector('.nav-grupo[data-grupo="'+id+'"]');
-    if(dentro && caja) caja.classList.add('abierto');
+    if(caja) caja.classList.toggle('abierto', dentro);
     if(cab){
       cab.classList.toggle('dentro', dentro);
-      if(dentro) cab.classList.add('abierto');
+      cab.classList.toggle('abierto', dentro);
     }
   });
+  // El de "Ver la app como" no corresponde a ninguna pantalla: al navegar se cierra.
+  const vc=document.getElementById('g-vercomo');
+  if(vc){
+    vc.classList.remove('abierto');
+    const cabVC=document.querySelector('.nav-grupo[data-grupo="g-vercomo"]');
+    if(cabVC) cabVC.classList.remove('abierto');
+  }
 }
 
 function aplicarRestriccionesRol(){
