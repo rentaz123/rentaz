@@ -422,6 +422,13 @@ select,input[type=number],input[type=text],input[type=date],textarea{
   border:1px solid var(--border2);background:var(--bg2);border-radius:9px;
 }
 select:focus,input:focus,textarea:focus{border-color:var(--txt2);}
+/* Campos de observaciones y aclaraciones: varios renglones, no una línea con todo
+   pegado. Se pueden agrandar tirando de la esquina. */
+textarea{width:100%;resize:vertical;padding:.5rem .6rem;font-family:inherit;
+         font-size:.85rem;color:var(--txt);line-height:1.5;min-height:62px;}
+/* Y donde esas notas se MUESTRAN, hay que respetar los saltos de línea: el HTML
+   los colapsa, así que sin esto se guardaban en renglones y se leían todo seguido. */
+.multilinea{white-space:pre-line;}
 /* Si alguna vez queda un <select> en el sidebar oscuro: el popup lo dibuja el sistema
    con fondo blanco y las opciones heredan la letra clara del sidebar — blanco sobre
    blanco. El "Ver la app como" ya no es un select, pero la regla queda por si acaso. */
@@ -1066,7 +1073,7 @@ if ('serviceWorker' in navigator) {
             <label class="flabel">Valor total acordado (sin flete)</label>
             <input type="number" id="cot-especial-valor" placeholder="Ej: 950000" oninput="cotizar()">
             <div style="margin-top:.4rem"><label class="flabel">Aclaración (opcional)</label>
-              <input type="text" id="cot-especial-nota" placeholder="Ej: alquiler largo, precio convenio..." oninput="cotizar()"></div>
+              <textarea id="cot-especial-nota" rows="2" placeholder="Ej: alquiler largo, precio convenio..." oninput="cotizar()"></textarea></div>
           </div>
           <div style="border-top:1px solid var(--border);margin-top:.4rem;padding-top:.6rem">
             <label class="flabel">Agregar otro equipo (cada uno con su propio período)</label>
@@ -1116,7 +1123,7 @@ if ('serviceWorker' in navigator) {
           <label class="flabel">Valor de flete acordado</label>
           <input type="number" id="cot-flete-especial-valor" placeholder="Ej: 80000" oninput="cotizar()">
           <div style="margin-top:.4rem"><label class="flabel">Aclaración (opcional)</label>
-            <input type="text" id="cot-flete-especial-nota" placeholder="Ej: flete bonificado, cliente frecuente..." oninput="cotizar()"></div>
+            <textarea id="cot-flete-especial-nota" rows="2" placeholder="Ej: flete bonificado, cliente frecuente..." oninput="cotizar()"></textarea></div>
         </div>
         <div id="pesada-aviso" style="display:none;font-size:.75rem;color:var(--azul);margin-bottom:8px;background:rgba(30,136,229,.1);border-radius:6px;padding:5px 10px;">
           ⚠ Máquina pesada — solo disponible flete Rosso
@@ -1277,7 +1284,7 @@ if ('serviceWorker' in navigator) {
       <!-- OBSERVACIONES -->
       <div class="ccard">
         <label class="flabel">Observaciones (opcional)</label>
-        <input type="text" id="cot-obs" placeholder="Ej: fechas tentativas, a confirmar con el cliente..." oninput="cotizar()">
+        <textarea id="cot-obs" rows="3" placeholder="Una observacion por renglon. Ej:&#10;fechas tentativas, a confirmar&#10;el cliente pide factura A" oninput="cotizar()"></textarea>
         <div style="font-size:.72rem;color:var(--txt3);margin-top:6px">Se muestra en el PDF y en el texto para WhatsApp — útil, por ejemplo, para aclarar fechas si cotizaste por cantidad de días sin fecha concreta.</div>
       </div>
 
@@ -1427,7 +1434,7 @@ if ('serviceWorker' in navigator) {
           </div>
           <div style="margin-bottom:1rem">
             <label class="flabel">Observaciones</label>
-            <input type="text" id="ctrl-obs" placeholder="Notas...">
+            <textarea id="ctrl-obs" rows="2" placeholder="Una nota por renglon"></textarea>
           </div>
           <div style="display:flex;gap:8px">
             <button onclick="guardarCtrl()" class="btn-nuevo" style="flex:1;padding:10px">Guardar</button>
@@ -1727,7 +1734,7 @@ if ('serviceWorker' in navigator) {
               <label class="flabel">Valor de flete acordado</label>
               <input type="number" id="alq-flete-especial-valor" placeholder="Ej: 80000" onchange="calcTotalAlq()">
               <div style="margin-top:.4rem"><label class="flabel">Aclaración (opcional)</label>
-                <input type="text" id="alq-flete-especial-nota" placeholder="Ej: cliente convenio..." onchange="calcTotalAlq()"></div>
+                <textarea id="alq-flete-especial-nota" rows="2" placeholder="Ej: cliente convenio..." onchange="calcTotalAlq()"></textarea></div>
             </div>
             <div id="alq-f-alej" style="display:none">
               <label class="flabel">Destino</label>
@@ -1892,7 +1899,7 @@ if ('serviceWorker' in navigator) {
           <!-- OBS -->
           <div style="margin-bottom:.7rem">
             <label class="flabel">Observaciones (opcional)</label>
-            <input type="text" id="alq-obs" placeholder="Notas internas...">
+            <textarea id="alq-obs" rows="3" placeholder="Una nota por renglon. Ej:&#10;el acceso es por el porton de atras&#10;avisar a Juan antes de ir"></textarea>
           </div>
 
           <div style="display:flex;gap:8px;margin-top:.5rem">
@@ -2007,7 +2014,7 @@ if ('serviceWorker' in navigator) {
         <select id="sollarga-equipo"></select>
       </div>
       <div style="margin-bottom:.7rem"><label class="flabel">Días que pide</label><input type="number" id="sollarga-dias" min="1" placeholder="Ej: 15"></div>
-      <div style="margin-bottom:1rem"><label class="flabel">Aclaración (opcional)</label><input type="text" id="sollarga-obs" placeholder="Ej: para una obra en Susana"></div>
+      <div style="margin-bottom:1rem"><label class="flabel">Aclaración (opcional)</label><textarea id="sollarga-obs" rows="2" placeholder="Ej: para una obra en Susana"></textarea></div>
       <button onclick="guardarSolicitudLarga()" class="btn-nuevo" style="width:100%;padding:.75rem">Guardar — le llega a Mateo</button>
     </div>
   </div>
@@ -7534,7 +7541,7 @@ function renderEqFichaCheck(){
         </span>
       </label>
       <div id="eqf-nota-box-${it.key}" style="display:${val.ok?'none':'block'};margin-top:6px">
-        <input type="text" id="eqf-nota-${it.key}" value="${(val.nota||'').replace(/"/g,'&quot;')}" placeholder="Detalle de la observación...">
+        <textarea id="eqf-nota-${it.key}" rows="2" placeholder="Una observación por renglón">${(val.nota||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</textarea>
       </div>
     </div>`;
   }).join('');
@@ -8080,7 +8087,7 @@ function renderContratoChecklist(tipo){
         </span>
       </label>
       <div id="ctrf-nota-box-${it.key}" style="display:${val.ok?'none':'block'};margin-top:6px">
-        <input type="text" id="ctrf-nota-${it.key}" value="${(val.nota||'').replace(/"/g,'&quot;')}" placeholder="Detalle de la observación...">
+        <textarea id="ctrf-nota-${it.key}" rows="2" placeholder="Una observación por renglón">${(val.nota||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</textarea>
       </div>
     </div>`;
   }).join('');
@@ -8215,7 +8222,7 @@ function generarPDFCompletoContrato(){
   const data=c.checklistSalida;
   const filasChecklist = data ? CHECKLIST_ITEMS.map(it=>{
     const v=(data.items||{})[it.key]||{ok:true,nota:''};
-    return `<tr><td>${it.label}</td><td style="text-align:center;color:${v.ok?'#2e8018':'#c62828'};font-weight:700">${v.ok?'OK':'OBSERVACIÓN'}</td><td>${v.nota||''}</td></tr>`;
+    return `<tr><td>${it.label}</td><td style="text-align:center;color:${v.ok?'#2e8018':'#c62828'};font-weight:700">${v.ok?'OK':'OBSERVACIÓN'}</td><td style="white-space:pre-line">${v.nota||''}</td></tr>`;
   }).join('') : '';
   const fotosGrales = data ? FOTO_SLOTS.filter(s=>(data.fotosGenerales||{})[s.key]).map(s=>`<div style="display:inline-block;margin:4px;text-align:center"><img src="${data.fotosGenerales[s.key]}" style="width:130px;height:130px;object-fit:cover;border-radius:6px;border:1px solid #ccc"><div style="font-size:10px;margin-top:2px">${s.label}</div></div>`).join('') : '';
   const fotosExtra = data ? (data.fotosExtra||[]).map(f=>`<div style="display:inline-block;margin:4px"><img src="${f.url}" style="width:130px;height:130px;object-fit:cover;border-radius:6px;border:1px solid #ccc"></div>`).join('') : '';
@@ -8247,7 +8254,7 @@ function generarPDFCompletoContrato(){
   <p class="clau"><b>OCTAVA:</b> La provisión de combustible, lubricantes y todos los insumos necesarios para el normal funcionamiento y servicios de los EQUIPOS, serán a cargo y responsabilidad del LOCATARIO.</p>
   <p class="clau"><b>NOVENA:</b> El OPERADOR, del o de los EQUIPOS será responsabilidad única y exclusiva del LOCATARIO, quien será además responsable por el conocimiento práctico y el entendimiento cabal del funcionamiento de los EQUIPOS por parte de las personas a las cuales autorice a usarlos y actuara conforme a los reglamentos y técnicas que gobiernan el uso y operación de los mismos, recibiendo para ello por parte del LOCADOR, el correspondiente MANUAL DEL OPERADOR Y MANTENIMIENTO, conjuntamente con este contrato; así mismo, el LOCADOR se reserva el derecho de requerir al LOCATARIO la documentación que certifique todas las registraciones laborales del mencionado personal, fundamentalmente la cobertura en una A.R.T. debidamente autorizada, del RIESGO DE ACCIDENTES DE TRABAJO, deslindando toda responsabilidad del LOCADOR, ante el caso de un eventual siniestro.</p>
   <p class="clau"><b>DÉCIMA:</b> Queda fehacientemente convenido que, en caso de la no devolución en término pactado, de los equipos alquilados por el presente CONTRATO, se generará un costo adicional de un (1) día más por cada día de demora, hasta la fecha de su efectiva entrega.</p>
-  <p class="clau"><b>UNDÉCIMA (Adicional):</b> ${a.obs||'—'}</p>
+  <p class="clau" style="white-space:pre-line"><b>UNDÉCIMA (Adicional):</b> ${a.obs||'—'}</p>
   <p class="clau"><b>DUODÉCIMA:</b> Leídas y ratificadas las cláusulas que anteceden se firman dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad de Rafaela, a los ${new Date().getDate()} días del mes de ${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][new Date().getMonth()]} del año ${new Date().getFullYear()}.</p>
   ${seccionChecklist}
   </body></html>`;
@@ -8270,7 +8277,7 @@ function generarPDFChecklist(tipo){
   const fmtD=str=>{ if(!str) return '—'; const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`; };
   const filas=CHECKLIST_ITEMS.map(it=>{
     const v=(data.items||{})[it.key]||{ok:true,nota:''};
-    return `<tr><td>${it.label}</td><td style="text-align:center;color:${v.ok?'#2e8018':'#c62828'};font-weight:700">${v.ok?'OK':'OBSERVACIÓN'}</td><td>${v.nota||''}</td></tr>`;
+    return `<tr><td>${it.label}</td><td style="text-align:center;color:${v.ok?'#2e8018':'#c62828'};font-weight:700">${v.ok?'OK':'OBSERVACIÓN'}</td><td style="white-space:pre-line">${v.nota||''}</td></tr>`;
   }).join('');
   const fotosGrales=FOTO_SLOTS.filter(s=>(data.fotosGenerales||{})[s.key]).map(s=>`<div style="display:inline-block;margin:4px;text-align:center"><img src="${data.fotosGenerales[s.key]}" style="width:150px;height:150px;object-fit:cover;border-radius:6px;border:1px solid #ccc"><div style="font-size:10px;margin-top:2px">${s.label}</div></div>`).join('');
   const fotosExtra=(data.fotosExtra||[]).map(f=>`<div style="display:inline-block;margin:4px"><img src="${f.url}" style="width:150px;height:150px;object-fit:cover;border-radius:6px;border:1px solid #ccc"></div>`).join('');
@@ -8461,7 +8468,7 @@ function generarPDF(){
     </div>`}
     <hr>
     <div class="total-bloque">
-      <div><div class="obs">Observaciones:</div>${c.obs?`<div style="font-size:11px;color:#333;margin-top:3px;max-width:260px">${c.obs}</div>`:'<br>'}<div class="iva-txt">${c.mostrarIva?'PRECIOS MAS IVA':''}</div></div>
+      <div><div class="obs">Observaciones:</div>${c.obs?`<div style="font-size:11px;color:#333;margin-top:3px;max-width:260px;white-space:pre-line">${c.obs}</div>`:'<br>'}<div class="iva-txt">${c.mostrarIva?'PRECIOS MAS IVA':''}</div></div>
     </div>
     <div class="footer">
       <div class="footer-datos">Rentaz S.A<span>Conscripto Zurbriggen 785, Rafaela, Santa Fe</span><span>Tel: 3492-693524</span><span>www.rentazmaquinarias.com</span></div>
@@ -8665,7 +8672,7 @@ function cancelarEdicionPresup(){
 function verDetallePresup(id){
   const p = PRESUPUESTOS.find(x=>x.id===id); if(!p) return;
   const c = p.cot;
-  const fila=(lbl,val)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span style="color:var(--txt2)">${lbl}</span><span style="font-weight:700;color:var(--txt);text-align:right;max-width:60%">${val}</span></div>`;
+  const fila=(lbl,val)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span style="color:var(--txt2)">${lbl}</span><span class="multilinea" style="font-weight:700;color:var(--txt);text-align:right;max-width:60%">${val}</span></div>`;
   const f = new Date(p.fecha);
   const fechaStr = f.toLocaleDateString('es-AR') + ' ' + f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
 
@@ -10573,7 +10580,7 @@ function copiarAlq(id){
 
 function resumenAlquilerHTML(a){
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
-  const fila=(lbl,val)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span style="color:var(--txt2)">${lbl}</span><span style="font-weight:700;color:var(--txt);text-align:right;max-width:60%">${val}</span></div>`;
+  const fila=(lbl,val)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span style="color:var(--txt2)">${lbl}</span><span class="multilinea" style="font-weight:700;color:var(--txt);text-align:right;max-width:60%">${val}</span></div>`;
 
   // Estado del alquiler (en curso / próximo / finalizado / retirado / abierto)
   const hoy=new Date().toISOString().slice(0,10);
@@ -11197,15 +11204,33 @@ function renderFacturacion(){
       <div style="font-size:.78rem;color:var(--txt2);line-height:1.5;margin-bottom:8px">
         A estos no se les cobró IVA sobre el flete. Corregidos, suman <b style="color:var(--txt)">${fmt(sumaDif)}</b> más en total.
       </div>
-      ${totalesMalos.slice(0,6).map(x=>`
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--border);font-size:.8rem">
-          <div style="flex:1;min-width:200px"><b style="color:var(--txt)">${x.a.equipoNombre}</b> · ${x.a.cliente}</div>
+      ${totalesMalos.slice(0,6).map(x=>{
+        // Lo que hace falta para decidir si vale la pena tocarlos: si ya se facturó, el
+        // papel del cliente dice el número viejo y cambiarlo acá solo genera diferencia.
+        // Y si quedó fuera del arranque limpio, no afecta ningún reporte.
+        const yaFacturado = !!x.a.mesFacturado || !!(x.a.diasAgregados||[]).some(d=>d.mesFacturado);
+        // "Viejo" es por la fecha del alquiler, no por si cuenta en reportes: un alquiler
+        // de septiembre sin facturar tampoco cuenta todavía, y decirle "fuera de los
+        // reportes" lo hacía parecer viejo cuando en realidad va a contar al facturarlo.
+        const esAnteriorAlCorte = REPORTES_DESDE_MES && x.a.inicio && x.a.inicio.slice(0,7) < REPORTES_DESDE_MES;
+        const etiquetas=[];
+        if(yaFacturado) etiquetas.push(`<span style="color:var(--rojo)">ya facturado${x.a.numeroFactura?' · N° '+x.a.numeroFactura:''}</span>`);
+        if(esAnteriorAlCorte) etiquetas.push('<span style="color:var(--txt2)">de antes del arranque limpio</span>');
+        if(!yaFacturado) etiquetas.push('<span style="color:#b3791f">sin facturar todavía'+(esAnteriorAlCorte?'':' — conviene corregirlo')+'</span>');
+        return `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--border);font-size:.8rem">
+          <div style="flex:1;min-width:210px">
+            <b style="color:var(--txt)">${x.a.equipoNombre}</b> · ${x.a.cliente}
+            <span style="display:block;font-size:.74rem;margin-top:1px">${fmtD(x.a.inicio)} · ${etiquetas.join(' · ')}</span>
+          </div>
           <span style="color:var(--txt2);white-space:nowrap">${fmt(x.totalActual)} → <b style="color:var(--txt)">${fmt(x.totalCorrecto)}</b></span>
-        </div>`).join('')}
+        </div>`;}).join('')}
       ${totalesMalos.length>6?`<div style="font-size:.76rem;color:var(--txt2);padding-top:6px">…y ${totalesMalos.length-6} más</div>`:''}
       <div style="margin-top:9px;background:rgba(201,106,94,.14);border-radius:7px;padding:8px 11px;font-size:.78rem;color:var(--rojo);line-height:1.5">
         <b>Corrección desactivada.</b> En varios de estos el total baja en vez de subir, y eso no cuadra
-        con que falte el IVA del flete. Hasta entender por qué, no se toca nada: acá solo se muestran.
+        con que falte el IVA del flete: hay algo más en juego. No se toca nada hasta entenderlo.<br>
+        Los que dicen <b>"ya facturado"</b> conviene dejarlos como están igual — el papel del cliente
+        dice el número viejo, y cambiarlo acá solo te genera una diferencia.
       </div>
     </div>`;
   }
@@ -11707,7 +11732,7 @@ function mostrarCambioEquipo(id){
     <div style="font-size:.72rem;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Entregar en lugar de "${a.equipoNombre}"</div>
     <select id="cambio-equipo-select" style="margin-bottom:8px">${opciones}</select>
     <label class="flabel">Motivo / aclaración</label>
-    <input type="text" id="cambio-equipo-nota" placeholder="Ej: no había el equipo cotizado, se mandó uno más caro respetando el precio original" style="margin-bottom:8px">
+    <textarea id="cambio-equipo-nota" rows="2" placeholder="Ej: no había el equipo cotizado, se mandó uno más caro respetando el precio original" style="margin-bottom:8px"></textarea>
     <label style="display:flex;align-items:center;gap:8px;font-size:.78rem;font-weight:700;color:var(--txt2);cursor:pointer;margin-bottom:6px;">
       <input type="checkbox" id="cambio-equipo-precio-check" onchange="toggleCambioEquipoPrecio()"> El cliente aprobó un precio nuevo (distinto al ya cotizado)
     </label>
@@ -12564,7 +12589,7 @@ function renderAlq(){
         ${fmtD(a.inicio)} al ${fmtD(a.fin)} · ${a.dias} día${a.dias!==1?'s':''}
         ${a.tot?' · '+fmt(a.tot):''}
         ${a.fTransportista&&a.fTransportista!=='Sin flete'?' · '+a.fTransportista:''}
-        ${a.obs?' · '+a.obs:''}
+        ${a.obs?' · '+a.obs.replace(/\s*\n+\s*/g,' · '):''}
         ${checklistSalidaListo(a.id)?` · <span style="color:var(--verde);font-weight:700">Contrato${CONTRATOS[a.id]&&CONTRATOS[a.id].enviado?' enviado':''}</span>`:''}
       </div>
     </div>`;
