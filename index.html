@@ -4208,27 +4208,42 @@ function renderDashboard(){
   // alerta). Los que ya venían activos de días anteriores no se muestran acá: eso se ve
   // en la pantalla "Alquileres". Los alquileres por hora (uso corto) tampoco cuentan como
   // arranque del día.
-  const alqHoyList=ALQUILERES.filter(a=>a.inicio===hoyStr2 && a.activo!==false && !a.modoHoras && !a.pausado).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
+  // ── ORDEN DE LA JORNADA, NO ORDEN DE CARGA ───────────────────────────────
+  // Estas listas salían por `creadoEn` descendente: el último alquiler cargado quedaba
+  // primero aunque saliera a última hora del viernes. Para organizar el día lo que sirve
+  // es el orden en que van a pasar las cosas — fecha y después la hora cargada.
+  // El que no tiene hora va al final de SU día, con '99:99' como hora ficticia.
+  // Ojo: el primer intento usó '~' pensando en el orden ASCII, pero `localeCompare`
+  // ordena por reglas del idioma, no por código de carácter, y mete la puntuación
+  // ANTES de los dígitos — el alquiler sin hora quedaba arriba de los de la mañana.
+  // Con un valor de puros dígitos las dos formas de comparar coinciden.
+  const porFechaYHora=(campoFecha,campoHora)=>(a,b)=>
+    (a[campoFecha]||'').localeCompare(b[campoFecha]||'') ||
+    (a[campoHora]||'99:99').localeCompare(b[campoHora]||'99:99');
+  const alqHoyList=ALQUILERES.filter(a=>a.inicio===hoyStr2 && a.activo!==false && !a.modoHoras && !a.pausado).sort(porFechaYHora('inicio','horaEntrega'));
   // Separada en dos: lo que arranca el resto de ESTA semana (se va actualizando día a día,
   // achicándose a medida que pasan los días) y lo que arranca la semana QUE VIENE completa.
-  const alqEstaSemanaList=ALQUILERES.filter(a=>a.inicio>hoyStr2&&a.inicio<=finSemanaActualStr).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
-  const alqProximaSemanaList=ALQUILERES.filter(a=>a.inicio>finSemanaActualStr&&a.inicio<=finSemStr).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
+  const alqEstaSemanaList=ALQUILERES.filter(a=>a.inicio>hoyStr2&&a.inicio<=finSemanaActualStr).sort(porFechaYHora('inicio','horaEntrega'));
+  const alqProximaSemanaList=ALQUILERES.filter(a=>a.inicio>finSemanaActualStr&&a.inicio<=finSemStr).sort(porFechaYHora('inicio','horaEntrega'));
   // Equipos que se liberan en los próximos días: alquileres con fecha de retorno YA
   // CONFIRMADA (no "abiertos", que no tienen fecha definida) cuyo "fin" cae en lo que
   // resta de esta semana o en la semana que viene — para poder ofrecerle ese equipo a
   // otro cliente antes de que quede libre del todo. No entran los que ya terminan HOY
   // (esos están en "Terminan hoy"), ni los que ya tienen un retiro anticipado o físico
   // registrado (esos ya están resueltos/en curso en otro lado — ver "Para retirar").
-  const alqLiberaEstaSemanaList=ALQUILERES.filter(a=>!a.abierto && !a.modoHoras && !a.pausado && !a.retiroFisicoFecha && !a.retiradoAnticipado && a.activo!==false && a.fin>hoyStr2 && a.fin<=finSemanaActualStr).sort((a,b)=>a.fin.localeCompare(b.fin));
-  const alqLiberaProximaSemanaList=ALQUILERES.filter(a=>!a.abierto && !a.modoHoras && !a.pausado && !a.retiroFisicoFecha && !a.retiradoAnticipado && a.activo!==false && a.fin>finSemanaActualStr && a.fin<=finSemStr).sort((a,b)=>a.fin.localeCompare(b.fin));
+  const alqLiberaEstaSemanaList=ALQUILERES.filter(a=>!a.abierto && !a.modoHoras && !a.pausado && !a.retiroFisicoFecha && !a.retiradoAnticipado && a.activo!==false && a.fin>hoyStr2 && a.fin<=finSemanaActualStr).sort(porFechaYHora('fin','horaRetiro'));
+  const alqLiberaProximaSemanaList=ALQUILERES.filter(a=>!a.abierto && !a.modoHoras && !a.pausado && !a.retiroFisicoFecha && !a.retiradoAnticipado && a.activo!==false && a.fin>finSemanaActualStr && a.fin<=finSemStr).sort(porFechaYHora('fin','horaRetiro'));
   const fmtD2=str=>{const[y,m,d]=str.split('-');return`${d}/${m}`;};
+  // La hora, al lado de su fecha y un poco más marcada: es el dato con el que Mateo
+  // arma el día. Si el alquiler no tiene hora cargada no se inventa nada.
+  const horaTxt=h=> h ? ` <b style="color:var(--txt)">${h}</b>` : '';
   const renderAlqLiberaItem=(a)=>{
     const color='#00695c';
     return `<div class="pago-item" style="border-color:${color}33;background:${color}08;cursor:pointer;margin-bottom:.5rem" onclick="verDetalleAlq(${a.id})">
       <div style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0"></div>
       <div class="pago-info">
         <div class="pago-concepto" style="font-size:1rem">${a.equipoNombre}</div>
-        <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${a.cliente} · Vuelve ${fmtD2(a.fin)}${a.localidad?' · '+a.localidad:''}</div>
+        <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${a.cliente} · Vuelve ${fmtD2(a.fin)}${horaTxt(a.horaRetiro)}${a.localidad?' · '+a.localidad:''}</div>
       </div>
     </div>`;
   };
@@ -4239,7 +4254,7 @@ function renderDashboard(){
       <div style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0"></div>
       <div class="pago-info">
         <div class="pago-concepto" style="font-size:1rem">${a.equipoNombre}</div>
-        <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${a.cliente} · ${fmtD2(a.inicio)} – ${fmtD2(a.fin)}${a.fTransportista&&a.fTransportista!=='Sin flete'?' · '+a.fTransportista:''}</div>
+        <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${a.cliente} · ${fmtD2(a.inicio)}${horaTxt(a.horaEntrega)} – ${fmtD2(a.fin)}${horaTxt(a.horaRetiro)}${a.fTransportista&&a.fTransportista!=='Sin flete'?' · '+a.fTransportista:''}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
         <span style="font-size:.75rem;font-weight:700;background:${color}22;color:${color};padding:2px 7px;border-radius:10px">${label}</span>
@@ -11199,6 +11214,10 @@ function diasSinFacturarAlq(a){
   return Math.max(0, corridos-(a.dias||0));
 }
 
+// Si están a la vista los pendientes de antes del arranque limpio. Arranca en false
+// en cada carga de la app: lo normal es no querer verlos.
+let FACT_VER_VIEJOS=false;
+
 function renderFacturacion(){
   const cont=document.getElementById('fact-cont');
   if(!cont) return;
@@ -11213,39 +11232,66 @@ function renderFacturacion(){
   // fecha fija con una sola factura; los abiertos se facturan por tramos, ver
   // agregarDiasFacturablesAlq).
   const alqAlDiaFacturado = a => a.diasAgregados && a.diasAgregados.some(d=>d.mesFacturado && d.hasta===a.fin);
-  const pendientes=ALQUILERES.filter(a=>!a.mesFacturado && !a.sinFactura && !alqAlDiaFacturado(a) && matchBusca(a)).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
+
+  // ── EL CORTE TAMBIÉN VALE ACÁ ────────────────────────────────────────────
+  // Reportes arranca en REPORTES_DESDE_MES, pero Facturación mostraba todo desde
+  // siempre. Resultado: 20 alquileres de julio/agosto que Mateo ya decidió no
+  // facturar quedaban mezclados con los del mes en curso e inflaban el total
+  // pendiente. Lo viejo no se borra ni se toca — se guarda detrás de una línea,
+  // por si alguna vez hace falta mirarlo.
+  const antesDelCorte = a => !!(REPORTES_DESDE_MES && a.inicio && a.inicio.slice(0,7) < REPORTES_DESDE_MES);
+  const pendientesTodos=ALQUILERES.filter(a=>!a.mesFacturado && !a.sinFactura && !alqAlDiaFacturado(a) && matchBusca(a)).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
+  const pendientesViejos=pendientesTodos.filter(antesDelCorte);
+  const pendientes=pendientesTodos.filter(a=>!antesDelCorte(a));
   const facturados=ALQUILERES.filter(a=>(a.mesFacturado || alqAlDiaFacturado(a)) && matchBusca(a)).sort((a,b)=>(b.facturadoEn||(a.diasAgregados&&a.diasAgregados.length?a.diasAgregados[a.diasAgregados.length-1].facturadoEn:0)||0)-(a.facturadoEn||(b.diasAgregados&&b.diasAgregados.length?b.diasAgregados[b.diasAgregados.length-1].facturadoEn:0)||0));
   const sinFacturaLista=ALQUILERES.filter(a=>a.sinFactura && !a.mesFacturado && matchBusca(a)).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
   const totalPendiente=pendientes.reduce((s,a)=>s+(a.tot||0),0);
 
-  let h = `<div style="font-size:.85rem;color:var(--txt2);margin-bottom:1rem">Pendientes de facturar: <b style="color:${pendientes.length?'var(--rojo)':'var(--verde)'}">${pendientes.length}</b>${pendientes.length?` · Total sin facturar: <b style="color:var(--txt)">${fmt(totalPendiente)}</b>`:''}</div>`;
+  let h = `<div style="font-size:.85rem;color:var(--txt2);margin-bottom:${pendientesViejos.length?'.4rem':'1rem'}">Pendientes de facturar: <b style="color:${pendientes.length?'var(--rojo)':'var(--verde)'}">${pendientes.length}</b>${pendientes.length?` · Total sin facturar: <b style="color:var(--txt)">${fmt(totalPendiente)}</b>`:''}${REPORTES_DESDE_MES?` <span style="color:var(--txt3)">· desde ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}</span>`:''}</div>`;
 
-  // ── TOTALES CON EL IVA DEL FLETE MAL CALCULADO ───────────────────────────
-  // Los alquileres tocados con la fórmula vieja quedaron con el flete sin IVA. Hasta
-  // que se corrijan, lo que muestra la app no es lo que va a decir la factura.
-  const totalesMalos = alquileresConTotalMalCalculado();
+  if(pendientesViejos.length){
+    const totalViejos=pendientesViejos.reduce((s,a)=>s+(a.tot||0),0);
+    h += `<div style="font-size:.79rem;color:var(--txt3);margin-bottom:1rem">
+      Quedaron ${pendientesViejos.length} de antes del arranque limpio (${fmt(totalViejos)}). No cuentan en ningún reporte.
+      <a href="javascript:void(0)" onclick="FACT_VER_VIEJOS=!FACT_VER_VIEJOS;renderFacturacion()" style="color:var(--txt2);text-decoration:underline">${FACT_VER_VIEJOS?'Ocultarlos':'Verlos'}</a>
+    </div>`;
+  }
+
+  // ── TOTALES QUE NO CIERRAN ───────────────────────────────────────────────
+  // Alquileres donde el total guardado no coincide con subtotal + IVA. Revisados uno
+  // por uno el 16/9/26 sobre los datos reales: no era un solo problema, eran tres,
+  // y solo uno tenía que ver con el IVA del flete (por eso a varios el total les
+  // bajaba en vez de subirles, que era lo que no cerraba).
+  //   · 5 casos: el flete quedó sumado dos veces — una dentro del subtotal (bien,
+  //     pagando IVA) y otra pegada al total después del IVA. El total mostraba
+  //     el flete de más. Subtotal e IVA estaban correctos.
+  //   · 1 caso (CORMORAN S-19): el flete quedó fuera del subtotal y sumado al final
+  //     sin IVA. Este sí es el bug original del flete sin IVA.
+  //   · 1 caso (DIAB): marcado sinFactura pero con IVA cargado igual.
+  // Los 7 son de julio/agosto, o sea de antes del arranque limpio. Se filtran por el
+  // corte igual que el resto de la pantalla: no cuentan en ningún reporte y Mateo ya
+  // decidió no facturarlos. La fórmula de hoy es una sola (recalcularTotalesAlq) y
+  // ninguno de los tres casos se puede volver a generar.
+  const totalesMalos = alquileresConTotalMalCalculado().filter(x=>!antesDelCorte(x.a));
   if(totalesMalos.length){
     const sumaDif = totalesMalos.reduce((s,x)=>s+x.diferencia,0);
     h += `<div style="background:rgba(229,168,59,.14);border-left:3px solid #e5a83b;border-radius:0 9px 9px 0;padding:11px 15px;margin-bottom:1.2rem">
       <div style="font-size:.85rem;font-weight:800;color:var(--txt);margin-bottom:3px">
-        ${totalesMalos.length} alquiler${totalesMalos.length!==1?'es':''} con el IVA del flete mal calculado
+        ${totalesMalos.length} alquiler${totalesMalos.length!==1?'es':''} con el total mal calculado
       </div>
       <div style="font-size:.78rem;color:var(--txt2);line-height:1.5;margin-bottom:8px">
-        A estos no se les cobró IVA sobre el flete. Corregidos, suman <b style="color:var(--txt)">${fmt(sumaDif)}</b> más en total.
+        En ${totalesMalos.length!==1?'estos':'este'} el total guardado no da subtotal + IVA.
+        Corregido${totalesMalos.length!==1?'s':''}, ${totalesMalos.length!==1?(sumaDif>=0?'suman':'bajan'):(sumaDif>=0?'sube':'baja')}
+        <b style="color:var(--txt)">${fmt(Math.abs(sumaDif))}</b> en total.
       </div>
       ${totalesMalos.slice(0,6).map(x=>{
         // Lo que hace falta para decidir si vale la pena tocarlos: si ya se facturó, el
         // papel del cliente dice el número viejo y cambiarlo acá solo genera diferencia.
         // Y si quedó fuera del arranque limpio, no afecta ningún reporte.
         const yaFacturado = !!x.a.mesFacturado || !!(x.a.diasAgregados||[]).some(d=>d.mesFacturado);
-        // "Viejo" es por la fecha del alquiler, no por si cuenta en reportes: un alquiler
-        // de septiembre sin facturar tampoco cuenta todavía, y decirle "fuera de los
-        // reportes" lo hacía parecer viejo cuando en realidad va a contar al facturarlo.
-        const esAnteriorAlCorte = REPORTES_DESDE_MES && x.a.inicio && x.a.inicio.slice(0,7) < REPORTES_DESDE_MES;
-        const etiquetas=[];
-        if(yaFacturado) etiquetas.push(`<span style="color:var(--rojo)">ya facturado${x.a.numeroFactura?' · N° '+x.a.numeroFactura:''}</span>`);
-        if(esAnteriorAlCorte) etiquetas.push('<span style="color:var(--txt2)">de antes del arranque limpio</span>');
-        if(!yaFacturado) etiquetas.push('<span style="color:#b3791f">sin facturar todavía'+(esAnteriorAlCorte?'':' — conviene corregirlo')+'</span>');
+        const etiquetas=[ yaFacturado
+          ? `<span style="color:var(--rojo)">ya facturado${x.a.numeroFactura?' · N° '+x.a.numeroFactura:''}</span>`
+          : '<span style="color:#b3791f">sin facturar todavía — conviene corregirlo</span>' ];
         return `
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;padding:7px 0;border-top:1px solid var(--border);font-size:.8rem">
           <div style="flex:1;min-width:210px">
@@ -11256,10 +11302,9 @@ function renderFacturacion(){
         </div>`;}).join('')}
       ${totalesMalos.length>6?`<div style="font-size:.76rem;color:var(--txt2);padding-top:6px">…y ${totalesMalos.length-6} más</div>`:''}
       <div style="margin-top:9px;background:rgba(201,106,94,.14);border-radius:7px;padding:8px 11px;font-size:.78rem;color:var(--rojo);line-height:1.5">
-        <b>Corrección desactivada.</b> En varios de estos el total baja en vez de subir, y eso no cuadra
-        con que falte el IVA del flete: hay algo más en juego. No se toca nada hasta entenderlo.<br>
-        Los que dicen <b>"ya facturado"</b> conviene dejarlos como están igual — el papel del cliente
-        dice el número viejo, y cambiarlo acá solo te genera una diferencia.
+        Los que dicen <b>"ya facturado"</b> conviene dejarlos como están — el papel del cliente
+        dice el número viejo, y cambiarlo acá solo te genera una diferencia. Avisame antes de tocar
+        estos y lo miramos juntos.
       </div>
     </div>`;
   }
@@ -11344,7 +11389,7 @@ function renderFacturacion(){
   }
 
   if(!pendientes.length){
-    h += '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin:1rem 0 2rem">No hay alquileres pendientes de facturar.</p>';
+    h += `<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin:1rem 0 2rem">No hay alquileres pendientes de facturar${REPORTES_DESDE_MES?` desde ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}`:''}.</p>`;
   } else {
     h += pendientes.map(a=>{
       const mesSug=mesSugeridoFacturacion(a);
@@ -11363,6 +11408,21 @@ function renderFacturacion(){
         </div>
       </div>`;
     }).join('');
+  }
+
+  // Los pendientes de antes del arranque limpio, solo si los pidió expresamente.
+  // Van sin botón de "Facturado": si alguna vez hace falta tocar uno, se entra por
+  // "Ver" — así no se factura uno viejo de un clic por error.
+  if(pendientesViejos.length && FACT_VER_VIEJOS){
+    h += `<div class="sec-divider" style="margin:1.2rem 0 .6rem">De antes del arranque limpio (${pendientesViejos.length})</div>`;
+    h += `<div style="font-size:.76rem;color:var(--txt3);margin-bottom:.6rem">Quedaron acá de cuando se cargaba todo junto. No cuentan en reportes y no hace falta hacerles nada.</div>`;
+    h += pendientesViejos.map(a=>`<div class="pago-item" style="border-color:var(--border);opacity:.72;margin-bottom:.5rem">
+        <div class="pago-info">
+          <div class="pago-concepto" style="font-size:.95rem">${a.equipoNombre} · ${a.cliente}</div>
+          <div class="pago-meta" style="font-size:.8rem;margin-top:3px">${fmtD(a.inicio)} al ${fmtD(a.fin)} · ${fmt(a.tot||0)}</div>
+        </div>
+        <button onclick="verDetalleAlq(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem;flex-shrink:0">Ver</button>
+      </div>`).join('');
   }
 
   if(sinFacturaLista.length){
