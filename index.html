@@ -4111,6 +4111,24 @@ function equipoLibreSinReservaFutura(eq, alquileresArr){
 }
 function hayEquipoLibreDeTipo(tipo){ return EQUIPOS.some(eq=>eq.tipo===tipo && equipoLibreSinReservaFutura(eq)); }
 function solicitudSePuedeCubrir(s){ return tiposDeSolicitud(s).some(t=>hayEquipoLibreDeTipo(t.tipo)); }
+// Una solicitud en espera no se vence sola: queda "pendiente" hasta que alguien la cierre a
+// mano ("Marcar atendida" / "Se cubrió por otro medio"). Pero sí ENVEJECE, y si no se avisa
+// termina pasando lo del caso CORMORAN: pedían el equipo para el 20/08, se liberó un mes
+// después y el Inicio lo seguía ofreciendo como si la obra siguiera esperando.
+// A propósito NO la ocultamos —el cliente puede seguir interesado y esa decisión es de
+// Mateo, no del sistema—: solo devolvemos el texto del aviso para mostrarlo al lado.
+// Si el cliente dijo para cuándo lo quería (fechaDeseada), esa es la que manda; si no cargó
+// ninguna, usamos la fecha en que se anotó y la damos por vieja al mes.
+const SOL_ESPERA_MESES_VIEJA = 1;
+function avisoSolicitudVieja(s){
+  if(!s || s.estado!=='pendiente') return '';
+  const fD=str=>{const[,m,d]=String(str).split('-');return`${d}/${m}`;};
+  const hoy=new Date().toISOString().slice(0,10);
+  if(s.fechaDeseada) return s.fechaDeseada<hoy ? `lo pedían para el ${fD(s.fechaDeseada)} — ya pasó` : '';
+  if(!s.fecha) return '';
+  const limite=new Date(); limite.setMonth(limite.getMonth()-SOL_ESPERA_MESES_VIEJA);
+  return s.fecha < limite.toISOString().slice(0,10) ? `anotada el ${fD(s.fecha)} — hace más de un mes` : '';
+}
 // [{id,proveedor,concepto,monto,fecha,factura:{url,tipo,nombre},cargadoPor,creadoEn,estado:'pendiente'|'pagado'|'enviado',comprobantePago:{url,tipo,nombre},pagadoPor,pagadoEn,enviadoPor,enviadoEn}]
 let PAGOS_PROVEEDORES = JSON.parse(localStorage.getItem('rtz_pagosprov') || '[]');
 function guardarPagosProveedores(){
@@ -4384,13 +4402,23 @@ function renderDashboard(){
     document.getElementById('dc-badge-sol-espera').textContent=solEsperaCubribles.length;
     document.getElementById('dash-sol-espera-container').innerHTML = solEsperaCubribles.map(s=>{
       const tiposTxt=tiposDeSolicitud(s).map(t=> hayEquipoLibreDeTipo(t.tipo) ? `<b style="color:#00838f">${t.tipoNombre} ✓</b>` : t.tipoNombre).join(' · ');
-      return `<div class="pago-item" style="border-color:#00838f33;background:#00838f08;cursor:pointer;margin-bottom:.5rem" onclick="cargarAlquilerDesdeSolicitudEspera(${s.id})">
-        <div style="width:11px;height:11px;border-radius:50%;background:#00838f;flex-shrink:0"></div>
+      // La tarjeta antes mostraba solo cliente y teléfono: sin la fecha no había forma de
+      // saber si la solicitud era de ayer o de hace dos meses (ver avisoSolicitudVieja).
+      const fDS=str=>{const[,m,d]=String(str).split('-');return`${d}/${m}`;};
+      const avisoVieja=avisoSolicitudVieja(s);
+      const detalleS=[
+        s.fechaDeseada ? 'para el '+fDS(s.fechaDeseada) : (s.fecha?'anotada el '+fDS(s.fecha):''),
+        s.dias ? s.dias+' día'+(s.dias!==1?'s':'') : ''
+      ].filter(Boolean).join(' · ');
+      return `<div class="pago-item" style="border-color:${avisoVieja?'rgba(229,57,53,.35)':'#00838f33'};background:${avisoVieja?'rgba(229,57,53,.04)':'#00838f08'};cursor:pointer;margin-bottom:.5rem" onclick="cargarAlquilerDesdeSolicitudEspera(${s.id})">
+        <div style="width:11px;height:11px;border-radius:50%;background:${avisoVieja?'var(--rojo)':'#00838f'};flex-shrink:0"></div>
         <div class="pago-info">
           <div class="pago-concepto" style="font-size:1rem">${tiposTxt}</div>
           <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${s.cliente}${s.telefono?' · '+s.telefono:''}</div>
+          ${detalleS?`<div class="pago-meta" style="font-size:.78rem;margin-top:2px;color:var(--txt3)">${detalleS}</div>`:''}
+          ${avisoVieja?`<div style="font-size:.78rem;margin-top:3px;color:var(--rojo);font-weight:700">⚠️ ${avisoVieja} — confirmá antes de ofrecerlo</div>`:''}
         </div>
-        <span style="font-size:.75rem;font-weight:700;background:#00838f22;color:#00838f;padding:2px 7px;border-radius:10px;white-space:nowrap">Llamar</span>
+        <span style="font-size:.75rem;font-weight:700;background:${avisoVieja?'rgba(229,57,53,.13)':'#00838f22'};color:${avisoVieja?'var(--rojo)':'#00838f'};padding:2px 7px;border-radius:10px;white-space:nowrap">Llamar</span>
       </div>`;
     }).join('');
   }
@@ -12726,6 +12754,14 @@ function historialAlqCliente(clienteId, clienteNombre){
   if(!clienteNombre) return 0;
   return ALQUILERES.filter(a=>(a.cliente||'').trim().toLowerCase()===clienteNombre.trim().toLowerCase()).length;
 }
+// Estado abierto/cerrado del desplegable de solicitudes ya resueltas. Vive en memoria y no
+// en localStorage a propósito: al recargar la app arranca cerrado, que es lo que se quiere
+// (lo normal es venir a esta pantalla a mirar las pendientes, no el historial).
+let solEsperaCerradasAbierto = false;
+function toggleSolEsperaCerradas(){
+  solEsperaCerradasAbierto = !solEsperaCerradasAbierto;
+  renderSolicitudesEspera();
+}
 function renderSolicitudesEspera(){
   actualizarContadoresAlq();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
@@ -12754,7 +12790,8 @@ function renderSolicitudesEspera(){
     document.getElementById('lista-solicitudes-espera').innerHTML=`<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">${msgVacio}</p>`;
     return;
   }
-  document.getElementById('lista-solicitudes-espera').innerHTML=lista.map(s=>{
+  // Una tarjeta suelta: se arma aparte porque la lista se parte en dos grupos (ver abajo).
+  const tarjetaSolEspera = s => {
     const tiposS=tiposDeSolicitud(s);
     const hayLibre = s.estado==='pendiente' && solicitudSePuedeCubrir(s);
     let badgeStyle,badgeTxt;
@@ -12798,13 +12835,45 @@ function renderSolicitudesEspera(){
         ${s.cargadoPor?' · cargó '+s.cargadoPor:''}
         ${s.estado==='perdida'&&s.motivoPerdida?' · '+s.motivoPerdida:''}
       </div>
-      ${s.estado==='pendiente'?`<div style="display:flex;gap:6px;width:100%">
-        <button onclick="cargarAlquilerDesdeSolicitudEspera(${s.id})" class="btn-nuevo" style="flex:1;padding:6px 10px;font-size:.78rem">Cargar alquiler</button>
-        <button onclick="marcarSolicitudEsperaAtendida(${s.id})" class="btn-lim" style="flex:0 0 auto;padding:6px 10px;font-size:.78rem">Marcar atendida</button>
-        <button onclick="marcarSolicitudEsperaPerdida(${s.id})" class="btn-lim" style="flex:0 0 auto;padding:6px 10px;font-size:.78rem;color:var(--rojo)">Se cubrió por otro medio</button>
+      ${(()=>{const av=avisoSolicitudVieja(s); return av?`<div style="font-size:.75rem;color:var(--rojo);font-weight:700">⚠️ ${av} — si ya no sirve, cerrala con "Marcar atendida" o "Se cubrió por otro medio"</div>`:'';})()}
+      ${/* OJO con .btn-lim: la clase trae width:100% fijo. Con "flex:0 0 auto" cada botón
+            pedía el 100% del ancho de la fila y no podía achicarse, así que los tres juntos
+            medían el triple que la tarjeta y se iban para el costado (aparecía scroll
+            horizontal en toda la pantalla). Por eso van con width:auto y flex:1 1 <base>:
+            se reparten el ancho disponible y, si no entran (celular de taller), bajan de
+            renglón en vez de desbordar. El margin-top:0 anula el de la clase, que
+            descolocaba estos botones respecto del verde. */''}
+      ${s.estado==='pendiente'?`<div style="display:flex;flex-wrap:wrap;gap:6px;width:100%">
+        <button onclick="cargarAlquilerDesdeSolicitudEspera(${s.id})" class="btn-nuevo" style="flex:1 1 150px;padding:6px 10px;font-size:.78rem">Cargar alquiler</button>
+        <button onclick="marcarSolicitudEsperaAtendida(${s.id})" class="btn-lim" style="flex:1 1 130px;width:auto;margin-top:0;padding:6px 10px;font-size:.78rem">Marcar atendida</button>
+        <button onclick="marcarSolicitudEsperaPerdida(${s.id})" class="btn-lim" style="flex:1 1 170px;width:auto;margin-top:0;padding:6px 10px;font-size:.78rem;color:var(--rojo)">Se cubrió por otro medio</button>
       </div>`:''}
     </div>`;
-  }).join('');
+  };
+  // Las atendidas y las perdidas se acumulan para siempre y terminaban tapando a las que hay
+  // que mirar hoy. Van en un desplegable aparte, cerrado por defecto: siguen estando para
+  // consultar el historial, pero no ocupan la pantalla.
+  const actuales = lista.filter(s=>s.estado==='pendiente');
+  const cerradas = lista.filter(s=>s.estado!=='pendiente');
+  const vacioTxt = busca
+    ? `Ninguna solicitud pendiente coincide con "${busca}"`
+    : 'No hay solicitudes en espera pendientes';
+  let html = actuales.length
+    ? actuales.map(tarjetaSolEspera).join('')
+    : `<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin:1.2rem 0">${vacioTxt}</p>`;
+  if(cerradas.length){
+    html += `<div class="dash-collapse" style="margin-top:.9rem">
+      <button class="dash-collapse-header${solEsperaCerradasAbierto?' dc-open':''}" onclick="toggleSolEsperaCerradas()">
+        <span class="dc-title" style="color:var(--txt2)">Ya resueltas</span>
+        <span class="dc-badge">${cerradas.length}</span>
+        <span class="dc-arrow">▾</span>
+      </button>
+      <div class="dash-collapse-body" style="display:${solEsperaCerradasAbierto?'block':'none'}">
+        ${cerradas.map(tarjetaSolEspera).join('')}
+      </div>
+    </div>`;
+  }
+  document.getElementById('lista-solicitudes-espera').innerHTML = html;
 }
 
 document.addEventListener('click',e=>{
