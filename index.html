@@ -1358,7 +1358,7 @@ if ('serviceWorker' in navigator) {
       </div>
       <div style="position:relative;margin-bottom:1rem">
         <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--txt3);font-size:.85rem;pointer-events:none"></span>
-        <input type="text" id="alq-busca-cliente" placeholder="Buscar por cliente o equipo..." oninput="alqFiltro==='espera'?renderSolicitudesEspera():renderAlq()" style="width:100%;padding:.6rem .8rem .6rem 34px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--txt);font-size:.85rem">
+        <input type="text" id="alq-busca-cliente" placeholder="Buscar por cliente, equipo o fletero..." oninput="alqFiltro==='espera'?renderSolicitudesEspera():renderAlq()" style="width:100%;padding:.6rem .8rem .6rem 34px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--txt);font-size:.85rem">
       </div>
 
       <div id="lista-alq"></div>
@@ -1401,7 +1401,7 @@ if ('serviceWorker' in navigator) {
 
       <!-- Modal edición fila -->
       <div id="modal-ctrl" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center;">
-        <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:400px;max-width:92vw;">
+        <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:400px;max-width:92vw;max-height:90vh;overflow-y:auto;">
           <div style="font-size:1rem;font-weight:800;margin-bottom:1rem;color:var(--txt);" id="ctrl-modal-titulo">Editar registro</div>
           <div id="ctrl-alq-resumen" style="display:none;margin-bottom:1rem;border:1px solid var(--border);border-radius:10px;padding:.7rem .9rem;background:var(--bg3)"></div>
           <div style="margin-bottom:.7rem">
@@ -4234,16 +4234,20 @@ function renderDashboard(){
   const alqLiberaEstaSemanaList=ALQUILERES.filter(a=>!a.abierto && !a.modoHoras && !a.pausado && !a.retiroFisicoFecha && !a.retiradoAnticipado && a.activo!==false && a.fin>hoyStr2 && a.fin<=finSemanaActualStr).sort(porFechaYHora('fin','horaRetiro'));
   const alqLiberaProximaSemanaList=ALQUILERES.filter(a=>!a.abierto && !a.modoHoras && !a.pausado && !a.retiroFisicoFecha && !a.retiradoAnticipado && a.activo!==false && a.fin>finSemanaActualStr && a.fin<=finSemStr).sort(porFechaYHora('fin','horaRetiro'));
   const fmtD2=str=>{const[y,m,d]=str.split('-');return`${d}/${m}`;};
-  // La hora, al lado de su fecha y un poco más marcada: es el dato con el que Mateo
-  // arma el día. Si el alquiler no tiene hora cargada no se inventa nada.
-  const horaTxt=h=> h ? ` <b style="color:var(--txt)">${h}</b>` : '';
+  // La SALIDA (día + hora juntos) es con lo que Mateo arma la jornada, así que va
+  // resaltada: negrita y en el color del texto principal, destacándose sobre el gris
+  // del resto del renglón. No se le pone color propio — el color en esta app significa
+  // estado, y acá no hay ningún estado que comunicar.
+  // Del retorno pidió ver solo la FECHA, sin hora (16/9). Si no hay hora cargada no se
+  // inventa nada y queda solo el día.
+  const destacado=(fecha,hora)=>`<b style="color:var(--txt)">${fmtD2(fecha)}${hora?' '+hora:''}</b>`;
   const renderAlqLiberaItem=(a)=>{
     const color='#00695c';
     return `<div class="pago-item" style="border-color:${color}33;background:${color}08;cursor:pointer;margin-bottom:.5rem" onclick="verDetalleAlq(${a.id})">
       <div style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0"></div>
       <div class="pago-info">
         <div class="pago-concepto" style="font-size:1rem">${a.equipoNombre}</div>
-        <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${a.cliente} · Vuelve ${fmtD2(a.fin)}${horaTxt(a.horaRetiro)}${a.localidad?' · '+a.localidad:''}</div>
+        <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${a.cliente} · Vuelve ${destacado(a.fin)}${a.localidad?' · '+a.localidad:''}</div>
       </div>
     </div>`;
   };
@@ -4254,7 +4258,7 @@ function renderDashboard(){
       <div style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0"></div>
       <div class="pago-info">
         <div class="pago-concepto" style="font-size:1rem">${a.equipoNombre}</div>
-        <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${a.cliente} · ${fmtD2(a.inicio)}${horaTxt(a.horaEntrega)} – ${fmtD2(a.fin)}${horaTxt(a.horaRetiro)}${a.fTransportista&&a.fTransportista!=='Sin flete'?' · '+a.fTransportista:''}</div>
+        <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${a.cliente} · ${destacado(a.inicio,a.horaEntrega)} – ${fmtD2(a.fin)}${a.fTransportista&&a.fTransportista!=='Sin flete'?' · '+a.fTransportista:''}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
         <span style="font-size:.75rem;font-weight:700;background:${color}22;color:${color};padding:2px 7px;border-radius:10px">${label}</span>
@@ -6871,8 +6875,13 @@ function autoMarcarPendientesDeRetiro(){
   // retiro" (taller esperando ir a buscarlo) — si quedó así (por ejemplo, por pasar a
   // abierto desde el detalle antes de este fix), lo destrabamos acá para que no quede
   // colgado en "Para retirar" sin sentido.
+  // Mismo criterio para un alquiler que TODAVÍA NO SALIÓ del depósito (entregaPendiente):
+  // el equipo nunca se movió de acá, así que no puede estar "esperando que taller lo vaya a
+  // retirar". Pasaba cuando un alquiler programado se posterga (el cliente todavía no
+  // confirma) y mientras tanto le llega la fecha de fin original: se auto-marcaba y taller
+  // veía en "Para retirar" un equipo que tiene al lado en el depósito.
   ALQUILERES.forEach(a=>{
-    if(a.abierto && a.pickupPendiente){
+    if((a.abierto || a.entregaPendiente) && a.pickupPendiente){
       a.pickupPendiente=false;
       a.pickupPendienteDesde=null;
       cambio=true;
@@ -6881,6 +6890,8 @@ function autoMarcarPendientesDeRetiro(){
   ALQUILERES.forEach(a=>{
     if(a.activo===false) return;
     if(a.pickupPendiente || a.retiroFisicoFecha || a.abierto) return;
+    // Nunca salió del depósito: no hay nada que ir a buscar (ver nota de arriba).
+    if(a.entregaPendiente) return;
     const fechaVenc = a.fechaRetiro || a.fin;
     if(fechaVenc && fechaVenc>=AUTO_PENDIENTE_DESDE && fechaVenc<=hoyStr){
       a.pickupPendiente=true;
@@ -12632,10 +12643,19 @@ function renderAlq(){
   let lista=[...ALQUILERES].sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
   if(alqFiltro==='activos') lista=lista.filter(a=>alqEstaActivoHoy(a,hoy) && !a.entregaPendiente);
   const busca=(document.getElementById('alq-busca-cliente')?.value||'').trim().toLowerCase();
-  if(busca) lista=lista.filter(a=>(a.cliente||'').toLowerCase().includes(busca) || (a.equipoNombre||'').toLowerCase().includes(busca));
+  // El fletero entra en la búsqueda con sus TRES campos, no solo el "oficial": un tramo
+  // puede estar reasignado a otro (Alejandro entrega y retira Rosso, o al revés), y
+  // buscando solo por a.fTransportista esos alquileres no aparecían aunque Rosso
+  // hubiera hecho el viaje. Ver cambiarFletero() y fleteEventos().
+  if(busca) lista=lista.filter(a=>
+    (a.cliente||'').toLowerCase().includes(busca) ||
+    (a.equipoNombre||'').toLowerCase().includes(busca) ||
+    (a.fTransportista||'').toLowerCase().includes(busca) ||
+    (a.fTransportistaIda||'').toLowerCase().includes(busca) ||
+    (a.fTransportistaRetiro||'').toLowerCase().includes(busca));
 
   if(!lista.length){
-    const msgVacio = busca ? `No hay alquileres de un cliente o equipo que coincida con "${busca}"` : (alqFiltro==='activos'?'No hay alquileres activos hoy':'No hay alquileres cargados');
+    const msgVacio = busca ? `No hay alquileres de un cliente, equipo o fletero que coincida con "${busca}"` : (alqFiltro==='activos'?'No hay alquileres activos hoy':'No hay alquileres cargados');
     document.getElementById('lista-alq').innerHTML=`<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">${msgVacio}</p>`;
     return;
   }
