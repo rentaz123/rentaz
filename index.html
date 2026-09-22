@@ -3546,6 +3546,80 @@ function marcarSolicitudEsperaAtendida(id){
   if(typeof renderSolicitudesEspera==='function') renderSolicitudesEspera();
   renderDashboard();
 }
+// Una solicitud en espera dice "el cliente X está esperando un equipo del tipo Y". En cuanto
+// se le carga a ESE cliente un alquiler de ese tipo, la espera terminó sola — no tiene
+// sentido que además alguien se tenga que acordar de tildar "Marcar atendida".
+//
+// Antes esto solo pasaba si el alquiler se cargaba desde el botón "Cargar alquiler" de la
+// propia solicitud (window._origenSolicitudEsperaId, ver guardarAlq). Si se cargaba por el
+// camino normal —"+ Nuevo alquiler", que es lo habitual— la solicitud quedaba pendiente
+// PARA SIEMPRE, y el Inicio te la seguía ofreciendo meses después de haberle dado el equipo
+// al cliente (el caso CORMORAN / Alo 160W).
+//
+// Cierra UNA solicitud por equipo alquilado: si el cliente anotó dos solicitudes del mismo
+// tipo porque quiere dos máquinas, cargarle una sola no le cancela la otra.
+function cerrarSolicitudesEsperaCubiertas(clienteId, clienteNombre, eqIds){
+  if(typeof SOLICITUDES_ESPERA==='undefined' || !SOLICITUDES_ESPERA.length) return [];
+  const nom = (clienteNombre||'').trim().toLowerCase();
+  const mismoCliente = s => (clienteId!=null && s.clienteId===clienteId)
+    || (!!nom && (s.cliente||'').trim().toLowerCase()===nom);
+  const cerradas=[], yaUsadas=new Set();
+  (eqIds||[]).forEach(eqId=>{
+    const eq=EQUIPOS.find(e=>e.id===eqId); if(!eq) return;
+    const s=SOLICITUDES_ESPERA.find(x=>x.estado==='pendiente' && !yaUsadas.has(x.id)
+      && mismoCliente(x) && tiposDeSolicitud(x).some(t=>t.tipo===eq.tipo));
+    if(!s) return;
+    yaUsadas.add(s.id);
+    s.estado='atendida';
+    s.atendidoEn=Date.now();
+    s.atendidaPorAlquiler=true; // se cerró sola al cargarle el alquiler, no a mano
+    cerradas.push(s);
+  });
+  if(cerradas.length) guardarSolicitudesEspera();
+  return cerradas;
+}
+// Repaso único de lo que quedó mal de ANTES del arreglo de arriba: solicitudes que siguen
+// "pendientes" pero a las que en realidad ya se les cargó el alquiler por el camino normal.
+// El caso testigo es CORMORAN: la espera por el Alo 160W se anotó el 14/08, el equipo se le
+// alquiló el 18/09 con "+ Nuevo alquiler", y como nadie volvió a tildar "Marcar atendida",
+// el Inicio la seguía ofreciendo en Septiembre.
+//
+// Criterio, a propósito estricto (preferimos dejar una abierta de más que cerrar una viva):
+//   · mismo cliente,
+//   · el alquiler es de alguno de los tipos de equipo que pedía,
+//   · y arrancó DESPUÉS de anotarse la solicitud (si el alquiler es anterior, no la cubre:
+//     justamente por eso el cliente volvió a pedir el equipo).
+// Un alquiler cierra UNA sola solicitud, y solo marca "atendida" — no borra nada: quedan
+// visibles en el desplegable "Ya resueltas" por si hay que revisar alguna.
+// Corre una sola vez por dispositivo y después no vuelve a tocar nada.
+function cerrarSolicitudesEsperaViejasYaCubiertas(){
+  if(localStorage.getItem('rtz_fix_solespera_v1')) return;
+  if(typeof SOLICITUDES_ESPERA==='undefined'){ return; }
+  const alqUsados=new Set();
+  let cambio=false;
+  SOLICITUDES_ESPERA.filter(s=>s.estado==='pendiente').forEach(s=>{
+    const nom=(s.cliente||'').trim().toLowerCase();
+    const tiposS=tiposDeSolicitud(s).map(t=>t.tipo);
+    const alq=ALQUILERES.find(a=>{
+      if(a.activo===false || alqUsados.has(a.id)) return false;
+      const mismoCliente = (s.clienteId!=null && a.clienteId===s.clienteId)
+        || (!!nom && (a.cliente||'').trim().toLowerCase()===nom);
+      if(!mismoCliente) return false;
+      const eq=EQUIPOS.find(e=>e.id===a.equipoId);
+      if(!eq || !tiposS.includes(eq.tipo)) return false;
+      return !s.fecha || (a.inicio||'') >= s.fecha;
+    });
+    if(!alq) return;
+    alqUsados.add(alq.id);
+    s.estado='atendida';
+    s.atendidoEn=Date.now();
+    s.atendidaPorAlquiler=true;
+    cambio=true;
+    console.log(`Solicitud en espera de ${s.cliente} (${s.tipoNombre}) cerrada: ya tenía el alquiler del ${alq.inicio}`);
+  });
+  localStorage.setItem('rtz_fix_solespera_v1','1');
+  if(cambio) guardarSolicitudesEspera();
+}
 // El cliente resolvió su necesidad por otro medio (otro alquiler, compra, otro proveedor,
 // ya no lo necesita, etc.) SIN que Rentaz le haya podido ofrecer el equipo — a diferencia
 // de "atendida", acá NO lo cubrimos nosotros. Se guarda el motivo (texto libre, opcional)
@@ -3734,6 +3808,7 @@ function elegirResponsableTaller(nombre){
 function correrMigracionesQueGuardan(){
   ejecutarMigracionesFlota();
   repararBugPickupMasivo();
+  cerrarSolicitudesEsperaViejasYaCubiertas();
   autoMarcarPendientesDeRetiro();
 }
 function entrarAlApp(){
@@ -10448,6 +10523,16 @@ async function guardarAlq(){
     marcarSolicitudEsperaAtendida(window._origenSolicitudEsperaId);
     window._origenSolicitudEsperaId = null;
   }
+  // Y además, venga de donde venga el alquiler (el botón de la solicitud o "+ Nuevo
+  // alquiler"), si este cliente tenía anotada una espera por alguno de estos equipos, ya
+  // está cubierta — ver cerrarSolicitudesEsperaCubiertas. Solo al CREAR: editar un alquiler
+  // existente no debería cerrarle una espera nueva que el cliente haya anotado después.
+  let solEsperaCerradasAuto = [];
+  if(!editando){
+    solEsperaCerradasAuto = cerrarSolicitudesEsperaCubiertas(
+      alqClienteElegido?.id, alqClienteElegido?.nombre, filas.map(r=>r.eqId)
+    );
+  }
   alqEditandoIds = [];
   marcarAccionUndo(editando ? `Editar alquiler de ${alqClienteElegido?.nombre||'cliente'}` : `Crear alquiler de ${alqClienteElegido?.nombre||'cliente'}`, 'alquileres');
   guardar(); cerrarModalAlq(); renderAlq(); renderDashboard(); renderEq();
@@ -10464,7 +10549,12 @@ async function guardarAlq(){
     // Cuando llegue el día, el alquiler aparece en "Para entregar" con su botón.
     setTimeout(()=>abrirContrato(primerAlqId), 150);
   } else {
-    alert('Alquiler guardado correctamente');
+    // Si de paso se cerró una espera anotada, se avisa: así queda claro por qué esa
+    // solicitud desapareció de "Solicitudes que ya se pueden cubrir" en Inicio.
+    const avisoEspera = solEsperaCerradasAuto.length
+      ? `\n\nAdemás se cerró ${solEsperaCerradasAuto.length===1?'la solicitud en espera':'las '+solEsperaCerradasAuto.length+' solicitudes en espera'} de ${alqClienteElegido?.nombre||'este cliente'} por ${solEsperaCerradasAuto.map(s=>s.tipoNombre).join(' / ')} — ya no hace falta marcarla a mano.`
+      : '';
+    alert('Alquiler guardado correctamente'+avisoEspera);
   }
 }
 
@@ -11129,6 +11219,43 @@ function mesSugeridoFacturacion(a){
   }
   return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}`;
 }
+// Precarga del número de factura. Walter los emite en orden, así que tipear los 13
+// caracteres a mano cada vez (0004-00005121) era puro trabajo repetido: sugerimos el
+// siguiente al último cargado y listo. Si salteó un número o emitió por otro punto de
+// venta, se corrige en el mismo cuadro antes de aceptar — es una sugerencia, no un
+// candado.
+//
+// Formato AFIP: <punto de venta>-<número>, los dos con ceros a la izquierda
+// (0004-00005120). Tomamos el punto de venta del ÚLTIMO que se cargó (por facturadoEn) y
+// buscamos el número más alto de ese punto de venta — así, si algún día se empieza a
+// emitir por otro, la sugerencia sigue al que se está usando y no al que quedó más alto
+// por casualidad.
+//
+// El largo del número se respeta tal cual venía, así que pasar de 0004-00005999 a
+// 0004-00006000 sale solo: no hay ningún prefijo fijo escrito acá que haya que venir a
+// cambiar a mano cuando se den vuelta los miles.
+function siguienteNumeroFactura(){
+  const partir = txt => {
+    const m = String(txt).trim().match(/^(.*?)(\d+)$/);
+    return m ? {prefijo:m[1], num:m[2]} : null;
+  };
+  const conNum = ALQUILERES.filter(a=>a.numeroFactura && String(a.numeroFactura).trim());
+  if(!conNum.length) return '';
+  const ultimo = conNum.slice().sort((a,b)=>(b.facturadoEn||0)-(a.facturadoEn||0))[0];
+  const ref = partir(ultimo.numeroFactura);
+  if(!ref) return '';
+  let maxNum = -1, largo = ref.num.length;
+  conNum.forEach(a=>{
+    const p = partir(a.numeroFactura);
+    if(!p || p.prefijo !== ref.prefijo) return;
+    const n = parseInt(p.num, 10);
+    if(!isNaN(n) && n > maxNum){ maxNum = n; largo = Math.max(largo, p.num.length); }
+  });
+  if(maxNum < 0) return '';
+  // padStart mantiene el largo original (…05999 → …06000). Si algún día se desborda
+  // (99999999 → 100000000) lo dejamos crecer: recortarlo sería mucho peor.
+  return ref.prefijo + String(maxNum+1).padStart(largo, '0');
+}
 // Marcado en un solo click, usando la sugerencia de arriba. Si se equivocó
 // (por ejemplo un cliente que factura distinto a lo habitual), se corrige
 // después con "Facturado ... (cambiar)", que abre marcarMesFacturado().
@@ -11140,7 +11267,11 @@ function facturarAlquilerAuto(id){
   if(document.getElementById('modal-alq-det').style.display==='flex') verDetalleAlq(id);
   renderReportes();
   if(typeof renderFacturacion==='function') renderFacturacion();
-  const num = prompt(`Facturado — cuenta para el reporte de ${mesLabel(a.mesFacturado)}.\n\nSi no es el mes correcto, después tocá "Facturado ... (cambiar)" para corregirlo.\n\nNúmero de factura (opcional, se puede cargar después):`, a.numeroFactura||'');
+  const sugerido = a.numeroFactura || siguienteNumeroFactura();
+  const etiquetaNum = (!a.numeroFactura && sugerido)
+    ? `Número de factura — viene el siguiente al último cargado.\nSi no coincide con el de Walter, corregilo acá:`
+    : 'Número de factura (opcional, se puede cargar después):';
+  const num = prompt(`Facturado — cuenta para el reporte de ${mesLabel(a.mesFacturado)}.\n\nSi no es el mes correcto, después tocá "Facturado ... (cambiar)" para corregirlo.\n\n${etiquetaNum}`, sugerido);
   if(num!==null && num.trim()){
     a.numeroFactura = num.trim();
     guardar();
@@ -11151,7 +11282,9 @@ function facturarAlquilerAuto(id){
 // después buscarlo por número (ver buscador en la pantalla de Facturación).
 function editarNumeroFactura(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
-  const num = prompt('Número de factura para "'+a.equipoNombre+'" · '+a.cliente+':', a.numeroFactura||'');
+  // Si ya tiene número cargado se respeta el que está (se viene a corregir, no a inventar
+  // uno nuevo); recién si está vacío se sugiere el siguiente.
+  const num = prompt('Número de factura para "'+a.equipoNombre+'" · '+a.cliente+':', a.numeroFactura||siguienteNumeroFactura());
   if(num===null) return;
   a.numeroFactura = num.trim();
   guardar();
