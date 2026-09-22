@@ -10951,6 +10951,18 @@ function verDetalleAlq(id){
   botones+=`<button onclick="compensarDiaAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Compensar día sin cargo</button>`;
   if(a.abierto){
     botones+=`<button onclick="agregarDiasFacturablesAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Agregar factura parcial (días confirmados)</button>`;
+  } else if(a.mesFacturado && !a.modoHoras){
+    // Alquiler de fecha fija YA facturado al que el cliente le suma días: Walter emite una
+    // SEGUNDA factura, con su propio número. Hasta acá no había forma de cargarla — la
+    // única salida era "Editar" y estirar la fecha, que infla el importe de la factura
+    // original (ya emitida con otro monto) y deja el segundo número sin dónde anotarse.
+    // La maquinaria para esto ya existía completa y contempla el caso de fecha fija (ver
+    // agregarDiasFacturablesAlq: los días son SIEMPRE adicionales, nunca reemplazan a
+    // a.fin); lo único que faltaba era el botón, que se mostraba solo si era abierto.
+    // Se pide que ya tenga su primera factura cargada: si todavía no se facturó nada, el
+    // alquiler va a salir en UNA sola factura y lo que corresponde es "Editar" las fechas.
+    botones+=`<button onclick="agregarDiasFacturablesAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Agregar otra factura (días extra)</button>
+    <div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">El cliente sumó días después de la factura ya emitida: esto carga la SEGUNDA factura con su propio N° y su propio mes, sin tocar la primera.</div>`;
   }
   botones+=`<button onclick="${a.abierto?`abrirModalCerrarAbierto(${a.id})`:`toggleAbierto(${a.id})`}" class="btn-lim" title="${a.abierto?'Usar cuando el cliente avisa que retira — cierra el alquiler abierto y calcula los días reales':'Marcar sin fecha fija de retiro'}" style="flex:1;padding:8px;font-size:.8rem">${a.abierto?'Confirmar fecha de retiro':'Marcar como abierto'}</button>${a.abierto?'<div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Este alquiler es ABIERTO (sin fecha fija) — usar esto (no "retiro anticipado") apenas el cliente avise que retira.</div>':''}`;
   if(!a.abierto && !a.pickupPendiente && !a.retiradoAnticipado){
@@ -11239,14 +11251,24 @@ function siguienteNumeroFactura(){
     const m = String(txt).trim().match(/^(.*?)(\d+)$/);
     return m ? {prefijo:m[1], num:m[2]} : null;
   };
-  const conNum = ALQUILERES.filter(a=>a.numeroFactura && String(a.numeroFactura).trim());
-  if(!conNum.length) return '';
-  const ultimo = conNum.slice().sort((a,b)=>(b.facturadoEn||0)-(a.facturadoEn||0))[0];
-  const ref = partir(ultimo.numeroFactura);
+  // Los números emitidos viven en DOS lugares: el de la factura única de un alquiler de
+  // fecha fija (a.numeroFactura) y el de cada factura parcial o extra
+  // (a.diasAgregados[].numeroFactura). Hay que mirar los dos, o la sugerencia se queda
+  // vieja apenas se carga una segunda factura sobre el mismo alquiler.
+  const emitidas = [];
+  ALQUILERES.forEach(a=>{
+    if(a.numeroFactura && String(a.numeroFactura).trim()) emitidas.push({num:a.numeroFactura, cuando:a.facturadoEn||0});
+    (a.diasAgregados||[]).forEach(d=>{
+      if(d.numeroFactura && String(d.numeroFactura).trim()) emitidas.push({num:d.numeroFactura, cuando:d.facturadoEn||0});
+    });
+  });
+  if(!emitidas.length) return '';
+  const ultimo = emitidas.slice().sort((x,y)=>y.cuando-x.cuando)[0];
+  const ref = partir(ultimo.num);
   if(!ref) return '';
   let maxNum = -1, largo = ref.num.length;
-  conNum.forEach(a=>{
-    const p = partir(a.numeroFactura);
+  emitidas.forEach(e=>{
+    const p = partir(e.num);
     if(!p || p.prefijo !== ref.prefijo) return;
     const n = parseInt(p.num, 10);
     if(!isNaN(n) && n > maxNum){ maxNum = n; largo = Math.max(largo, p.num.length); }
@@ -11339,7 +11361,7 @@ function editarNumeroFacturaParcial(alqId, idx){
   const entry=a.diasAgregados[idx];
   const fmtD2=str=>{ if(!str) return ''; const[y,m,d]=str.split('-'); return `${d}/${m}/${y.slice(2)}`; };
   const rango = entry.desde&&entry.hasta ? `${fmtD2(entry.desde)} al ${fmtD2(entry.hasta)}` : `${entry.dias} días`;
-  const num = prompt(`N° de factura para el tramo ${rango}:`, entry.numeroFactura||'');
+  const num = prompt(`N° de factura para el tramo ${rango}:`, entry.numeroFactura||siguienteNumeroFactura());
   if(num===null) return;
   entry.numeroFactura = num.trim();
   guardar();
@@ -12750,7 +12772,7 @@ async function agregarDiasFacturablesAlq(id, periodo){
 
   recalcularTotalesAlq(a);
 
-  const numeroFactura = (prompt('N° de factura (opcional, se puede cargar después):', '')||'').trim();
+  const numeroFactura = (prompt('N° de factura (viene el siguiente al último cargado — corregilo si no coincide):', siguienteNumeroFactura())||'').trim();
 
   if(!a.diasAgregados) a.diasAgregados=[];
   // Guardamos el RANGO exacto que cubre esta factura (ej: 24/07 al 06/08), no solo la
