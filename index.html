@@ -12153,7 +12153,7 @@ async function confirmarCambioEquipo(id){
     a.sub=sub; a.iva=a.sinFactura?0:sub*0.21; a.tot=sub+a.iva;
   }
 
-  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal();
+  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
 }
 
 // Registra que el equipo volvió antes de la fecha pactada (a.fin). Recalcula
@@ -12255,7 +12255,7 @@ async function marcarRetiroAnticipado(id){
     a.retiroFisicoPor=null;
   }
   marcarAccionUndo(`Marcar retiro anticipado de "${a.equipoNombre}" — cliente ${a.cliente}`, 'alquileres');
-  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal();
+  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
   alert(`Retiro anticipado registrado para el ${fmtD(fecha)}.`+detalleAjuste+(yaVolvioFisico?`\n\nEquipo liberado — ya figura disponible.`:`\n\nEl equipo sigue figurando como ocupado hasta que taller marque "Equipo retirado".`));
 }
@@ -12448,7 +12448,7 @@ async function continuarCerrarAlquilerAbierto(){
   a.retiroFisicoPor=null;
 
   marcarAccionUndo(`Confirmar retiro de "${a.equipoNombre}" — cliente ${a.cliente}`, 'alquileres');
-  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal();
+  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
   alert(`Retiro confirmado para el ${fmtD(fechaRetiro)} a las ${horaRetiro}.`+(diasAFacturar>0?` Se facturaron ${diasAFacturar} día(s) — ${detalleExtra} (${fmt(montoExtra)})${diasAFacturar!==diasExtra?` (de ${diasExtra} día(s) reales de diferencia)`:''}.`:(menosCargaDeLoFacturado?` ⚠️ Retira con ${Math.abs(diasExtra)} día(s) menos que los ya facturados — no se descontó nada, queda anotado en el historial del alquiler por si el cliente reclama.`:(diasExtra>0?` Hubo ${diasExtra} día(s) de diferencia por fecha, pero no se facturó nada extra.`:'')))+`\n\nEl equipo sigue figurando como ocupado hasta que taller marque "Equipo retirado".`);
 }
@@ -12466,7 +12466,7 @@ function avisarTallerRetiro(id){
   a.retiroFisicoHora=null;
   a.retiroFisicoPor=null;
   marcarAccionUndo(`Avisar a taller retiro de "${a.equipoNombre}" — cliente ${a.cliente}`, 'alquileres');
-  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal();
+  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
   alert('Avisado. Va a aparecer en "Para retirar" en el Dashboard hasta que taller lo marque como retirado.');
 }
 
@@ -12482,7 +12482,7 @@ async function marcarEquipoRetiradoFisico(id){
   if(ROL_ACTUAL==='taller') a.retiroFisicoPor=TALLER_RESPONSABLE;
   marcarAccionUndo(`Marcar "${a.equipoNombre}" como retirado (vuelto al depósito) — cliente ${a.cliente}`, 'home');
   // Mismo criterio que la salida: ya se confirmó arriba, el cartel sobra.
-  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal();
+  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
 }
 
 // Taller confirma que el equipo efectivamente salió del depósito (se subió al camión).
@@ -12561,7 +12561,7 @@ function toggleAbierto(id){
     a.pickupPendiente=false;
     a.pickupPendienteDesde=null;
   }
-  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderCal();
+  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderCal(); renderFacturacion();
 }
 
 // Extiende el período del alquiler sin modificar el precio ya cotizado — para cuando
@@ -12599,7 +12599,7 @@ async function compensarDiaAlq(id){
     const dejarAbierto=await confirmSiNo('¿El alquiler queda abierto (sin fecha de retiro definida) por si el cliente pide más días antes de retirarlo?', {si:'Dejar abierto', no:'Fecha fija el '+fmtD(a.fechaRetiro)});
     if(dejarAbierto){ a.abierto=true; a.fechaRetiro=null; }
   }
-  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal();
+  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
   alert(`Se extendió el alquiler ${dias} día${dias!==1?'s':''} sin cargo, ahora hasta el ${fmtD(nuevaFin)}. El importe ya facturado no cambió.`);
 }
 
@@ -12614,7 +12614,7 @@ async function pausarAlq(id){
   a.pausado=true;
   a.pausadoDesde=new Date().toISOString().slice(0,10);
   a.pausadoMotivo=motivo||'Clima';
-  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderCal();
+  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderCal(); renderFacturacion();
 }
 async function reanudarAlq(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a || !a.pausado) return;
@@ -12638,7 +12638,7 @@ async function reanudarAlq(id){
   a.pausado=false;
   delete a.pausadoDesde;
   delete a.pausadoMotivo;
-  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal();
+  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
   alert('Alquiler reanudado.');
 }
 
@@ -12920,7 +12920,7 @@ async function agregarDiasFacturablesAlq(id, periodo){
   a.diasAgregados.push({fecha:new Date().toISOString().slice(0,10), desde, hasta:nuevaFin, dias:diasChunk, tarifa, monto:montoChunk, detalle, mesFacturado, facturadoEn:Date.now(), numeroFactura});
 
   marcarAccionUndo(`Cargar factura de "${a.equipoNombre}" — ${a.cliente} (${fmtFechaCot(desde)} al ${fmtFechaCot(nuevaFin)})`, 'alquileres');
-  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderReportes();
+  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion(); renderReportes();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
   alert(`Factura ${fmtD(desde)} al ${fmtD(nuevaFin)} — ${detalle} (${fmt(montoChunk)})${numeroFactura?' · N° '+numeroFactura:''}.\n\nYa cuenta para el reporte de ${mesLabel(mesActual)}. Si en realidad corresponde a otro mes, tocá "cambiar" al lado de esta factura en el detalle del alquiler.`);
 }
