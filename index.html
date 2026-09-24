@@ -827,7 +827,10 @@ if ('serviceWorker' in navigator) {
          Impuestos y Servicios). -->
     <div id="modal-pago" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:360px;max-width:92vw;">
-        <div style="font-size:1rem;font-weight:800;margin-bottom:1rem;color:var(--txt);">Nuevo vencimiento</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:1rem">
+          <div style="font-size:1rem;font-weight:800;color:var(--txt);">Nuevo vencimiento</div>
+          <button onclick="cerrarModalPago()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
+        </div>
         <div style="margin-bottom:.7rem">
           <label class="flabel">Propiedad</label>
           <select id="pago-propiedad">
@@ -885,7 +888,10 @@ if ('serviceWorker' in navigator) {
          motivo que modal-pago. -->
     <div id="modal-confirmar-pago" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:360px;max-width:92vw;">
-        <div style="font-size:1rem;font-weight:800;margin-bottom:.2rem;color:var(--txt);">Marcar como pagado</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:.2rem">
+          <div style="font-size:1rem;font-weight:800;color:var(--txt);">Marcar como pagado</div>
+          <button onclick="cerrarModalConfirmarPago()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
+        </div>
         <div id="confirmar-pago-concepto" style="font-size:.82rem;color:var(--txt2);margin-bottom:1rem;"></div>
         <div style="margin-bottom:1rem">
           <label class="flabel">Comprobante de pago</label>
@@ -1402,7 +1408,15 @@ if ('serviceWorker' in navigator) {
       <!-- Modal edición fila -->
       <div id="modal-ctrl" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;align-items:center;justify-content:center;">
         <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:400px;max-width:92vw;max-height:90vh;overflow-y:auto;">
-          <div style="font-size:1rem;font-weight:800;margin-bottom:1rem;color:var(--txt);" id="ctrl-modal-titulo">Editar registro</div>
+          <!-- Encabezado pegajoso: la cruz queda siempre a la vista aunque el cuadro esté
+               scrolleado, así se cierra sin tener que bajar hasta el botón "Cancelar".
+               Los márgenes negativos lo estiran hasta los bordes del recuadro (que tiene
+               padding 1.5rem) para que al pegarse arriba no se vea el contenido pasando
+               por detrás. -->
+          <div style="position:sticky;top:0;z-index:2;background:var(--bg2);margin:-1.5rem -1.5rem 1rem;padding:1.4rem 1.5rem .7rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="font-size:1rem;font-weight:800;color:var(--txt);" id="ctrl-modal-titulo">Editar registro</div>
+            <button onclick="cerrarCtrl()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
+          </div>
           <div id="ctrl-alq-resumen" style="display:none;margin-bottom:1rem;border:1px solid var(--border);border-radius:10px;padding:.7rem .9rem;background:var(--bg3)"></div>
           <div style="margin-bottom:.7rem">
             <label class="flabel">Cliente</label>
@@ -1540,7 +1554,10 @@ if ('serviceWorker' in navigator) {
     <!-- Modal: cargar factura de proveedor (Walter) -->
     <div id="modal-factura-prov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:360px;max-width:92vw;">
-        <div style="font-size:1rem;font-weight:800;margin-bottom:1rem;color:var(--txt);">Nueva factura de proveedor</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:1rem">
+          <div style="font-size:1rem;font-weight:800;color:var(--txt);">Nueva factura de proveedor</div>
+          <button onclick="cerrarModalFacturaProv()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
+        </div>
         <div style="margin-bottom:.7rem">
           <label class="flabel">Proveedor</label>
           <input type="text" id="pp-proveedor" placeholder="Ej: Repuestos Rafaela">
@@ -1579,7 +1596,10 @@ if ('serviceWorker' in navigator) {
     <!-- Modal: generar pago (Paloma) -->
     <div id="modal-generar-pago-prov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:360px;max-width:92vw;">
-        <div style="font-size:1rem;font-weight:800;margin-bottom:.3rem;color:var(--txt);">Generar pago</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:.3rem">
+          <div style="font-size:1rem;font-weight:800;color:var(--txt);">Generar pago</div>
+          <button onclick="cerrarModalGenerarPagoProv()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
+        </div>
         <div id="pp-pago-resumen" style="font-size:.82rem;color:var(--txt2);margin-bottom:1rem;"></div>
         <div style="margin-bottom:1rem">
           <label class="flabel">Comprobante de pago</label>
@@ -1639,7 +1659,10 @@ if ('serviceWorker' in navigator) {
     <!-- MODAL: cerrar registro (registrar entrada) -->
     <div id="modal-riv-cerrar" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:360px;max-width:92vw;">
-        <div style="font-size:1rem;font-weight:800;margin-bottom:.3rem;color:var(--txt)">Vuelve el equipo</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:.3rem">
+          <div style="font-size:1rem;font-weight:800;color:var(--txt)">Vuelve el equipo</div>
+          <button onclick="cerrarModalRivCerrar()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
+        </div>
         <div id="riv-cerrar-info" style="font-size:.8rem;color:var(--txt2);margin-bottom:.9rem"></div>
         <label class="flabel">Hora de entrada</label>
         <input type="time" id="riv-cerrar-hentrada" style="margin-bottom:.5rem">
@@ -1658,7 +1681,13 @@ if ('serviceWorker' in navigator) {
   <!-- MODAL NUEVO/EDITAR ALQUILER (global, accesible desde cualquier pantalla) -->
       <div id="modal-alq" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
         <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:420px;max-width:92vw;max-height:90vh;overflow-y:auto;">
-          <div id="alq-modal-titulo" style="font-size:1rem;font-weight:800;margin-bottom:1rem;color:var(--txt);">Nuevo alquiler</div>
+          <!-- Encabezado pegajoso con la cruz siempre visible (ver nota en modal-ctrl):
+               este cuadro es el más largo de la app y cerrarlo obligaba a scrollear hasta
+               el fondo. -->
+          <div style="position:sticky;top:0;z-index:2;background:var(--bg2);margin:-1.5rem -1.5rem 1rem;padding:1.4rem 1.5rem .7rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div id="alq-modal-titulo" style="font-size:1rem;font-weight:800;color:var(--txt);">Nuevo alquiler</div>
+            <button onclick="cerrarModalAlq()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
+          </div>
 
           <!-- CLIENTE -->
           <div style="margin-bottom:.7rem">
@@ -2104,6 +2133,19 @@ if ('serviceWorker' in navigator) {
       </div>
       <div id="perfact-resumen" style="font-size:.85rem;font-weight:700;color:var(--verde);margin-bottom:.5rem"></div>
       <div id="perfact-aviso" style="display:none;font-size:.79rem;border-radius:8px;padding:8px 11px;margin-bottom:.7rem;line-height:1.5"></div>
+      <!-- Monto a mano. Hay clientes a los que el período facturado y los días que se les
+           cobran no coinciden: a THERMOFIN se le factura la semana pero se le cobran 6 días.
+           Con la tarifa diaria eso no se puede expresar (siempre da tarifa × días del
+           período). Si se completa acá, este importe manda y la app no pregunta nada más
+           sobre el precio; si se deja vacío, sigue el camino de siempre (paquete semanal o
+           tarifa diaria). -->
+      <div style="margin-bottom:.8rem">
+        <label class="flabel">Monto a facturar — opcional</label>
+        <input type="number" id="perfact-monto" placeholder="Dejalo vacío para calcularlo por tarifa" oninput="recalcPeriodoFactura()">
+        <div id="perfact-monto-ayuda" style="font-size:.74rem;color:var(--txt3);margin-top:3px;line-height:1.45">
+          Usalo cuando al cliente se le cobran menos (o más) días de los que dura el período.
+        </div>
+      </div>
       <button id="perfact-btn" onclick="continuarFacturaParcial()" class="btn-nuevo" style="width:100%;padding:.75rem">Continuar</button>
     </div>
   </div>
@@ -10856,9 +10898,14 @@ function resumenAlquilerHTML(a){
 
   return `
     <div style="margin-bottom:.7rem">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">
-        <div style="font-size:1.05rem;font-weight:800;color:var(--txt);line-height:1.25">${a.equipoNombre}${duracionTxt?`<span style="font-weight:600;color:var(--txt2);font-size:.85rem"> · ${duracionTxt}</span>`:''}</div>
-        <span style="flex-shrink:0;font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${estadoColor};background:${estadoColor}18;padding:3px 9px;border-radius:10px;text-align:center">${estadoLbl}</span>
+      ${/* La etiqueta de estado iba con flex-shrink:0 al lado del nombre. Con una etiqueta
+            larga ("ABIERTO — SIN RETORNO DEFINIDO") se quedaba con casi todo el ancho y al
+            nombre del equipo lo dejaba en una columna de una palabra por renglón, saliéndose
+            del recuadro. Ahora la fila envuelve: si las dos cosas no entran juntas, la
+            etiqueta baja de renglón entera en vez de aplastar el título. */''}
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+        <div style="flex:1 1 auto;min-width:145px;font-size:1.05rem;font-weight:800;color:var(--txt);line-height:1.25">${a.equipoNombre}${duracionTxt?`<span style="font-weight:600;color:var(--txt2);font-size:.85rem"> · ${duracionTxt}</span>`:''}</div>
+        <span style="flex:0 0 auto;white-space:nowrap;font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${estadoColor};background:${estadoColor}18;padding:3px 9px;border-radius:10px;text-align:center">${estadoLbl}</span>
       </div>
       <div style="font-size:.9rem;font-weight:700;color:var(--txt);margin-top:.35rem">${a.cliente}</div>
       ${clLinea?`<div style="font-size:.78rem;color:var(--txt2);margin-top:2px;line-height:1.45">${clLinea}</div>`:''}
@@ -12637,6 +12684,9 @@ function abrirPeriodoFactura(id){
   const hoy=new Date().toISOString().slice(0,10);
   document.getElementById('perfact-desde').value = sugDesde;
   document.getElementById('perfact-hasta').value = hoy>sugDesde ? hoy : sugDesde;
+  // El monto a mano arranca vacío en cada apertura: es la excepción, no lo normal, y
+  // dejarlo pegado del alquiler anterior sería la peor forma de equivocarse acá.
+  document.getElementById('perfact-monto').value = '';
   recalcPeriodoFactura();
   document.getElementById('modal-periodo-factura').style.display='flex';
 }
@@ -12663,6 +12713,27 @@ function recalcPeriodoFactura(){
   // Días de calendario, ambos inclusive: es como se leen los períodos de una factura.
   const dias=Math.round((new Date(hasta+'T00:00:00')-new Date(desde+'T00:00:00'))/86400000)+1;
   resumen.textContent=`${dias} día${dias!==1?'s':''} · del ${fmtD(desde)} al ${fmtD(hasta)}`;
+
+  // Si se cargó un monto a mano, debajo se muestra a cuántos días equivale a la tarifa
+  // pactada. Sirve para verificar de un vistazo que el número tipeado es el que se quería
+  // (ej: THERMOFIN, período de 7 días pero el importe equivale a 6).
+  const montoManualEl = document.getElementById('perfact-monto');
+  const ayudaEl = document.getElementById('perfact-monto-ayuda');
+  if(montoManualEl && ayudaEl){
+    const montoManual = parseFloat(montoManualEl.value);
+    if(montoManual > 0){
+      let tarifaDia = a.tarifaDiaUsada!=null ? a.tarifaDiaUsada : 0;
+      if(!tarifaDia){ const eqRef=EQUIPOS.find(e=>e.id===a.equipoId); const pRef=eqRef?precioTipo(eqRef.tipo):null; tarifaDia = pRef?(pRef.dia||0):0; }
+      const eqDias = tarifaDia>0 ? Math.round((montoManual/tarifaDia)*100)/100 : null;
+      ayudaEl.innerHTML = eqDias!=null
+        ? `Se factura <b style="color:var(--txt)">${fmt(montoManual)}</b> por el período de ${dias} día${dias!==1?'s':''} — equivale a <b style="color:var(--txt)">${eqDias} día${eqDias!==1?'s':''}</b> a ${fmt(tarifaDia)}/día.`
+        : `Se factura <b style="color:var(--txt)">${fmt(montoManual)}</b> por el período de ${dias} día${dias!==1?'s':''}.`;
+      ayudaEl.style.color='var(--txt2)';
+    } else {
+      ayudaEl.textContent='Usalo cuando al cliente se le cobran menos (o más) días de los que dura el período.';
+      ayudaEl.style.color='var(--txt3)';
+    }
+  }
 
   const avisos=[];
   // ¿Se pisa con un tramo ya cargado?
@@ -12701,8 +12772,10 @@ function continuarFacturaParcial(){
   const desde=document.getElementById('perfact-desde').value;
   const hasta=document.getElementById('perfact-hasta').value;
   if(!desde || !hasta || hasta<desde) return;
+  // Si se cargó un monto a mano, viaja con el período y saltea todo el cálculo por tarifa.
+  const montoManual = parseFloat(document.getElementById('perfact-monto').value);
   document.getElementById('modal-periodo-factura').style.display='none';
-  agregarDiasFacturablesAlq(periodoFacturaAlqId, {desde, hasta});
+  agregarDiasFacturablesAlq(periodoFacturaAlqId, {desde, hasta, montoManual: (montoManual>0 ? montoManual : null)});
 }
 
 // `periodo` viene del modal de arriba: {desde, hasta} tal como está en la factura.
@@ -12734,9 +12807,24 @@ async function agregarDiasFacturablesAlq(id, periodo){
   const tieneSnapshot = a.tarifaDiaUsada!=null;
   const p = tieneSnapshot ? {dia:a.tarifaDiaUsada, sem:a.tarifaSemUsada, mes:a.tarifaMesUsada} : (eq ? precioTipo(eq.tipo) : null);
   const origenTarifa = tieneSnapshot ? 'tarifa ya pactada en este alquiler' : (eq?`tarifa ACTUAL de la lista de precios de ${eq.nombre} — este alquiler no tiene guardada la tarifa con la que se cotizó`:'');
-  const comoPaquete = await confirmSiNo(`Vas a facturar ${dias} día${dias!==1?'s':''}${esPrimeraFactura?' (total)':' más'}.`, {si:'Paquete semanal', no:'Días sueltos (tarifa diaria)'});
 
   let tarifa=0, montoFactura=0, detalle='';
+  // Monto cargado a mano en el modal: manda tal cual y no se pregunta nada más sobre el
+  // precio. Es el caso de THERMOFIN — se factura la semana pero se le cobran 6 días, algo
+  // que con "tarifa × días del período" no se puede escribir.
+  // En el detalle dejamos anotada la equivalencia en días (monto ÷ tarifa diaria pactada)
+  // para que dentro de seis meses se entienda por qué esa factura no da la cuenta redonda.
+  if(periodo.montoManual > 0){
+    montoFactura = periodo.montoManual;
+    tarifa = null;
+    const tarifaDiaRef = p && p.dia ? p.dia : 0;
+    const equivalen = tarifaDiaRef>0 ? Math.round((montoFactura/tarifaDiaRef)*100)/100 : null;
+    detalle = (equivalen!=null && equivalen!==dias)
+      ? `Monto acordado — período de ${dias} día${dias!==1?'s':''}, se cobran ${equivalen}`
+      : 'Monto acordado';
+  }
+  else {
+  const comoPaquete = await confirmSiNo(`Vas a facturar ${dias} día${dias!==1?'s':''}${esPrimeraFactura?' (total)':' más'}.`, {si:'Paquete semanal', no:'Días sueltos (tarifa diaria)'});
   if(comoPaquete && p && p.sem){
     // Misma regla de redondeo que el cotizador/calcPrecioAlq: 5+ días se arma en
     // semanas (resto de 5 o 6 días redondea a una semana más), y 4+ semanas se
@@ -12768,6 +12856,7 @@ async function agregarDiasFacturablesAlq(id, periodo){
     tarifa=parseFloat(tarifaStr)||0;
     montoFactura=tarifa*dias;
     detalle='Días sueltos';
+  }
   }
 
   // Guardamos una "foto" de lo que había hasta ahora — la usan otras funciones
@@ -13081,14 +13170,29 @@ function renderCtrl(){
   tbody.innerHTML = equiposOrdenados().map(eq => {
     const d = CTRL_DATA[eq.id] || {};
     const r = estadoRealEq(eq);
-    let clienteAuto='', salidaAuto='', retornoAuto='';
-    if(r.estado==='alquilado' && r.alquiler){ clienteAuto=r.alquiler.cliente; salidaAuto=r.alquiler.inicio; retornoAuto=r.alquiler.fin; }
+    let clienteAuto='', salidaAuto='', retornoAuto='', esAbierto=false;
+    if(r.estado==='alquilado' && r.alquiler){
+      clienteAuto=r.alquiler.cliente;
+      salidaAuto=r.alquiler.inicio;
+      // En un alquiler ABIERTO la fecha de retorno guardada NO es una fecha real: es la que
+      // hubo que poner para poder cargar el alquiler, y después se va corriendo sola con
+      // cada factura. Mostrarla acá hacía creer que la máquina vuelve ese día, cuando
+      // justamente lo que significa "abierto" es que no se sabe cuándo vuelve.
+      if(r.alquiler.abierto && !r.alquiler.retiradoAnticipado) esAbierto=true;
+      else retornoAuto=r.alquiler.fin;
+    }
     const cliente = d.cliente || clienteAuto;
     const salida = d.salida || salidaAuto;
     const turnoS = d.turnoSalida || '';
-    const retorno = d.retorno || retornoAuto;
     const turnoR = d.turnoRetorno || '';
     const obs = d.obs || '';
+    // Si en esta planilla se cargó un retorno a mano, ese manda: es el dato que puso
+    // alguien mirando la máquina, y le gana a cualquier cosa que calcule la app.
+    const retornoTxt = d.retorno
+      ? fmtD(d.retorno)+(turnoR?' '+turnoR:'')
+      : (esAbierto
+          ? '<span style="color:#2e9e52;font-weight:700">Abierto</span>'
+          : (retornoAuto ? fmtD(retornoAuto)+(turnoR?' '+turnoR:'') : '—'));
     // A 9 px el azul y el verde se confundían, que es justo lo contrario de lo que esta
     // tabla tiene que servir. Agrandarlos no alcanza: los dos son colores fríos con
     // brillo parecido. Así que además del color cambia la FORMA — la máquina que está
@@ -13114,7 +13218,7 @@ function renderCtrl(){
       </td>
       <td style="padding:9px 12px;font-size:.82rem;color:${cliente?'var(--txt)':'var(--txt3)'};">${cliente||'—'}</td>
       <td style="padding:9px 12px;text-align:center;font-size:.78rem;color:var(--txt2);">${salida?fmtD(salida)+(turnoS?' '+turnoS:''):'—'}</td>
-      <td style="padding:9px 12px;text-align:center;font-size:.78rem;color:var(--txt2);">${retorno?fmtD(retorno)+(turnoR?' '+turnoR:''):'—'}</td>
+      <td style="padding:9px 12px;text-align:center;font-size:.78rem;color:var(--txt2);">${retornoTxt}</td>
       <td style="padding:9px 12px;font-size:.78rem;color:var(--txt3);">${obs||''}</td>
       <td style="padding:9px 12px;text-align:center"><button onclick="event.stopPropagation();editarCtrl(${eq.id})" style="background:none;border:none;color:var(--verde);cursor:pointer;font-size:.85rem"></button></td>
     </tr>`;
@@ -13138,7 +13242,11 @@ function editarCtrl(eqId){
   document.getElementById('ctrl-cliente').value = d.cliente || (alqActivo?alqActivo.cliente:'');
   document.getElementById('ctrl-salida').value = d.salida || (alqActivo?alqActivo.inicio:'');
   document.getElementById('ctrl-turno-salida').value = d.turnoSalida || '';
-  document.getElementById('ctrl-retorno').value = d.retorno || (alqActivo?alqActivo.fin:'');
+  // Mismo criterio que la tabla: si el alquiler es abierto no hay fecha de retorno que
+  // precargar (la que tiene guardada es de relleno). Queda vacío, y si alguien sabe cuándo
+  // vuelve la puede escribir a mano acá.
+  const alqAbierto = alqActivo && alqActivo.abierto && !alqActivo.retiradoAnticipado;
+  document.getElementById('ctrl-retorno').value = d.retorno || ((alqActivo && !alqAbierto) ? alqActivo.fin : '');
   document.getElementById('ctrl-turno-retorno').value = d.turnoRetorno || '';
   document.getElementById('ctrl-obs').value = d.obs || '';
   document.getElementById('ctrl-modal-titulo').textContent = eq ? eq.nombre : 'Editar';
