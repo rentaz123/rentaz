@@ -9270,6 +9270,52 @@ function quitarEquipoAlq(idx){
   calcTotalAlq();
 }
 
+// Hasta qué fecha, INCLUSIVE, este alquiler mantiene el equipo ocupado.
+//
+// El equipo bloquea disponibilidad hasta la fecha en que REALMENTE queda libre:
+// - si el retiro (normal o anticipado) ya quedó marcado pero taller todavía no lo
+//   confirmó físicamente (pickupPendiente), bloqueamos hasta la fecha en que se
+//   supone que se retira (pickupPendienteDesde, o fechaRetiro/fin si por algún motivo
+//   no está cargada) — NO indefinidamente: bloquear para siempre le impedía a Mateo
+//   agendar el equipo para fechas futuras sin conflicto real, solo porque taller
+//   todavía no tildó "retirado" en el sistema (ver charla del 28/08/26 — Brazo
+//   Snorkel #2). Esto prima sobre retiradoAnticipado porque pickupPendienteDesde ya
+//   es la fecha real reportada;
+// - si hubo retiro anticipado ya confirmado por taller, libre desde esa fecha real
+//   (aunque el contrato facturado siga vigente en el papel hasta a.fin);
+// - si es abierto, hasta a.fin (que ahí no es una fecha de retiro sino hasta dónde está
+//   facturado: no se le puede aplicar la regla del mediodía);
+// - si no, cierre normal por fecha pactada, con la regla del mediodía.
+//
+// Está separado de alquilerSuperpuesto para que el aviso de "queda libre desde el ..." use
+// exactamente la misma cuenta que el chequeo que bloquea — antes estaba duplicada a mano y
+// las dos podían no coincidir.
+function finBloqueoAlq(a){
+  if(!a) return null;
+  if(a.pickupPendiente) return a.pickupPendienteDesde || a.fechaRetiro || a.fin;
+  const menosUnDia = f => { const d=new Date(f+'T00:00:00'); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); };
+  if(a.retiradoAnticipado){
+    // Regla del mediodía (ver diasAlquilerPorFecha / finFacturableAlq): si el retiro real
+    // fue antes de las 12:00, ese día queda libre para arrancar OTRO alquiler ese mismo día
+    // (el camión vuelve a la mañana, sale de nuevo a la tarde). Después del mediodía, el
+    // día sigue bloqueado completo.
+    const horaRetiroReal = a.retiroFisicoHora || a.horaRetiro || '00:00';
+    return horaRetiroReal > '12:00' ? a.retiradoAnticipado : menosUnDia(a.retiradoAnticipado);
+  }
+  if(a.abierto) return a.fin;
+  // Cierre normal por fecha pactada: va la MISMA regla del mediodía que ya se usa para
+  // facturar y para el retiro anticipado. Sin esto la app se contradecía sola — al alquiler
+  // del Brazo Snorkel #2 a MOLFINO del 23 al 24/09 con retiro 08:00 le facturaba sólo hasta
+  // el 23 ("el día del retiro no se cobra") pero le bloqueaba el equipo hasta el 24: un día
+  // que no se le cobra a nadie y en el que tampoco se deja alquilar.
+  // El equipo vuelve en a.fechaRetiro si está cargada y es posterior a a.fin (el cliente lo
+  // tiene unos días más allá del período facturado); si no, en a.fin.
+  const finReal = (a.fechaRetiro && a.fin && a.fechaRetiro > a.fin) ? a.fechaRetiro : a.fin;
+  if(!finReal) return finReal;
+  // Un alquiler de un solo día ocupa ese día completo, sin importar la hora.
+  if(finReal === a.inicio) return finReal;
+  return (a.horaRetiro||'00:00') > '12:00' ? finReal : menosUnDia(finReal);
+}
 // Devuelve el alquiler existente que se superpone con el rango dado para ese equipo, o null si está libre
 function alquilerSuperpuesto(eqId, desde, hasta, excludeAlqId){
   const excl = Array.isArray(excludeAlqId) ? excludeAlqId : (excludeAlqId!=null ? [excludeAlqId] : []);
@@ -9277,38 +9323,7 @@ function alquilerSuperpuesto(eqId, desde, hasta, excludeAlqId){
     if(a.equipoId!==eqId || a.activo===false || excl.includes(a.id)) return false;
     if(a.modoHoras) return false; // los alquileres por hora (uso corto) no ocupan el equipo, no bloquean otras reservas
     if(a.pausado) return false; // pausado (ver pausarAlq): no se está usando, no bloquea otras reservas
-    // El equipo bloquea disponibilidad hasta la fecha en que REALMENTE queda libre:
-    // - si el retiro (normal o anticipado) ya quedó marcado pero taller todavía no lo
-    //   confirmó físicamente (pickupPendiente), bloqueamos hasta la fecha en que se
-    //   supone que se retira (pickupPendienteDesde, o fechaRetiro/fin si por algún motivo
-    //   no está cargada) — NO indefinidamente: bloquear para siempre le impedía a Mateo
-    //   agendar el equipo para fechas futuras sin conflicto real, solo porque taller
-    //   todavía no tildó "retirado" en el sistema (ver charla del 28/08/26 — Brazo
-    //   Snorkel #2). Esto prima sobre retiradoAnticipado porque pickupPendienteDesde ya
-    //   es la fecha real reportada (si vino de un retiro anticipado sin confirmar, es la
-    //   misma fecha que quedó en retiradoAnticipado; si vino del vencimiento normal, es
-    //   fechaRetiro/fin);
-    // - si hubo retiro anticipado ya confirmado por taller, libre desde esa fecha real
-    //   (aunque el contrato facturado siga vigente en el papel hasta a.fin);
-    // - si no, ocupado hasta a.fin (fecha contratada).
-    let finBloqueo;
-    if(a.pickupPendiente) finBloqueo = a.pickupPendienteDesde || a.fechaRetiro || a.fin;
-    else if(a.retiradoAnticipado){
-      // Misma regla del mediodía que ya usamos para facturar (ver diasAlquilerPorFecha /
-      // finFacturableAlq): si el retiro real fue antes de las 12:00, ese día queda libre
-      // para arrancar OTRO alquiler ese mismo día (el camión vuelve a la mañana, sale de
-      // nuevo a la tarde). Si el retiro fue después del mediodía, el día sigue bloqueado
-      // completo, igual que antes.
-      const horaRetiroReal = a.retiroFisicoHora || a.horaRetiro || '00:00';
-      const cuentaUltimoDia = horaRetiroReal > '12:00';
-      if(cuentaUltimoDia){
-        finBloqueo = a.retiradoAnticipado;
-      } else {
-        const d=new Date(a.retiradoAnticipado+'T00:00:00'); d.setDate(d.getDate()-1);
-        finBloqueo = d.toISOString().slice(0,10);
-      }
-    }
-    else finBloqueo = a.fin;
+    const finBloqueo = finBloqueoAlq(a);
     return !(hasta < a.inicio || desde > finBloqueo);
   }) || null;
 }
@@ -9439,16 +9454,24 @@ function actualizarDisponibilidadAlq(excludeAlqId){
         : (()=>{
             // Si el alquiler que la ocupa ya tiene fecha de retorno, decir desde cuándo
             // queda libre: la reserva para más adelante es válida y se puede cargar ahora.
-            let desdeCuandoLibre='';
+            // Sale de finBloqueoAlq, la MISMA cuenta que usa el chequeo que bloquea — antes
+            // era "fin + 1 día" calculado acá aparte, y con la regla del mediodía dejó de
+            // coincidir: el cartel mandaba a cargar un día más tarde de lo necesario.
+            let desdeCuandoLibre='', notaMediodia='';
             if(!conflicto.abierto && conflicto.fin){
-              const d=new Date(conflicto.fin+'T00:00:00'); d.setDate(d.getDate()+1);
+              const fb = finBloqueoAlq(conflicto);
+              const d=new Date(fb+'T00:00:00'); d.setDate(d.getDate()+1);
               desdeCuandoLibre=fmtD(d.toISOString().slice(0,10));
+              // Si queda libre ANTES del último día del contrato es por la regla del
+              // mediodía. Sin explicarlo se lee como un error ("dice que está hasta el 24
+              // pero que lo puedo cargar el 24").
+              if(fb < conflicto.fin) notaMediodia = ` — se retira a las ${conflicto.horaRetiro||'08:00'}, antes del mediodía, así que ese día el equipo ya vuelve a estar disponible`;
             }
             const libres=equiposLibresEquivalentes(row.eqId, desde, hasta, excl);
             return `⚠ <b>${nombreElegido}</b> ya está alquilado a <b>${conflicto.cliente}</b>
               del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}.<br>
               <span style="font-weight:400">${desdeCuandoLibre
-                ? `Queda libre <b>desde el ${desdeCuandoLibre}</b> — si lo cargás desde esa fecha en adelante, entra sin problema.`
+                ? `Queda libre <b>desde el ${desdeCuandoLibre}</b>${notaMediodia} — si lo cargás desde esa fecha en adelante, entra sin problema.`
                 : 'Es un alquiler abierto, todavía sin fecha de retorno, así que no se puede reservar para después.'}</span>
               ${libres.length
                 ? `<div style="margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.35);font-weight:400">
@@ -11588,9 +11611,16 @@ function renderFacturacion(){
     h += pendientes.map(a=>{
       const mesSug=mesSugeridoFacturacion(a);
       const finFact=finFacturableAlq(a);
-      const periodoTxt = (!a.abierto && !a.retiradoAnticipado && !a.modoHoras && a.fin && finFact!==a.fin)
-        ? `${fmtD(a.inicio)} al ${fmtD(a.fin)} (retiro) · A facturar: ${fmtD(a.inicio)} al ${fmtD(finFact)}`
-        : `${fmtD(a.inicio)} al ${fmtD(a.fin)}`;
+      // Un abierto no tiene un "período a facturar" cerrado: es una cuenta corriente que
+      // sigue corriendo. Mostrarlo como "01/09 al 03/09" hacía creer que con marcarlo
+      // facturado quedaba saldado, cuando en realidad la máquina sigue sumando días.
+      const sinFactDias = a.abierto ? diasSinFacturarAlq(a) : 0;
+      const periodoTxt = a.abierto
+        ? `Abierto desde ${fmtD(a.inicio)} · facturado hasta el ${fmtD(a.fin)}`
+          + (sinFactDias ? ` · <b style="color:#b3791f">${sinFactDias} día${sinFactDias!==1?'s':''} sin facturar</b>` : ' · al día')
+        : ((!a.retiradoAnticipado && !a.modoHoras && a.fin && finFact!==a.fin)
+          ? `${fmtD(a.inicio)} al ${fmtD(a.fin)} (retiro) · A facturar: ${fmtD(a.inicio)} al ${fmtD(finFact)}`
+          : `${fmtD(a.inicio)} al ${fmtD(a.fin)}`);
       return `<div class="pago-item" style="border-color:var(--border2);margin-bottom:.5rem">
         <div class="pago-info">
           <div class="pago-concepto" style="font-size:1rem">${a.equipoNombre} · ${a.cliente}</div>
@@ -11598,7 +11628,9 @@ function renderFacturacion(){
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
           <button onclick="verDetalleAlq(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem">Ver</button>
-          <button onclick="facturarAlquilerAuto(${a.id})" class="btn-nuevo" style="padding:6px 10px;font-size:.75rem">Facturado</button>
+          ${a.abierto
+            ? `<button onclick="agregarDiasFacturablesAlq(${a.id})" class="btn-nuevo" style="padding:6px 10px;font-size:.75rem">Cargar factura</button>`
+            : `<button onclick="facturarAlquilerAuto(${a.id})" class="btn-nuevo" style="padding:6px 10px;font-size:.75rem">Facturado</button>`}
         </div>
       </div>`;
     }).join('');
