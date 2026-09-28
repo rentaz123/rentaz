@@ -7235,6 +7235,56 @@ function confirmSiNo(mensaje, opts){
   });
 }
 
+// ── FECHAS REALES DE SALIDA Y DE VUELTA ────────────────────────────────────
+// Marcar la salida o la vuelta estampaba SIEMPRE el día de hoy, sin preguntar. En la
+// práctica nadie marca en el momento: se marca al otro día, o el lunes lo del viernes.
+// Sobre 81 alquileres, 40 quedaron con la vuelta fechada después de la real (hasta 11 días
+// tarde). Donde eso cruza de mes, el viaje de vuelta del fletero se cuenta en el mes
+// equivocado, porque fleteEventos() fecha ese tramo con retiroFisicoFecha.
+// Ahora se pregunta. El caso normal (fue hoy) sigue siendo un solo clic.
+
+// Acepta "25/9", "25/09", "25/9/26" y "25/09/2026". Sin año escrito usa el año actual, y si
+// eso cayera en el futuro usa el anterior (siempre estamos cargando algo que YA pasó).
+// Devuelve 'aaaa-mm-dd', o null si no se entiende o el día no existe en ese mes.
+function parseFechaCorta(txt, hoyStr){
+  hoyStr = hoyStr || hoyISO();
+  const m = String(txt||'').trim().match(/^(\d{1,2})\s*[\/\-\.]\s*(\d{1,2})(?:\s*[\/\-\.]\s*(\d{2,4}))?$/);
+  if(!m) return null;
+  const dia = parseInt(m[1],10), mes = parseInt(m[2],10);
+  if(dia<1 || dia>31 || mes<1 || mes>12) return null;
+  const iso = anio => `${anio}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+  // Descarta días que no existen (31/4, 29/2 en año no bisiesto): si el Date se corrió, no era válido.
+  const existe = anio => { const d=new Date(iso(anio)+'T00:00:00'); return d.getFullYear()===anio && d.getMonth()===mes-1 && d.getDate()===dia; };
+  if(m[3]){
+    let anio = parseInt(m[3],10);
+    if(anio < 100) anio += 2000;
+    return existe(anio) ? iso(anio) : null;
+  }
+  const anioHoy = parseInt(hoyStr.slice(0,4),10);
+  if(existe(anioHoy) && iso(anioHoy) <= hoyStr) return iso(anioHoy);
+  if(existe(anioHoy-1)) return iso(anioHoy-1);
+  return existe(anioHoy) ? iso(anioHoy) : null;
+}
+
+// Pregunta "¿fue hoy?" y, si no, pide el día. Devuelve 'aaaa-mm-dd' o null si se cancela
+// (en ese caso el que llama NO tiene que tocar nada).
+async function pedirFechaReal(pregunta, opts){
+  opts = opts || {};
+  const hoy = hoyISO();
+  const fmtC = f => { const [y,mm,d]=f.split('-'); return `${d}/${mm}/${y.slice(2)}`; };
+  if(await confirmSiNo(`${pregunta}\n\n¿Fue hoy, ${fmtC(hoy)}?`, {si:'Sí, fue hoy', no:'No, fue otro día'})) return hoy;
+  for(let intento=0; intento<5; intento++){
+    const txt = prompt(`${pregunta}\n\n¿Qué día fue? Escribilo como día/mes — por ejemplo 25/9`, '');
+    if(txt===null || !txt.trim()) return null;
+    const f = parseFechaCorta(txt, hoy);
+    if(!f){ alert('No entendí esa fecha.\n\nEscribila como día/mes, por ejemplo: 25/9'); continue; }
+    if(f > hoy){ alert(`El ${fmtC(f)} todavía no llegó.\n\nPoné una fecha de hoy o anterior.`); continue; }
+    if(opts.minFecha && f < opts.minFecha){ alert(`No puede ser antes del ${fmtC(opts.minFecha)} (${opts.minLabel||'el inicio del alquiler'}).`); continue; }
+    return f;
+  }
+  return null;
+}
+
 // localStorage es solo una CACHÉ local: desde la migración, la fuente de verdad es
 // Supabase (ver sincronizarFirebase / guardarCambiosEnSupabase).
 //
@@ -10933,6 +10983,14 @@ function resumenAlquilerHTML(a){
     else { estadoLbl='Retirado anticipadamente'; estadoColor='var(--azul)'; }
   }
   else if(a.entregaPendiente && a.inicio<=hoy){ estadoLbl='Para entregar — pendiente que taller lo entregue'; estadoColor='var(--azul)'; }
+  // El equipo ya volvió al depósito: el alquiler terminó, no importa que la fecha de fin
+  // sea hoy o que el alquiler fuera "abierto". Mismo criterio que alqEstaActivoHoy, que es
+  // lo que usa la lista de Alquileres. Sin esta línea el modal decía "En curso" el mismo día
+  // del retiro (y "Abierto" para siempre en los abiertos) mientras la lista de atrás ya
+  // mostraba "Finalizado" — dos estados distintos para el mismo alquiler.
+  // El !pickupPendiente es a propósito: si el pendiente está activo, retiroFisicoFecha es
+  // un resto de un ciclo anterior y no hay que creerle (ver comentario en alqEstaActivoHoy).
+  else if(a.retiroFisicoFecha && !a.pickupPendiente){ estadoLbl='Finalizado'; estadoColor='var(--txt3)'; }
   // Verde para lo que está facturando; el rojo queda reservado a lo que hay que resolver.
   else if(a.abierto && a.inicio<=hoy){ estadoLbl='Abierto — sin retorno definido'; estadoColor='#2e9e52'; }
   // Mismo criterio que la etiqueta de la tarjeta: si venció y el equipo sigue en obra
@@ -12580,10 +12638,16 @@ function avisarTallerRetiro(id){
 // haya pasado, el equipo sigue marcado como ocupado.
 async function marcarEquipoRetiradoFisico(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
-  if(!(await confirmSiNo(`¿Confirmás que "${a.equipoNombre}" ya está de vuelta en el depósito?`, {si:'Sí, ya volvió', no:'Todavía no'}))) return;
+  // No puede haber vuelto antes de haber salido (ver pedirFechaReal).
+  const fecha = await pedirFechaReal(
+    `¿"${a.equipoNombre}" ya está de vuelta en el depósito?`,
+    {minFecha: a.entregaFisicaFecha || a.inicio, minLabel: 'el día que salió'});
+  if(!fecha) return;
   a.pickupPendiente=false;
-  a.retiroFisicoFecha=hoyISO();
-  a.retiroFisicoHora=new Date().toTimeString().slice(0,5);
+  a.retiroFisicoFecha=fecha;
+  // La hora del reloj solo tiene sentido si volvió hoy. Para un día pasado no la sabemos
+  // y es preferible no mostrar nada antes que inventar un horario.
+  a.retiroFisicoHora = (fecha===hoyISO()) ? new Date().toTimeString().slice(0,5) : '';
   // Igual que en la salida: siempre queda registrado quién lo marcó, no solo si fue taller.
   a.retiroFisicoPor = (ROL_ACTUAL==='taller' ? TALLER_RESPONSABLE : nombreUsuarioActual()) || 'Oficina';
   marcarAccionUndo(`Marcar "${a.equipoNombre}" como retirado (vuelto al depósito) — cliente ${a.cliente}`, 'home');
@@ -12634,20 +12698,27 @@ async function marcarEquipoEntregado(id){
       `¿Marcás la salida igual? El checklist va a quedar pendiente y se va a registrar que la salida la cargaste vos.`,
       {si:'Sí, ya salió', no:'Cancelar'});
     if(!igual) return;
-    marcarSalidaConfirmada(id, {sinChecklist:true});
+    const fechaSC = await pedirFechaReal(`¿Qué día salió "${a.equipoNombre}" del depósito?`);
+    if(!fechaSC) return;
+    marcarSalidaConfirmada(id, {sinChecklist:true, fecha:fechaSC});
     return;
   }
-  if(!(await confirmSiNo(`¿Confirmás que "${a.equipoNombre}" ya salió del depósito para "${a.cliente}"?`, {si:'Sí, ya salió', no:'Todavía no'}))) return;
-  marcarSalidaConfirmada(id);
+  const fecha = await pedirFechaReal(`¿"${a.equipoNombre}" ya salió del depósito para "${a.cliente}"?`);
+  if(!fecha) return;
+  marcarSalidaConfirmada(id, {fecha});
 }
 
 // El marcado en sí, ya confirmado. Está aparte para poder encadenarlo desde el guardado
 // del checklist de salida sin volver a preguntar lo mismo dos veces.
 function marcarSalidaConfirmada(id, opts){
+  opts = opts || {};
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
   a.entregaPendiente=false;
-  a.entregaFisicaFecha=hoyISO();
-  a.entregaFisicaHora=new Date().toTimeString().slice(0,5);
+  // opts.fecha: el día que el camión salió de verdad, si no fue hoy (ver pedirFechaReal).
+  // Sin ese dato se asume hoy, que es lo correcto cuando esto se encadena desde el guardado
+  // del checklist de salida (ahí taller está marcando en el momento).
+  a.entregaFisicaFecha = opts.fecha || hoyISO();
+  a.entregaFisicaHora = (a.entregaFisicaFecha===hoyISO()) ? new Date().toTimeString().slice(0,5) : '';
   // Antes solo se guardaba el nombre si la marcaba taller; si la cargaba oficina quedaba
   // sin autor. Ahora siempre queda registrado quién fue — es el dato que sirve cuando hay
   // que reconstruir qué pasó con una máquina.
