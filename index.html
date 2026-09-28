@@ -603,6 +603,10 @@ if ('serviceWorker' in navigator) {
           </div>
         </nav>
       </div>
+      <!-- Backup a mano. Va dentro de la caja de Mateo (que se muestra solo para él, ver
+           aplicarRestriccionesRol) porque es una acción de dueño, no de uso diario.
+           El texto del botón avisa hace cuántos días fue el último. -->
+      <button id="btn-backup" class="btn-out" onclick="descargarBackup()" style="margin-bottom:.45rem">⬇ Descargar copia de seguridad</button>
       <button class="btn-out" onclick="logout()">↩ Cerrar sesión</button>
     </div>
   </div>
@@ -2266,6 +2270,23 @@ const SB_URL = 'https://hcltenchvfkijzvkwjwv.supabase.co';
 // no abre nada — sin usuario y contraseña la base no devuelve ni una fila.
 const SB_KEY = 'sb_publishable_jCzWRuqmQWMCCeNNr2eIvg_lWpVpMjP';
 
+// ── LA FECHA DE HOY, EN HORA DE ACÁ ────────────────────────────────────────
+// toISOString() devuelve la fecha en UTC, y Argentina está en UTC-3. O sea que entre las
+// 21:00 y la medianoche, toISOString() YA DEVUELVE LA FECHA DE MAÑANA.
+//
+// Eso estaba usado en 49 lugares para preguntar "¿qué día es hoy?": la fecha real de una
+// salida o un retiro, el mes al que se imputa una factura, los contadores de días sin
+// facturar, el auto-marcado de pendientes. Todo lo que se cargara después de las 9 de la
+// noche quedaba fechado un día adelante — y encima la HORA sí se tomaba en local
+// (toTimeString), así que la fecha y la hora del mismo registro no coincidían entre sí.
+//
+// Estas dos funciones arman la fecha con getFullYear/getMonth/getDate, que son siempre
+// hora local. Es la única forma correcta de preguntar "qué día es hoy acá".
+function fechaISOLocal(d){
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function hoyISO(){ return fechaISOLocal(new Date()); }
+
 let sb = null;
 let sbSesion = null;          // la persona conectada
 let sbPerfil = null;          // su nombre y su rol
@@ -2397,6 +2418,54 @@ function estadoCompleto(){
     SOLICITUDES_ESPERA: typeof SOLICITUDES_ESPERA!=='undefined'?SOLICITUDES_ESPERA:[],
     FICHAS_TECNICAS: typeof FICHAS_TECNICAS!=='undefined'?FICHAS_TECNICAS:{}
   };
+}
+
+// ── COPIA DE SEGURIDAD A PEDIDO ────────────────────────────────────────────
+// OJO: el respaldo de todos los días NO es esto. Es un script de Google que corre solo a
+// las 23hs y deja el archivo en Drive ("Rentaz - Respaldos") — está en la carpeta
+// backup-automatico/ del proyecto, fuera de la app.
+//
+// Esto de acá es una copia A PEDIDO, para el momento justo antes de hacer algo grande
+// (el reset de octubre, una importación, una migración): bajás la foto exacta del minuto
+// anterior en vez de esperar a la noche. Por eso NO avisa en rojo cuando pasan días —
+// no tenerla al día no significa estar desprotegido.
+//
+// Baja el estado ENTERO, el mismo que usa la sincronización y el deshacer.
+function descargarBackup(){
+  try{
+    const estado = estadoCompleto();
+    const stamp = hoyISO();
+    const blob = new Blob([JSON.stringify(estado, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rentaz-backup-${stamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    // Liberamos el blob recién después: en algunos navegadores revocarlo en el mismo
+    // instante cancela la descarga antes de que arranque.
+    setTimeout(()=>URL.revokeObjectURL(url), 4000);
+    localStorage.setItem('rtz_ultimo_backup', stamp);
+    actualizarBotonBackup();
+    const cuantos = (estado.ALQUILERES||[]).length;
+    alert(`Copia guardada: rentaz-backup-${stamp}.json\n\nIncluye ${cuantos} alquileres, más clientes, equipos, contratos, pagos y precios.\n\n(El respaldo automático de las 23hs sigue corriendo igual y queda en Drive — esta es una copia extra del momento.)`);
+  }catch(e){
+    console.error('No se pudo generar el backup', e);
+    alert('No se pudo generar la copia. Probá de nuevo; si sigue fallando, avisame.');
+  }
+}
+// Muestra cuándo fue la última copia bajada a mano DESDE ESTA COMPUTADORA. Sin colores de
+// alarma: el respaldo que protege de verdad es el automático de las 23hs, y pintar esto en
+// rojo haría creer que no hay nada cuando sí lo hay.
+function actualizarBotonBackup(){
+  const btn = document.getElementById('btn-backup');
+  if(!btn) return;
+  const ultimo = localStorage.getItem('rtz_ultimo_backup');
+  btn.innerHTML = '⬇ Bajar copia ahora';
+  btn.title = ultimo
+    ? `Última copia bajada a mano desde esta compu: ${ultimo}.\nEl respaldo automático corre igual todas las noches a las 23hs y queda en Drive.`
+    : 'Baja una copia del estado completo a un archivo.\nEl respaldo automático corre igual todas las noches a las 23hs y queda en Drive.';
 }
 
 // Aplica un estado recibido de Firebase (de otro dispositivo) a las
@@ -3423,7 +3492,7 @@ function guardarSolicitudLarga(){
   if(!clienteTelefono){ alert('Ingresá el teléfono del cliente'); return; }
   if(!dias || dias<1){ alert('Ingresá cuántos días pide'); return; }
   SOLICITUDES_LARGAS.push({
-    id:Date.now(), fecha:new Date().toISOString().slice(0,10),
+    id:Date.now(), fecha:hoyISO(),
     clienteNombre, clienteTelefono, equipoNombre, dias, obs,
     reportadoPor: ROL_ACTUAL==='taller'?TALLER_RESPONSABLE:nombreUsuarioActual(),
     estado:'pendiente', creadoEn:Date.now()
@@ -3562,7 +3631,7 @@ function guardarSolicitudEspera(){
     marcarAccionUndo(`Editar solicitud en espera de "${solesperaCliente.nombre}" — ${tipos.map(t=>t.tipoNombre).join(' / ')}`, 'alquileres');
   } else {
     SOLICITUDES_ESPERA.push({
-      id:Date.now(), fecha:new Date().toISOString().slice(0,10),
+      id:Date.now(), fecha:hoyISO(),
       clienteId:solesperaCliente.id, cliente:solesperaCliente.nombre, telefono,
       tipos, tipo:tipos[0].tipo, tipoNombre:tipos[0].tipoNombre, // tipo/tipoNombre quedan como el primero elegido, por compatibilidad
       localidad, dias, fechaDeseada, obs,
@@ -3859,6 +3928,7 @@ function entrarAlApp(){
   // Con Supabase los datos ya vienen bajados desde login(), asi que las
   // migraciones pueden correr directo: no hay riesgo de pisar nada remoto.
   correrMigracionesQueGuardan();
+  actualizarBotonBackup();
   renderEq();renderCl();initCal();renderDashboard();poblarLocalidadesDatalist();poblarSelectsFlete();
   if(ROL_ACTUAL==='admin' || ROL_ACTUAL==='facturacion' || ROL_ACTUAL==='taller') pedirPermisoNotificaciones();
 }
@@ -4217,7 +4287,7 @@ function tiposDeSolicitud(s){
 function equipoLibreSinReservaFutura(eq, alquileresArr){
   alquileresArr = alquileresArr || ALQUILERES;
   if(estadoRealEq(eq, alquileresArr).estado!=='disponible') return false;
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   // Aunque esté libre HOY, si ya hay un alquiler CONFIRMADO que arranca más adelante —o que
   // arranca hoy pero todavía no se le hizo la entrega física (entregaPendiente)— no se ofrece
   // para cubrir una solicitud en espera. "entregaPendiente" es justo lo que hace que
@@ -4240,11 +4310,11 @@ const SOL_ESPERA_MESES_VIEJA = 1;
 function avisoSolicitudVieja(s){
   if(!s || s.estado!=='pendiente') return '';
   const fD=str=>{const[,m,d]=String(str).split('-');return`${d}/${m}`;};
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   if(s.fechaDeseada) return s.fechaDeseada<hoy ? `lo pedían para el ${fD(s.fechaDeseada)} — ya pasó` : '';
   if(!s.fecha) return '';
   const limite=new Date(); limite.setMonth(limite.getMonth()-SOL_ESPERA_MESES_VIEJA);
-  return s.fecha < limite.toISOString().slice(0,10) ? `anotada el ${fD(s.fecha)} — hace más de un mes` : '';
+  return s.fecha < fechaISOLocal(limite) ? `anotada el ${fD(s.fecha)} — hace más de un mes` : '';
 }
 // [{id,proveedor,concepto,monto,fecha,factura:{url,tipo,nombre},cargadoPor,creadoEn,estado:'pendiente'|'pagado'|'enviado',comprobantePago:{url,tipo,nombre},pagadoPor,pagadoEn,enviadoPor,enviadoEn}]
 let PAGOS_PROVEEDORES = JSON.parse(localStorage.getItem('rtz_pagosprov') || '[]');
@@ -4309,7 +4379,7 @@ function renderDashboard(){
   // El cartel se va solo cuando no queda ninguna; no hay que acordarse de sacarlo.
   const cajaPD=document.getElementById('dash-puesta-al-dia');
   if(cajaPD){
-    const hoyPD=new Date().toISOString().slice(0,10);
+    const hoyPD=hoyISO();
     const trabadas=alq.filter(x=>{
       const a=x.r.alquiler; if(!a || !a.inicio) return false;
       const diasCorriendo=Math.round((new Date(hoyPD)-new Date(a.inicio))/86400000);
@@ -4326,7 +4396,7 @@ function renderDashboard(){
       </div>` : '';
   }
   // Alquileres: separados en "hoy" (en curso) y "semana" (arrancan esta semana o la próxima)
-  const hoyStr2=new Date().toISOString().slice(0,10);
+  const hoyStr2=hoyISO();
   const hoyD=new Date(); hoyD.setHours(0,0,0,0);
   // Semana calendario real (lunes a domingo), no "próximos 7 días" rolling. El rango va
   // desde mañana hasta el domingo de la semana QUE VIENE — así, por ejemplo, un miércoles
@@ -4336,9 +4406,9 @@ function renderDashboard(){
   const diaSemana = hoyD.getDay(); // 0=domingo, 1=lunes, ..., 6=sábado
   const diasHastaDomingo = diaSemana===0 ? 0 : (7-diaSemana);
   const finSemanaActual = new Date(hoyD); finSemanaActual.setDate(finSemanaActual.getDate()+diasHastaDomingo);
-  const finSemanaActualStr = finSemanaActual.toISOString().slice(0,10);
+  const finSemanaActualStr = fechaISOLocal(finSemanaActual);
   const finProximaSemana = new Date(hoyD); finProximaSemana.setDate(finProximaSemana.getDate()+diasHastaDomingo+7);
-  const finSemStr=finProximaSemana.toISOString().slice(0,10);
+  const finSemStr=fechaISOLocal(finProximaSemana);
   // "Alquileres de hoy" = solo los que ARRANCAN hoy (actividad real del día para estar
   // alerta). Los que ya venían activos de días anteriores no se muestran acá: eso se ve
   // en la pantalla "Alquileres". Los alquileres por hora (uso corto) tampoco cuentan como
@@ -4413,11 +4483,19 @@ function renderDashboard(){
           <div class="pago-concepto" style="font-size:1rem">${a.equipoNombre}</div>
           <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${a.cliente} · Entrega ${fmtD2(a.inicio)} ${a.horaEntrega||''}</div>
         </div>
+        ${/* Sin checklist, taller va al checklist. Oficina (Mateo/Walter) antes veía
+              "Esperando a taller" y nada más: si taller se olvidaba o no estaba, el equipo
+              quedaba figurando en el depósito estando en la obra y nadie podía destrabarlo.
+              Ahora puede marcar la salida igual — el checklist queda pendiente y anotado
+              (ver marcarEquipoEntregado). */''}
         ${checklistSalidaListo(a.id)
           ? `<button id="btn-salida-${a.id}" onclick="event.stopPropagation();marcarEquipoEntregado(${a.id})" class="btn-nuevo" style="padding:6px 10px;font-size:.75rem">Marcar salida</button>`
           : ROL_ACTUAL==='taller'
             ? `<button onclick="event.stopPropagation();abrirContrato(${a.id});setContratoTab('salida')" class="btn-lim" style="padding:6px 10px;font-size:.75rem;border-color:var(--azul);color:var(--azul)">Checklist de salida</button>`
-            : `<span style="font-size:.72rem;color:var(--txt3);white-space:nowrap">Esperando a taller</span>`
+            : `<span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                 <span style="font-size:.7rem;color:var(--txt3);white-space:nowrap">sin checklist</span>
+                 <button id="btn-salida-${a.id}" onclick="event.stopPropagation();marcarEquipoEntregado(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem;white-space:nowrap">Marcar salida</button>
+               </span>`
         }
       </div>`).join('')
     : '';
@@ -4658,7 +4736,7 @@ function renderDashboard(){
     }).join('');
   }
   // Pagos
-  const hoyStr=new Date().toISOString().slice(0,10);
+  const hoyStr=hoyISO();
   const hoy=new Date(hoyStr);
   const catIcon={impuesto:'',seguro:'',servicio:'',otro:''};
   const catLabel={impuesto:'Impuesto',seguro:'Seguro',servicio:'Servicio',otro:'Otro'};
@@ -6981,7 +7059,7 @@ function ejecutarMigracionesFlota(){
 // desde localStorage como cada vez que llega un estado nuevo desde Firebase, porque
 // la sincronización con la nube pisa el array ALQUILERES después de la carga inicial.
 function migrarEntregaPendienteHoy(){
-  const hoyMig = new Date().toISOString().slice(0,10);
+  const hoyMig = hoyISO();
   let cambiadoAlq = false;
   (ALQUILERES||[]).forEach(a=>{
     if(a.inicio===hoyMig && a.entregaPendiente===undefined && !a.modoHoras){
@@ -7013,7 +7091,7 @@ function migrarEntregaPendienteHoy(){
 // ocupada — que es exactamente el bug que se reparó más abajo (ver repararBugPickupMasivo).
 const AUTO_PENDIENTE_DESDE = '2026-07-31';
 function autoMarcarPendientesDeRetiro(){
-  const hoyStr=new Date().toISOString().slice(0,10);
+  const hoyStr=hoyISO();
   let cambio=false;
   // Corrección de estado contradictorio: un alquiler ABIERTO (cliente sigue usando el
   // equipo, sin fecha de retiro definida) no puede al mismo tiempo estar "pendiente de
@@ -7062,9 +7140,9 @@ function autoMarcarPendientesDeRetiro(){
 // nada después, así que no interfiere con el funcionamiento normal de acá en adelante.
 function repararBugPickupMasivo(){
   if(localStorage.getItem('rtz_fix_pickup_v1')) return;
-  const hoyStr=new Date().toISOString().slice(0,10);
+  const hoyStr=hoyISO();
   const hace2dias=new Date(); hace2dias.setDate(hace2dias.getDate()-2);
-  const hace2diasStr=hace2dias.toISOString().slice(0,10);
+  const hace2diasStr=fechaISOLocal(hace2dias);
   let cambio=false;
   ALQUILERES.forEach(a=>{
     if(!a.pickupPendiente || a.retiroFisicoFecha) return;
@@ -7099,7 +7177,7 @@ function alqFinEfectivo(a){
   return a.fin;
 }
 function alqEstaActivoHoy(a, hoyStr){
-  hoyStr = hoyStr || new Date().toISOString().slice(0,10);
+  hoyStr = hoyStr || hoyISO();
   if(a.activo===false) return false;
   // Si taller ya confirmó que el equipo volvió físicamente al depósito
   // (marcarEquipoRetiradoFisico), el equipo queda disponible al instante —
@@ -7119,7 +7197,7 @@ function alqEstaActivoHoy(a, hoyStr){
 function estadoRealEq(eq, alquileresArr){
   alquileresArr = alquileresArr || ALQUILERES;
   if(eq.estado==='taller') return {estado:'taller', cliente:''};
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   // Los alquileres "por hora" (uso corto, ej: Expreso Rivadavia) no ocupan el equipo:
   // van y vuelven al toque, así que no lo marcamos como alquilado.
   // Los que tienen "entregaPendiente" tampoco: el alquiler ya está cargado pero el equipo
@@ -7157,11 +7235,37 @@ function confirmSiNo(mensaje, opts){
   });
 }
 
+// localStorage es solo una CACHÉ local: desde la migración, la fuente de verdad es
+// Supabase (ver sincronizarFirebase / guardarCambiosEnSupabase).
+//
+// Por eso la sincronización va PRIMERO y fuera del try. Antes iba última y sin protección:
+// si localStorage tiraba error —lo más común, quedarse sin espacio— la excepción cortaba la
+// función en seco y la sincronización NUNCA llegaba a ejecutarse. El cambio se veía en
+// pantalla (porque el objeto en memoria ya estaba modificado), no se guardaba en ningún
+// lado, y al recargar la app desaparecía. Sin un solo aviso.
+//
+// Y no es un riesgo teórico: el estado completo ya pesa ~2,4 MB y el límite del navegador
+// ronda los 5 MB. Cada foto de checklist y cada comprobante se guarda en base64 DENTRO del
+// mismo JSON, así que el margen se consume solo a medida que se usa la app.
+//
+// Con este orden, aunque la caché local falle, el dato igual viaja a la nube — que es lo
+// único que no se puede perder.
+let AVISO_CACHE_LLENA_DADO = false;
 function guardar(){
-  localStorage.setItem('rtz_eq',JSON.stringify(EQUIPOS));
-  localStorage.setItem('rtz_cl',JSON.stringify(CLIENTES));
-  localStorage.setItem('rtz_alq',JSON.stringify(ALQUILERES));
   sincronizarFirebase();
+  try{
+    localStorage.setItem('rtz_eq',JSON.stringify(EQUIPOS));
+    localStorage.setItem('rtz_cl',JSON.stringify(CLIENTES));
+    localStorage.setItem('rtz_alq',JSON.stringify(ALQUILERES));
+  }catch(e){
+    console.error('No se pudo guardar la copia local (localStorage)', e);
+    // Una sola vez por sesión: esto se llama en cada guardado y un cartel por acción
+    // haría la app inusable justo cuando ya está en problemas.
+    if(!AVISO_CACHE_LLENA_DADO){
+      AVISO_CACHE_LLENA_DADO = true;
+      alert('⚠️ Se llenó el espacio de este navegador.\n\nTus cambios SÍ se están guardando en la nube — no se pierde nada.\n\nPero la copia local dejó de actualizarse: si te quedás sin internet, esta compu puede mostrarte datos viejos.\n\nAvisale a Mateo para liberar espacio (suelen ser las fotos de los checklists).');
+    }
+  }
 }
 // Siempre apuntando al día 1 del mes que se está mirando.
 let calRef=new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -7421,7 +7525,7 @@ function renderPuestaAlDia(){
       </div>`).join('')}
     </div>` : '';
   const revisadas=pdRevisadas();
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   const dias=(d)=>Math.round((new Date(hoy)-new Date(d))/86400000);
   const fmtD=s=>{const[y,m,d]=String(s).split('-');return`${d}/${m}/${y.slice(2)}`;};
 
@@ -7697,7 +7801,7 @@ function renderEqFichaCheck(){
   const fmtFecha=ts=>ts?new Date(ts).toLocaleDateString('es-AR')+' '+new Date(ts).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'—';
   let h=`<div style="font-size:.72rem;color:var(--txt3);margin-bottom:.8rem">Última actualización: ${fmtFecha(data.actualizadoEn)}${data.actualizadoPor?' · por '+data.actualizadoPor:''}</div>`;
   h+=`<div class="row2" style="margin-bottom:.5rem">
-    <div><label class="flabel">Fecha</label><input type="date" id="eqf-fecha" value="${data.fecha||new Date().toISOString().slice(0,10)}"></div>
+    <div><label class="flabel">Fecha</label><input type="date" id="eqf-fecha" value="${data.fecha||hoyISO()}"></div>
     <div><label class="flabel">Horómetro actual</label><input type="number" id="eqf-horas" value="${data.horas||''}" placeholder="hs"></div>
   </div>`;
   h+=`<div style="margin-bottom:.9rem"><label class="flabel">Responsable (quién lo cargó)</label><input type="text" id="eqf-actualizadopor" value="${data.actualizadoPor||(ROL_ACTUAL==='taller'?TALLER_RESPONSABLE:nombreUsuarioActual())}" placeholder="Nombre"></div>`;
@@ -7854,7 +7958,7 @@ function renderEqFichaProb(){
   let h=`<button onclick="mostrarFormIncidencia()" id="eqf-btn-nueva-incidencia" style="width:100%;background:none;border:1px dashed var(--rojo);color:var(--rojo);border-radius:8px;padding:8px;font-size:.82rem;font-weight:700;cursor:pointer;margin-bottom:.8rem;">⚠️ Reportar un problema</button>`;
   h+=`<div id="eqf-form-incidencia" style="display:none;border:1px solid var(--border);border-radius:8px;padding:.7rem;margin-bottom:.8rem;">
     <div class="row2" style="margin-bottom:.5rem">
-      <div><label class="flabel">Fecha</label><input type="date" id="eqfi-fecha" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div><label class="flabel">Fecha</label><input type="date" id="eqfi-fecha" value="${hoyISO()}"></div>
       <div><label class="flabel">Urgencia</label><select id="eqfi-urgencia">
         <option value="Media" selected>Media</option>
         <option value="Alta">Alta — no puede seguir en la calle</option>
@@ -7883,7 +7987,7 @@ function renderEqFichaProb(){
     </div>
     <div id="eqfi-form-resolver-${i.id}" style="display:none;width:100%;border-top:1px dashed var(--border2);margin-top:6px;padding-top:8px">
       <div class="row2" style="margin-bottom:.5rem">
-        <div><label class="flabel">Fecha de solución</label><input type="date" id="eqfir-fecha-${i.id}" value="${new Date().toISOString().slice(0,10)}"></div>
+        <div><label class="flabel">Fecha de solución</label><input type="date" id="eqfir-fecha-${i.id}" value="${hoyISO()}"></div>
         <div><label class="flabel">Solucionado por</label><input type="text" id="eqfir-por-${i.id}" value="${ROL_ACTUAL==='taller'?TALLER_RESPONSABLE:nombreUsuarioActual()}" placeholder="Nombre"></div>
       </div>
       <div style="margin-bottom:.6rem"><label class="flabel">¿Qué se hizo?</label><textarea id="eqfir-desc-${i.id}" rows="3" placeholder="Ej: Se cambió el o-ring del cilindro principal"></textarea></div>
@@ -8107,7 +8211,7 @@ function renderEqFichaHist(){
   let h=`<button onclick="mostrarFormServicio()" id="eqf-btn-nuevo-servicio" style="width:100%;background:none;border:1px dashed var(--border2);color:var(--verde);border-radius:8px;padding:8px;font-size:.82rem;font-weight:700;cursor:pointer;margin-bottom:.8rem;">+ Agregar registro de servicio</button>`;
   h+=`<div id="eqf-form-servicio" style="display:none;border:1px solid var(--border);border-radius:8px;padding:.7rem;margin-bottom:.8rem;">
     <div class="row2" style="margin-bottom:.5rem">
-      <div><label class="flabel">Fecha</label><input type="date" id="eqfs-fecha" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div><label class="flabel">Fecha</label><input type="date" id="eqfs-fecha" value="${hoyISO()}"></div>
       <div><label class="flabel">Tipo</label><select id="eqfs-tipo">
         <option value="Service">Service</option>
         <option value="Reparación">Reparación</option>
@@ -8245,7 +8349,7 @@ function renderContratoChecklist(tipo){
 
   let h = tipo==='salida' ? contratoInfoBlockHTML(a, c) : '';
   h+=`<div class="row2" style="margin-bottom:.5rem">
-    <div><label class="flabel">Fecha</label><input type="date" id="ctrf-fecha" value="${data.fecha||new Date().toISOString().slice(0,10)}"></div>
+    <div><label class="flabel">Fecha</label><input type="date" id="ctrf-fecha" value="${data.fecha||hoyISO()}"></div>
     <div><label class="flabel">Hora</label><input type="time" id="ctrf-hora" value="${data.hora||''}"></div>
   </div>`;
   h+=`<div style="margin-bottom:.5rem"><label class="flabel">Responsable (quién lo cargó)</label><input type="text" id="ctrf-responsable" value="${data.responsable||(ROL_ACTUAL==='taller'?TALLER_RESPONSABLE:nombreUsuarioActual())}" placeholder="Nombre"></div>`;
@@ -8323,8 +8427,8 @@ function iniciarChecklistContrato(tipo, silencioso){
   const base=EQ_CHECKLIST[a.equipoId];
   const campo = tipo==='salida' ? 'checklistSalida' : 'checklistEntrada';
   c[campo] = base
-    ? {items:JSON.parse(JSON.stringify(base.items||{})), fotosGenerales:JSON.parse(JSON.stringify(base.fotosGenerales||{})), fotosExtra:JSON.parse(JSON.stringify(base.fotosExtra||[])), horas:base.horas||'', fecha:new Date().toISOString().slice(0,10), hora:new Date().toTimeString().slice(0,5), responsable:''}
-    : {items:{}, fotosGenerales:{}, fotosExtra:[], horas:'', fecha:new Date().toISOString().slice(0,10), hora:new Date().toTimeString().slice(0,5), responsable:''};
+    ? {items:JSON.parse(JSON.stringify(base.items||{})), fotosGenerales:JSON.parse(JSON.stringify(base.fotosGenerales||{})), fotosExtra:JSON.parse(JSON.stringify(base.fotosExtra||[])), horas:base.horas||'', fecha:hoyISO(), hora:new Date().toTimeString().slice(0,5), responsable:''}
+    : {items:{}, fotosGenerales:{}, fotosExtra:[], horas:'', fecha:hoyISO(), hora:new Date().toTimeString().slice(0,5), responsable:''};
   guardarContratos();
   if(!silencioso) renderContratoChecklist(tipo);
 }
@@ -9382,7 +9486,7 @@ function verAgendaDeMaquinas(eqId){
     const m=equipoMeta(o);
     return m.categoria===meta.categoria && m.altura===meta.altura;
   });
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   const fmtD=s=>{const[y,m,d]=String(s).split('-');return`${d}/${m}/${y.slice(2)}`;};
 
   document.getElementById('agenda-titulo').textContent =
@@ -10079,10 +10183,10 @@ function setAlqPerModo(modo){
   document.getElementById('alq-per-horas-bloque').style.display = modo==='horas'?'block':'none';
   document.getElementById('alq-hora-salida-bloque').style.display = modo==='horas'?'none':'flex';
   if(modo==='dias'){
-    if(!document.getElementById('alq-dias-inicio').value) document.getElementById('alq-dias-inicio').value = new Date().toISOString().slice(0,10);
+    if(!document.getElementById('alq-dias-inicio').value) document.getElementById('alq-dias-inicio').value = hoyISO();
     calcDiasAlqManual();
   } else if(modo==='horas'){
-    if(!document.getElementById('alq-horas-fecha').value) document.getElementById('alq-horas-fecha').value = new Date().toISOString().slice(0,10);
+    if(!document.getElementById('alq-horas-fecha').value) document.getElementById('alq-horas-fecha').value = hoyISO();
     calcHorasAlq();
   } else {
     calcDiasAlq();
@@ -10461,7 +10565,7 @@ async function guardarAlq(){
   const obs = document.getElementById('alq-obs').value.trim();
   const solicitante = document.getElementById('alq-solicitante').value.trim();
   const grupoId = filas.length>1 ? Date.now() : null;
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   const modoHoras = alqPerModo==='horas';
   const horasInput = modoHoras ? (parseFloat((document.getElementById('alq-horas-cant').value||'').replace(',','.'))||0) : 0;
   const bloques30 = modoHoras ? Math.ceil(horasInput/0.5) : 0;
@@ -10821,7 +10925,7 @@ function resumenAlquilerHTML(a){
   const fila=(lbl,val)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span style="color:var(--txt2)">${lbl}</span><span class="multilinea" style="font-weight:700;color:var(--txt);text-align:right;max-width:60%">${val}</span></div>`;
 
   // Estado del alquiler (en curso / próximo / finalizado / retirado / abierto)
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   let estadoLbl='Finalizado', estadoColor='var(--txt3)';
   if(a.pausado){ estadoLbl='Pausado'+(a.pausadoMotivo?' — '+a.pausadoMotivo:''); estadoColor='#e5a83b'; }
   else if(a.retiradoAnticipado){
@@ -10915,6 +11019,7 @@ function resumenAlquilerHTML(a){
     ${fila('Entrega', txtEntrega)}
     ${fila('Retiro', txtRetiro)}
     ${a.pausado?fila('Pausado desde', `${fmtD(a.pausadoDesde)}${a.pausadoMotivo?' — '+a.pausadoMotivo:''}`):''}
+    ${a.salidaSinChecklist?`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.8rem;color:#b3791f;font-weight:700">⚠️ Salió sin checklist — lo marcó ${a.salidaSinChecklistPor||'oficina'}${a.salidaSinChecklistFecha?' el '+fmtD(a.salidaSinChecklistFecha):''}. El checklist de salida sigue pendiente.</div>`:''}
     ${a.sinFactura && !a.mesFacturado ? fila('Facturación', 'SIN factura (cargado así de entrada — ya cuenta en reportes)') : ''}
     ${a.diasCompensados?fila('Días compensados (sin cargo)', `${a.diasCompensados} día${a.diasCompensados!==1?'s':''}`+((a.compensaciones&&a.compensaciones.length)?': '+a.compensaciones.map(c=>`${c.dias}d${c.motivo?' — '+c.motivo:''}`).join('; '):'')):''}
     ${(a.diasAgregados&&a.diasAgregados.length)?`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem">
@@ -10945,7 +11050,7 @@ function resumenAlquilerHTML(a){
       // en el sentido de a.mesFacturado/Facturación. Por eso NO usamos la palabra
       // "facturado" en este texto, para no confundirlo con el estado real de facturación.
       const ahoraDT=new Date();
-      const hoyStr=ahoraDT.toISOString().slice(0,10);
+      const hoyStr=fechaISOLocal(ahoraDT);
       const horaAhora=ahoraDT.toTimeString().slice(0,5);
       const diasHastaAhora=diasAlquilerPorFecha(a.inicio, hoyStr, horaAhora);
       const diasEnPrecioBase=a.dias||0;
@@ -10989,7 +11094,7 @@ function verDetalleAlq(id){
   ALQ_DET_ID=id;
   document.getElementById('alq-det-contenido').innerHTML=resumenAlquilerHTML(a);
   const acc=document.getElementById('alq-det-acciones');
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   let botones='';
   if(a.entregaPendiente){
     const listoChecklist=checklistSalidaListo(a.id);
@@ -11182,7 +11287,7 @@ async function cargarViajeEnFalso(id){
   }
 
   const motivo=(prompt('Motivo (opcional — para acordarte por qué fue en falso):', '')||'').trim();
-  const fecha=new Date().toISOString().slice(0,10);
+  const fecha=hoyISO();
 
   if(!a.fExtras) a.fExtras=[];
   a.fExtras.push({
@@ -11411,7 +11516,7 @@ function editarMesFacturaParcial(alqId, idx){
   const entry=a.diasAgregados[idx];
   const fmtD2=str=>{ if(!str) return ''; const[y,m,d]=str.split('-'); return `${d}/${m}/${y.slice(2)}`; };
   const rango = entry.desde&&entry.hasta ? `${fmtD2(entry.desde)} al ${fmtD2(entry.hasta)}` : `${entry.dias} días`;
-  const actual = entry.mesFacturado || new Date().toISOString().slice(0,7);
+  const actual = entry.mesFacturado || hoyISO().slice(0,7);
   const ym = prompt(`¿En qué mes cuenta esta factura parcial (${rango})? Formato AAAA-MM`, actual);
   if(ym===null) return;
   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym.trim())){ alert('Formato inválido. Usá AAAA-MM, por ejemplo 2026-08'); return; }
@@ -11471,7 +11576,7 @@ function diasSinFacturarAlq(a){
   if(a.sinFactura) return 0;
   if(!a.inicio) return 0;
   const ahora=new Date();
-  const hoy=ahora.toISOString().slice(0,10);
+  const hoy=fechaISOLocal(ahora);
   if(a.inicio>hoy) return 0;
   const hora=ahora.toTimeString().slice(0,5);
   const corridos=diasAlquilerPorFecha(a.inicio, hoy, hora);
@@ -11945,7 +12050,7 @@ function renderRivadavia(){
   if(!cont) return;
   // Fecha y hora de salida del formulario (paso 1) por defecto = ahora, si están vacíos.
   const fechaInput=document.getElementById('riv-fecha');
-  if(fechaInput && !fechaInput.value) fechaInput.value=new Date().toISOString().slice(0,10);
+  if(fechaInput && !fechaInput.value) fechaInput.value=hoyISO();
   const hsInput=document.getElementById('riv-hsalida');
   if(hsInput && !hsInput.value) hsInput.value=horaActualHHMM();
 
@@ -12165,7 +12270,7 @@ async function confirmarCambioEquipo(id){
 // facturado tal cual (por ejemplo si el acuerdo era pagar el paquete completo igual).
 async function marcarRetiroAnticipado(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
-  const fecha=prompt('Fecha real de retiro (AAAA-MM-DD):', new Date().toISOString().slice(0,10));
+  const fecha=prompt('Fecha real de retiro (AAAA-MM-DD):', hoyISO());
   if(!fecha) return;
   const horaStr=prompt('¿A qué hora lo retiran?', a.horaRetiro||a.horaEntrega||'08:00');
   if(horaStr===null) return;
@@ -12215,7 +12320,7 @@ async function marcarRetiroAnticipado(id){
         if(ok){
           a.precio-=diferencia;
           recalcularTotalesAlq(a);
-          a.ajusteRetiroAnticipado={fecha:new Date().toISOString().slice(0,10), diasReales, diasContratados:a.dias, monto:diferencia, tarifaAproximada:!tieneSnapshot};
+          a.ajusteRetiroAnticipado={fecha:hoyISO(), diasReales, diasContratados:a.dias, monto:diferencia, tarifaAproximada:!tieneSnapshot};
           detalleAjuste=` Se descontaron ${fmt(diferencia)} (de ${a.dias} días facturados a ${diasReales} usados = ${detalleSug}).`+(tieneSnapshot?'':' ⚠️ Calculado con la tarifa actual, no la original.');
         } else {
           detalleAjuste=` Se mantiene el importe ya facturado (${fmt(a.precio)}), sin descuento.`;
@@ -12277,7 +12382,7 @@ function abrirModalCerrarAbierto(id){
     `<b>${a.equipoNombre}</b> · ${a.cliente}<br>`+
     `Arrancó: ${fmtD(a.inicio)} a las ${a.horaEntrega||'08:00'}<br>`+
     `Cargado hasta ahora: ${fmtD(a.fin)} (${a.dias||0} día${(a.dias||0)!==1?'s':''})`;
-  document.getElementById('cerrarab-fecha').value = new Date().toISOString().slice(0,10);
+  document.getElementById('cerrarab-fecha').value = hoyISO();
   document.getElementById('cerrarab-hora').value = a.horaRetiro||a.horaEntrega||'08:00';
 
   // Atajo "cerrar sin facturar nada más": pone la fecha hasta donde ya está facturado.
@@ -12419,7 +12524,7 @@ async function continuarCerrarAlquilerAbierto(){
     a.precio=(a.precio||0)+montoExtra;
     recalcularTotalesAlq(a);
     if(!a.diasAgregados) a.diasAgregados=[];
-    a.diasAgregados.push({fecha:new Date().toISOString().slice(0,10), dias:diasAFacturar, diasReales:diasExtra, tarifa, monto:montoExtra, detalle:detalleExtra});
+    a.diasAgregados.push({fecha:hoyISO(), dias:diasAFacturar, diasReales:diasExtra, tarifa, monto:montoExtra, detalle:detalleExtra});
   }
   // El período del alquiler (fin y cantidad de días reales en la calle) siempre se
   // actualiza con la fecha real de retiro, se le facture o no todo ese tiempo.
@@ -12429,7 +12534,7 @@ async function continuarCerrarAlquilerAbierto(){
   if(!menosCargaDeLoFacturado) a.dias=(a.dias||0)+diasExtra;
   if(menosCargaDeLoFacturado){
     if(!a.diasAgregados) a.diasAgregados=[];
-    a.diasAgregados.push({fecha:new Date().toISOString().slice(0,10), dias:0, diasReales:diasExtra, tarifa:0, monto:0, detalle:`Retiro real con ${Math.abs(diasExtra)} día(s) menos que los ya facturados — sin ajustar, pendiente de reclamo del cliente`});
+    a.diasAgregados.push({fecha:hoyISO(), dias:0, diasReales:diasExtra, tarifa:0, monto:0, detalle:`Retiro real con ${Math.abs(diasExtra)} día(s) menos que los ya facturados — sin ajustar, pendiente de reclamo del cliente`});
   }
 
   a.fin=fechaRetiro;
@@ -12439,7 +12544,7 @@ async function continuarCerrarAlquilerAbierto(){
   // Confirmar la fecha de retiro no significa que el equipo ya esté de vuelta: queda
   // pendiente hasta que taller marque "Equipo retirado" (ver marcarEquipoRetiradoFisico).
   a.pickupPendiente=true;
-  a.pickupPendienteDesde=new Date().toISOString().slice(0,10);
+  a.pickupPendienteDesde=hoyISO();
   // Limpiar restos de un ciclo de retiro anterior (ver misma nota en marcarRetiroAnticipado):
   // si queda un retiroFisicoFecha viejo, alqEstaActivoHoy() lo toma como ya devuelto y el
   // equipo aparece "disponible" aunque pickupPendiente esté en true.
@@ -12460,7 +12565,7 @@ function avisarTallerRetiro(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
   if(a.pickupPendiente){ alert('Ya está avisado — taller lo tiene pendiente en "Para retirar".'); return; }
   a.pickupPendiente=true;
-  a.pickupPendienteDesde=new Date().toISOString().slice(0,10);
+  a.pickupPendienteDesde=hoyISO();
   // Limpiar restos de un ciclo de retiro anterior (ver misma nota en marcarRetiroAnticipado).
   a.retiroFisicoFecha=null;
   a.retiroFisicoHora=null;
@@ -12477,9 +12582,10 @@ async function marcarEquipoRetiradoFisico(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
   if(!(await confirmSiNo(`¿Confirmás que "${a.equipoNombre}" ya está de vuelta en el depósito?`, {si:'Sí, ya volvió', no:'Todavía no'}))) return;
   a.pickupPendiente=false;
-  a.retiroFisicoFecha=new Date().toISOString().slice(0,10);
+  a.retiroFisicoFecha=hoyISO();
   a.retiroFisicoHora=new Date().toTimeString().slice(0,5);
-  if(ROL_ACTUAL==='taller') a.retiroFisicoPor=TALLER_RESPONSABLE;
+  // Igual que en la salida: siempre queda registrado quién lo marcó, no solo si fue taller.
+  a.retiroFisicoPor = (ROL_ACTUAL==='taller' ? TALLER_RESPONSABLE : nombreUsuarioActual()) || 'Oficina';
   marcarAccionUndo(`Marcar "${a.equipoNombre}" como retirado (vuelto al depósito) — cliente ${a.cliente}`, 'home');
   // Mismo criterio que la salida: ya se confirmó arriba, el cartel sobra.
   guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
@@ -12498,7 +12604,7 @@ async function marcarEquipoRetiradoFisico(id){
 function arrancaHoyOAntes(alqId){
   const a = ALQUILERES.find(x=>x.id===alqId);
   if(!a || !a.inicio) return false;
-  return a.inicio <= new Date().toISOString().slice(0,10);
+  return a.inicio <= hoyISO();
 }
 
 function checklistSalidaListo(alqId){
@@ -12509,10 +12615,26 @@ function checklistSalidaListo(alqId){
 async function marcarEquipoEntregado(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
   if(!checklistSalidaListo(id)){
-    if(await confirmSiNo(`Antes de marcar la salida hay que completar el checklist de salida (con fotos) de "${a.equipoNombre}".`, {si:'Abrir checklist', no:'Cancelar'})){
-      abrirContrato(id);
-      setContratoTab('salida');
+    // Taller es quien tiene que hacer el checklist, así que a él se lo mandamos a completar.
+    // A oficina (Mateo / Walter) NO se le puede bloquear la salida por eso: si taller se
+    // olvidó o no está, alguien tiene que poder dejar el dato cargado igual — si no, el
+    // equipo figura en el depósito estando en la obra, y de ahí para abajo se desacomoda
+    // todo (disponibilidad, reportes, la máquina se puede volver a alquilar por error).
+    // El checklist NO se da por hecho: queda pendiente y anotado que la salida se marcó
+    // sin él, con nombre y fecha.
+    if(ROL_ACTUAL==='taller'){
+      if(await confirmSiNo(`Antes de marcar la salida hay que completar el checklist de salida (con fotos) de "${a.equipoNombre}".`, {si:'Abrir checklist', no:'Cancelar'})){
+        abrirContrato(id);
+        setContratoTab('salida');
+      }
+      return;
     }
+    const igual = await confirmSiNo(
+      `"${a.equipoNombre}" todavía no tiene el checklist de salida hecho por taller.\n\n`+
+      `¿Marcás la salida igual? El checklist va a quedar pendiente y se va a registrar que la salida la cargaste vos.`,
+      {si:'Sí, ya salió', no:'Cancelar'});
+    if(!igual) return;
+    marcarSalidaConfirmada(id, {sinChecklist:true});
     return;
   }
   if(!(await confirmSiNo(`¿Confirmás que "${a.equipoNombre}" ya salió del depósito para "${a.cliente}"?`, {si:'Sí, ya salió', no:'Todavía no'}))) return;
@@ -12521,12 +12643,23 @@ async function marcarEquipoEntregado(id){
 
 // El marcado en sí, ya confirmado. Está aparte para poder encadenarlo desde el guardado
 // del checklist de salida sin volver a preguntar lo mismo dos veces.
-function marcarSalidaConfirmada(id){
+function marcarSalidaConfirmada(id, opts){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
   a.entregaPendiente=false;
-  a.entregaFisicaFecha=new Date().toISOString().slice(0,10);
+  a.entregaFisicaFecha=hoyISO();
   a.entregaFisicaHora=new Date().toTimeString().slice(0,5);
-  if(ROL_ACTUAL==='taller') a.entregaFisicaPor=TALLER_RESPONSABLE;
+  // Antes solo se guardaba el nombre si la marcaba taller; si la cargaba oficina quedaba
+  // sin autor. Ahora siempre queda registrado quién fue — es el dato que sirve cuando hay
+  // que reconstruir qué pasó con una máquina.
+  a.entregaFisicaPor = (ROL_ACTUAL==='taller' ? TALLER_RESPONSABLE : nombreUsuarioActual()) || 'Oficina';
+  // Salida cargada por oficina sin que taller haya hecho el checklist: el checklist sigue
+  // debiéndose, y esto deja el rastro de por qué falta.
+  if(opts && opts.sinChecklist){
+    a.salidaSinChecklist = true;
+    a.salidaSinChecklistPor = a.entregaFisicaPor;
+    a.salidaSinChecklistFecha = a.entregaFisicaFecha;
+  }
+  marcarAccionUndo(`Marcar salida de "${a.equipoNombre}" — cliente ${a.cliente}`, 'home');
   guardar();
   // Feedback visual inmediato en la fila de "Para entregar" del Dashboard (si vino de
   // ahí): el botón "Marcar salida" queda esfumado y al lado aparece "Salió" en color
@@ -12588,7 +12721,7 @@ async function compensarDiaAlq(id){
     a.fechaRetiro=retiroD.toISOString().slice(0,10);
   }
   if(!a.compensaciones) a.compensaciones=[];
-  a.compensaciones.push({fecha:new Date().toISOString().slice(0,10), dias, motivo});
+  a.compensaciones.push({fecha:hoyISO(), dias, motivo});
   a.diasCompensados=(a.diasCompensados||0)+dias;
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
   // Después de compensar, preguntamos si además queda "abierto" a que el cliente confirme
@@ -12612,13 +12745,13 @@ async function pausarAlq(id){
   const motivo=(prompt('¿Por qué se pausa el alquiler? (ej: "Clima")','Clima')||'').trim();
   if(!(await confirmSiNo(`¿Pausar el alquiler de "${a.equipoNombre}" — ${a.cliente}?`,{si:'Pausar',no:'Cancelar'}))) return;
   a.pausado=true;
-  a.pausadoDesde=new Date().toISOString().slice(0,10);
+  a.pausadoDesde=hoyISO();
   a.pausadoMotivo=motivo||'Clima';
   guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderCal(); renderFacturacion();
 }
 async function reanudarAlq(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a || !a.pausado) return;
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   const diasPausado=Math.max(0, Math.round((new Date(hoy+'T00:00:00')-new Date(a.pausadoDesde+'T00:00:00'))/86400000));
   const extender = diasPausado>0 ? await confirmSiNo(`Estuvo pausado ${diasPausado} día${diasPausado!==1?'s':''} (desde ${a.pausadoDesde.split('-').reverse().join('/')}).\n\n¿Extender el alquiler ${diasPausado} día${diasPausado!==1?'s':''} sin cargo por el tiempo pausado?`,{si:'Sí, extender',no:'No, dejar fechas igual'}) : false;
   if(extender){
@@ -12681,7 +12814,7 @@ function abrirPeriodoFactura(id){
   let sugDesde;
   if(esPrimera){ sugDesde = a.inicio; }
   else { const d=new Date(a.fin+'T00:00:00'); d.setDate(d.getDate()+1); sugDesde=d.toISOString().slice(0,10); }
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   document.getElementById('perfact-desde').value = sugDesde;
   document.getElementById('perfact-hasta').value = hoy>sugDesde ? hoy : sugDesde;
   // El monto a mano arranca vacío en cada apertura: es la excepción, no lo normal, y
@@ -12907,7 +13040,7 @@ async function agregarDiasFacturablesAlq(id, periodo){
   // días del 20 al 30 de septiembre), imputarlo a octubre le saca esa plata al
   // rendimiento de septiembre y se lo suma a octubre: los dos meses quedan mal. En ese
   // caso se pregunta, porque la respuesta correcta depende de cómo se emitió la factura.
-  const mesActual = new Date().toISOString().slice(0,7);
+  const mesActual = hoyISO().slice(0,7);
   const mesDelPeriodo = String(nuevaFin).slice(0,7);
   let mesFacturado = mesActual;
   if(mesDelPeriodo && mesDelPeriodo < mesActual){
@@ -12917,7 +13050,7 @@ async function agregarDiasFacturablesAlq(id, periodo){
       {si:`${mesLabel(mesDelPeriodo)} (cuando trabajó la máquina)`, no:`${mesLabel(mesActual)} (cuando se emitió la factura)`});
     if(alMesDelPeriodo) mesFacturado = mesDelPeriodo;
   }
-  a.diasAgregados.push({fecha:new Date().toISOString().slice(0,10), desde, hasta:nuevaFin, dias:diasChunk, tarifa, monto:montoChunk, detalle, mesFacturado, facturadoEn:Date.now(), numeroFactura});
+  a.diasAgregados.push({fecha:hoyISO(), desde, hasta:nuevaFin, dias:diasChunk, tarifa, monto:montoChunk, detalle, mesFacturado, facturadoEn:Date.now(), numeroFactura});
 
   marcarAccionUndo(`Cargar factura de "${a.equipoNombre}" — ${a.cliente} (${fmtFechaCot(desde)} al ${fmtFechaCot(nuevaFin)})`, 'alquileres');
   guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion(); renderReportes();
@@ -12929,7 +13062,7 @@ async function agregarDiasFacturablesAlq(id, periodo){
 // a ojo, y con 53 alquileres en la lista no se podía saber de un vistazo cuántos
 // están en curso hoy.
 function actualizarContadoresAlq(){
-  const hoy = new Date().toISOString().slice(0,10);
+  const hoy = hoyISO();
   const activos = ALQUILERES.filter(a => alqEstaActivoHoy(a,hoy) && !a.entregaPendiente).length;
   const espera = (typeof SOLICITUDES_ESPERA !== 'undefined' ? SOLICITUDES_ESPERA : [])
                    .filter(s => s && s.estado === 'pendiente').length;
@@ -12941,7 +13074,7 @@ function actualizarContadoresAlq(){
 
 function renderAlq(){
   actualizarContadoresAlq();
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   // Orden: por orden de carga, el más reciente primero — así siempre ves arriba
   // lo último que cargaste, sin importar la fecha de inicio del alquiler.
   let lista=[...ALQUILERES].sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
@@ -13507,7 +13640,7 @@ function renderReportes(){
   else if(repTab==='perdidas') cont.innerHTML=aviso+renderRepPerdidas();
 }
 let repMaquinasVista='mensual'; // 'mensual' | 'total'
-let repMaquinasMes=new Date().toISOString().slice(0,7); // YYYY-MM
+let repMaquinasMes=hoyISO().slice(0,7); // YYYY-MM
 let repMaquinasModo='prorrateado'; // 'prorrateado' | 'inicio'
 let repMaquinasFilasPorGrupo={}; // {[grupoKey]: [{a, dias, monto}, ...]} — se recalcula en cada render, para el drill-down
 
@@ -13724,7 +13857,7 @@ function fleteEventos(a){
   // camión y el costo ya se cuentan a través del alquiler vinculado — no generar eventos acá
   // para no duplicar el viaje.
   if(a.fleteViajaConId && !a.fleteEsElPrincipal) return [];
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=hoyISO();
   const montoTotal=(a.fVal||0)+(a.fExtras?a.fExtras.reduce((s,x)=>s+x.monto,0):0);
   // Fecha real de ida: cuando taller confirmó la salida. Si "entregaPendiente" sigue en true,
   // el camión todavía no se movió y no hay evento de ida. Para alquileres viejos que ya están
