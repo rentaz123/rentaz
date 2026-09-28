@@ -301,6 +301,16 @@ body{background:var(--bg);}
   background:#fff !important;color:var(--txt) !important;font-size:.92rem;padding:11px 13px;
 }
 #auth-card .field input:focus{border-color:var(--txt2) !important;}
+/* Ojito para ver lo que uno está tipeando en la contraseña. El padding de la derecha
+   deja el lugar del botón para que el texto no le pase por abajo. */
+.campo-clave{position:relative;}
+.campo-clave input{padding-right:42px !important;}
+.ver-clave{
+  position:absolute;right:4px;top:50%;transform:translateY(-50%);
+  background:none;border:0;cursor:pointer;padding:6px 8px;line-height:1;
+  font-size:1rem;color:var(--txt3);border-radius:6px;
+}
+.ver-clave:hover{color:var(--txt);background:rgba(0,0,0,.05);}
 .btn-p{background:#1c1b19;border-radius:9px;font-weight:600;font-size:.9rem;padding:12px;}
 .btn-p:hover{background:#38352f;}
 
@@ -488,7 +498,11 @@ if ('serviceWorker' in navigator) {
   <div id="auth-card">
     <h2>Iniciar sesión</h2>
     <div class="field"><label>Usuario</label><input type="text" id="inp-u" placeholder="usuario"></div>
-    <div class="field"><label>Contraseña</label><input type="password" id="inp-p" placeholder="contraseña"></div>
+    <div class="field campo-clave">
+      <label>Contraseña</label>
+      <input type="password" id="inp-p" placeholder="contraseña">
+      <button type="button" class="ver-clave" id="btn-ver-clave" onclick="toggleVerClave()" title="Mostrar la contraseña" aria-label="Mostrar la contraseña">👁</button>
+    </div>
     <button class="btn-p" onclick="login()">Entrar</button>
     <div id="auth-err">Usuario o contraseña incorrectos</div>
   </div>
@@ -607,6 +621,9 @@ if ('serviceWorker' in navigator) {
            aplicarRestriccionesRol) porque es una acción de dueño, no de uso diario.
            El texto del botón avisa hace cuántos días fue el último. -->
       <button id="btn-backup" class="btn-out" onclick="descargarBackup()" style="margin-bottom:.45rem">⬇ Descargar copia de seguridad</button>
+      <!-- Este lo ven todos los roles: está fuera del <nav>, así que el bucle de
+           aplicarRestriccionesRol no lo alcanza (igual que "Cerrar sesión"). -->
+      <button class="btn-out" onclick="abrirCambiarClave()" style="margin-bottom:.45rem">🔑 Cambiar mi contraseña</button>
       <button class="btn-out" onclick="logout()">↩ Cerrar sesión</button>
     </div>
   </div>
@@ -2239,6 +2256,41 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
   </div>
+
+  <!-- Cada uno cambia SU propia contraseña, sin pasar por el panel de Supabase ni
+       depender de que Mateo se la resetee. Lo ven todos los roles (el botón está en el
+       pie del menú, fuera del <nav>, así que aplicarRestriccionesRol no lo toca).
+       Resetear la de OTRO no se puede hacer desde acá: eso necesita la llave maestra
+       del proyecto, y este archivo es público. Eso sigue siendo del panel. -->
+  <div id="modal-cambiar-clave" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:center;justify-content:center;">
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:400px;max-width:90vw;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:1rem">
+        <div style="font-size:1rem;font-weight:800;color:var(--txt)">Cambiar mi contraseña</div>
+        <button onclick="cerrarCambiarClave()" style="background:none;border:0;color:var(--txt3);font-size:1.3rem;line-height:1;cursor:pointer;padding:0 2px">×</button>
+      </div>
+      <div id="cc-quien" style="font-size:.8rem;color:var(--txt2);margin-bottom:1rem"></div>
+
+      <div class="field campo-clave" style="margin-bottom:.7rem">
+        <label>Contraseña nueva</label>
+        <input type="password" id="cc-nueva" placeholder="la nueva" autocomplete="new-password"
+               style="width:100%;box-sizing:border-box;border:1px solid var(--border2);border-radius:9px;background:#fff;color:#1a1a1a;font-size:.92rem;padding:11px 42px 11px 13px;outline:none">
+        <button type="button" class="ver-clave" id="cc-ojo" onclick="toggleVerClaveCambio()" title="Mostrar la contraseña">👁</button>
+      </div>
+
+      <div class="field" style="margin-bottom:.4rem">
+        <label>Repetila</label>
+        <input type="password" id="cc-repetir" placeholder="la misma otra vez" autocomplete="new-password"
+               style="width:100%;box-sizing:border-box;border:1px solid var(--border2);border-radius:9px;background:#fff;color:#1a1a1a;font-size:.92rem;padding:11px 13px;outline:none">
+      </div>
+
+      <div id="cc-msg" style="display:none;font-size:.8rem;margin:.6rem 0;line-height:1.5"></div>
+
+      <div style="display:flex;gap:8px;margin-top:1.1rem">
+        <button onclick="cerrarCambiarClave()" style="flex:1;background:none;border:1px solid var(--border2);color:var(--txt);border-radius:8px;padding:.7rem;font-size:.85rem;font-weight:700;cursor:pointer;">Cancelar</button>
+        <button id="cc-guardar" class="btn-nuevo" style="flex:1;padding:.7rem;font-size:.85rem;justify-content:center" onclick="guardarClaveNueva()">Guardar</button>
+      </div>
+    </div>
+  </div>
 </div><!-- /app -->
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -3457,6 +3509,10 @@ function usuarioReal(){ return localStorage.getItem('rtz_user'); }
 // presupuestos o alquileres desde "Cargado hoy") quedan reservadas solo para Mateo.
 // Mientras esta mirando como otro, devuelve false para que la vista sea fiel.
 function esMateo(){ return usuarioReal()==='mateo' && !VIENDO_COMO; }
+// Verdadero cuando la pantalla se está viendo como taller — sea porque entró taller de
+// verdad o porque Mateo está usando "ver como". Se usa para esconder la cuenta con la que
+// se arma el flete por km: taller ve el precio, no cómo se calcula.
+function esTallerVista(){ return ROL_ACTUAL==='taller'; }
 let ROL_ACTUAL = localStorage.getItem('rtz_rol') || 'admin';
 // Taller no puede cargar cotizaciones ni alquileres de más de esta cantidad de días —
 // si el cliente necesita más tiempo, tiene que hablar directamente con Mateo.
@@ -3795,10 +3851,15 @@ function cargarAlquilerDesdeSolicitudEspera(id){
   if(s.localidad) document.getElementById('alq-localidad').value = s.localidad;
 }
 let TALLER_RESPONSABLE = localStorage.getItem('rtz_taller_resp') || '';
-if(TALLER_RESPONSABLE==='Tomás'){ TALLER_RESPONSABLE=''; localStorage.removeItem('rtz_taller_resp'); }
-// Tomás renunció (dejó de trabajar en taller). Hasta que se sume alguien nuevo, queda
-// "Otro" como opción genérica para no perder la atribución de quién hizo cada cosa.
-const TALLER_PERSONAS = ['Alejandro', 'Otro'];
+// Nombres que ya no están en la lista: se limpia el guardado para que la próxima vez
+// tengan que elegir de nuevo, en lugar de quedar pegados a alguien que ya no figura.
+if(TALLER_RESPONSABLE==='Tomás' || TALLER_RESPONSABLE==='Otro'){
+  TALLER_RESPONSABLE=''; localStorage.removeItem('rtz_taller_resp');
+}
+// Tomás renunció y quedó "Otro" como genérico hasta que entrara alguien. Ese alguien es
+// Alex, así que ocupa ese lugar. Lo ya cargado a nombre de "Otro" o "Tomás" no se toca:
+// es historia y se sigue leyendo igual donde esté escrita.
+const TALLER_PERSONAS = ['Alejandro', 'Alex'];
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  ENTRAR — ahora contra Supabase de verdad
@@ -3890,7 +3951,7 @@ function continuarDesdeBienvenida(){
     entrarAlApp();
   }
 }
-// Taller comparte un único usuario/clave entre Alejandro y Tomás; para poder
+// Taller comparte un único usuario/clave entre Alejandro y Alex; para poder
 // saber quién hizo cada cosa, se elige el nombre una vez al entrar (o al
 // tocar "cambiar" en el pie del menú) y ese nombre queda pre-cargado
 // automáticamente en los campos "Responsable" de equipos y control.
@@ -4132,6 +4193,108 @@ function aplicarRestriccionesRol(){
     if(inpU) inpU.value = savedUser;
   }
 })();
+// Muestra/oculta lo que se está tipeando en la contraseña. Sirve para no errarle cuando
+// uno la copia de un papel o de un WhatsApp, que es como la van a tener Walter y Alejandro.
+// OJO: esto NO muestra ninguna contraseña guardada — no existe tal cosa, en Supabase están
+// con hash y no se pueden leer. Solo revela el texto que la persona acaba de escribir.
+function toggleVerClave(){
+  const inp = document.getElementById('inp-p');
+  const btn = document.getElementById('btn-ver-clave');
+  if(!inp || !btn) return;
+  const mostrando = inp.type === 'text';
+  inp.type = mostrando ? 'password' : 'text';
+  btn.textContent = mostrando ? '👁' : '🙈';
+  const txt = mostrando ? 'Mostrar la contraseña' : 'Ocultar la contraseña';
+  btn.title = txt; btn.setAttribute('aria-label', txt);
+  inp.focus();
+}
+// ── CAMBIAR LA PROPIA CONTRASEÑA ──────────────────────────────────────────
+// Cambia la clave del usuario que tiene la sesión abierta en Supabase. No sirve para
+// resetear la de otro: eso pide la llave maestra del proyecto y este archivo es público,
+// así que sigue siendo cosa del panel de Supabase (lo hace Mateo).
+const CLAVE_MIN = 6;   // el mínimo que acepta Supabase
+
+function abrirCambiarClave(){
+  // OJO con "ver como": la sesión de Supabase sigue siendo la de Mateo aunque la pantalla
+  // se vea como Walter. Si lo dejáramos pasar, creería que le cambia la clave a Walter y en
+  // realidad se estaría cambiando la propia — y quedaría afuera sin entender por qué.
+  if(VIENDO_COMO){
+    alert('Estás mirando la app como otra persona.\n\nVolvé a "Yo (Mateo)" en el menú antes de cambiar tu contraseña. Desde acá cambiarías la tuya, no la de esa persona.');
+    return;
+  }
+  const u = usuarioReal() || '';
+  const quien = document.getElementById('cc-quien');
+  let txt = `Vas a cambiar la contraseña del usuario <b style="color:var(--txt)">${u}</b>.`;
+  // "taller" es un solo usuario compartido entre Alejandro y Alex (ver TALLER_PERSONAS).
+  // Si uno la cambia, el otro queda afuera sin enterarse. Hay que decirlo antes, no después.
+  if(u === 'taller'){
+    txt += `<br><br><span style="color:var(--rojo);font-weight:700">Ojo: esta clave la comparten Alejandro y Alex.</span> Si la cambiás, el otro no va a poder entrar hasta que se la pases.`;
+  }
+  quien.innerHTML = txt;
+  document.getElementById('cc-nueva').value='';
+  document.getElementById('cc-repetir').value='';
+  document.getElementById('cc-nueva').type='password';
+  document.getElementById('cc-ojo').textContent='👁';
+  mostrarMsgClave('', null);
+  document.getElementById('cc-guardar').disabled=false;
+  document.getElementById('modal-cambiar-clave').style.display='flex';
+  document.getElementById('cc-nueva').focus();
+}
+
+function cerrarCambiarClave(){
+  document.getElementById('modal-cambiar-clave').style.display='none';
+}
+
+function toggleVerClaveCambio(){
+  const inp=document.getElementById('cc-nueva'), btn=document.getElementById('cc-ojo');
+  const mostrando = inp.type==='text';
+  inp.type = mostrando ? 'password' : 'text';
+  btn.textContent = mostrando ? '👁' : '🙈';
+  btn.title = mostrando ? 'Mostrar la contraseña' : 'Ocultar la contraseña';
+  inp.focus();
+}
+
+function mostrarMsgClave(texto, tipo){
+  const m=document.getElementById('cc-msg');
+  if(!texto){ m.style.display='none'; m.textContent=''; return; }
+  m.style.display='block';
+  m.style.color = tipo==='ok' ? 'var(--verde)' : 'var(--rojo)';
+  m.textContent = texto;
+}
+
+async function guardarClaveNueva(){
+  const nueva = document.getElementById('cc-nueva').value;
+  const rep   = document.getElementById('cc-repetir').value;
+
+  if(!nueva){ mostrarMsgClave('Escribí la contraseña nueva.', 'err'); return; }
+  if(nueva.length < CLAVE_MIN){ mostrarMsgClave(`Tiene que tener al menos ${CLAVE_MIN} caracteres.`, 'err'); return; }
+  if(nueva !== rep){ mostrarMsgClave('Las dos no coinciden. Fijate con el ojito que estén iguales.', 'err'); return; }
+  if(!sb){ mostrarMsgClave('No hay conexión con la base. Probá de nuevo en un momento.', 'err'); return; }
+
+  const btn=document.getElementById('cc-guardar');
+  btn.disabled=true;
+  mostrarMsgClave('Guardando…', 'ok');
+  try{
+    const { error } = await sb.auth.updateUser({ password: nueva });
+    if(error){
+      btn.disabled=false;
+      mostrarMsgClave('No se pudo cambiar: '+(error.message||'error desconocido'), 'err');
+      return;
+    }
+    mostrarMsgClave('Listo. Tu contraseña quedó cambiada.', 'ok');
+    // Se cierra sola para que quede claro que terminó. La sesión abierta sigue valiendo:
+    // no hace falta volver a entrar ahora, pero la próxima vez va la nueva.
+    setTimeout(()=>{
+      cerrarCambiarClave();
+      alert('Contraseña cambiada.\n\nLa próxima vez que entres, usá la nueva. Anotala en algún lado — si la perdés, hay que pedirle a Mateo que te genere otra.');
+    }, 700);
+  }catch(e){
+    btn.disabled=false;
+    mostrarMsgClave('No se pudo cambiar: '+(e.message||e), 'err');
+  }
+}
+
+document.getElementById('cc-repetir').addEventListener('keydown',e=>{if(e.key==='Enter')guardarClaveNueva();});
 document.getElementById('inp-p').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
 document.getElementById('inp-u').addEventListener('keydown',e=>{if(e.key==='Enter')login();});
 function logout(){
@@ -4148,6 +4311,11 @@ function logout(){
   document.getElementById('app').style.display='none';
   document.getElementById('auth-screen').style.display='flex';
   document.getElementById('inp-p').value='';
+  // Si quedó destapada con el ojito, volver a taparla: si no, el próximo que entre
+  // escribe su clave a la vista de todos.
+  document.getElementById('inp-p').type='password';
+  const btnVer=document.getElementById('btn-ver-clave');
+  if(btnVer){ btnVer.textContent='👁'; btnVer.title='Mostrar la contraseña'; btnVer.setAttribute('aria-label','Mostrar la contraseña'); }
   document.getElementById('auth-err').style.display='none';
 }
 const TITLES={home:'Inicio',calendario:'Calendario',cotizador:'Cotizador',equipos:'Equipos',clientes:'Clientes',alquileres:'Alquileres',control:'Control de Máquinas',reportes:'Reportes',precios:'Lista de precios',facturacion:'Facturación',pagoprov:'Pago a Proveedores',rivadavia:'Planilla Rivadavia',impuestos:'Impuestos y Servicios'};
@@ -5789,10 +5957,14 @@ function cotizar(){
       // Si cargó la localidad de destino, la usamos para el label (así "Traslado ida y
       // vuelta" muestra el nombre de la ciudad, igual que con Alejandro o Rosso fijo).
       fLabel=localidadKm?`Flete Rosso: ${localidadKm}`:`Flete Rosso por km (${tipoKm})`;
-      fDesglose=`Google Maps: ${kmInput} km (un tramo) → total: ${kmTotal} km (ida y vuelta + ${fleteKmParam('kmExtra')} km extra c/tramo)<br>`+
-                `${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)}<br>`+
-                `Recargo ${fleteKmParam('recargo')}%: ${fmt(conRecargo-sinRecargo)}<br>`+
-                `<strong>= ${fmt(fVal)}</strong>`;
+      // A taller se le muestra solo el total: el desglose es la cuenta interna
+      // (km extra, $/km y recargo), no algo que necesite para trabajar.
+      fDesglose = esTallerVista()
+        ? `Traslado ida y vuelta: <strong>${fmt(fVal)}</strong>`
+        : `Google Maps: ${kmInput} km (un tramo) → total: ${kmTotal} km (ida y vuelta + ${fleteKmParam('kmExtra')} km extra c/tramo)<br>`+
+          `${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)}<br>`+
+          `Recargo ${fleteKmParam('recargo')}%: ${fmt(conRecargo-sinRecargo)}<br>`+
+          `<strong>= ${fmt(fVal)}</strong>`;
       const dsd=document.getElementById('rosso-km-desglose');
       dsd.innerHTML=fDesglose; dsd.style.display='block';
     }
@@ -5851,10 +6023,13 @@ function cotizar(){
         const conRecargo2=sinRecargo2*(1+fleteKmParam('recargo')/100);
         fVal2=Math.round(conRecargo2);
         fLabel2=localidadKm2?`Flete Rosso: ${localidadKm2}`:`Flete Rosso por km (${tipoKm2})`;
-        const desg2=`Google Maps: ${kmInput2} km (un tramo) → total: ${kmTotal2} km (ida y vuelta + ${fleteKmParam('kmExtra')} km extra c/tramo)<br>`+
-                  `${kmTotal2} km × ${fmt(tkm2)}/km = ${fmt(sinRecargo2)}<br>`+
-                  `Recargo ${fleteKmParam('recargo')}%: ${fmt(conRecargo2-sinRecargo2)}<br>`+
-                  `<strong>= ${fmt(fVal2)}</strong>`;
+        // Mismo criterio que el primer flete: taller ve el total, no la cuenta (esTallerVista).
+        const desg2 = esTallerVista()
+          ? `Traslado ida y vuelta: <strong>${fmt(fVal2)}</strong>`
+          : `Google Maps: ${kmInput2} km (un tramo) → total: ${kmTotal2} km (ida y vuelta + ${fleteKmParam('kmExtra')} km extra c/tramo)<br>`+
+            `${kmTotal2} km × ${fmt(tkm2)}/km = ${fmt(sinRecargo2)}<br>`+
+            `Recargo ${fleteKmParam('recargo')}%: ${fmt(conRecargo2-sinRecargo2)}<br>`+
+            `<strong>= ${fmt(fVal2)}</strong>`;
         const dsd2=document.getElementById('cot2-rosso-km-desglose');
         if(dsd2){ dsd2.innerHTML=desg2; dsd2.style.display='block'; }
       }
@@ -6162,14 +6337,17 @@ function renderPrecios(){
     const p=precioTipo(tipo);
     const esAuto = tipo==='autoelevador';
     const soloDia = tipo==='mls15' || tipo==='alo60'; // estos dos equipos de 6m solo se trabajan por día
+    // data-busca lo usa filtrarPrecios(): el nombre y la clave interna, sin acentos, para
+    // que "alo" encuentre "Aló" y se pueda buscar también por el código del equipo.
+    const claveBusca = sinAcentos(`${p.nombre} ${tipo}`);
     if(esTaller){
       // Taller solo ve la tarifa diaria, y no puede editarla.
-      return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem;margin-bottom:.7rem;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      return `<div class="precio-eq-card" data-busca="${claveBusca}" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem;margin-bottom:.7rem;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="font-weight:800;color:var(--txt)">${p.nombre}${esAuto?' <span style="font-size:.68rem;font-weight:700;color:var(--verde)">(por hora)</span>':''}</div>
         <div style="font-weight:800;color:var(--txt)">${p.dia!=null?fmt(p.dia):'—'} / día</div>
       </div>`;
     }
-    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem;margin-bottom:.7rem">
+    return `<div class="precio-eq-card" data-busca="${claveBusca}" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem;margin-bottom:.7rem">
       <div style="font-weight:800;color:var(--txt);margin-bottom:.6rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span>${p.nombre}</span>
         ${esAuto?'<span style="font-size:.68rem;font-weight:700;color:var(--verde);background:rgba(61,168,32,.12);border-radius:8px;padding:2px 8px">facturable por hora (bloques de 30\')</span>':''}
@@ -6230,6 +6408,11 @@ function renderPrecios(){
   const tarjetaDestinos=(titulo, filas)=>`<div style="background:var(--bg2);border-radius:var(--radio);padding:.9rem 1.1rem;margin-bottom:.7rem;box-shadow:var(--sombra)">
     <div style="font-weight:700;color:var(--txt);margin-bottom:.3rem">${titulo}</div>${filas}</div>`;
 
+  // ── QUÉ VE TALLER EN FLETES ──────────────────────────────────────────────
+  // Taller ve los precios de flete (los necesita para estimar un viaje), pero NO la cuenta
+  // con la que se arma el precio por km: ni el km extra, ni el recargo, ni la fórmula.
+  // Es información de cómo se forma el costo, no algo que taller use para trabajar.
+  // Lo mismo aplica en el cotizador y en el detalle del alquiler — ver esTallerVista().
   const fletesHtml = `<div class="sec-divider" style="margin:1rem 0 .5rem">Fletes</div>` +
     tarjetaDestinos('Alejandro', [
       filaDestino('alejandro.rafaela',     'Alejandro — Rafaela',      fleteAlejandro('rafaela')),
@@ -6249,21 +6432,85 @@ function renderPrecios(){
     fleteCard('Rosso — Por km', [
       campoFlete('Pesada ($/km)',      fleteKmParam('pesada'),  `setFleteKmParam('pesada',this.value,this)`),
       campoFlete('Liviana ($/km)',     fleteKmParam('liviana'), `setFleteKmParam('liviana',this.value,this)`),
-      campoFlete('Km extra por tramo', fleteKmParam('kmExtra'), `setFleteKmParam('kmExtra',this.value,this)`),
-      campoFlete('Recargo (%)',        fleteKmParam('recargo'), `setFleteKmParam('recargo',this.value,this)`),
+      // El km extra y el recargo son parte de la cuenta, no un precio en sí. Taller se
+      // queda con los dos $/km, que es lo único que necesita.
+      esTaller ? '' : campoFlete('Km extra por tramo', fleteKmParam('kmExtra'), `setFleteKmParam('kmExtra',this.value,this)`),
+      esTaller ? '' : campoFlete('Recargo (%)',        fleteKmParam('recargo'), `setFleteKmParam('recargo',this.value,this)`),
     ].join('')) +
-    `<p style="font-size:.75rem;color:var(--txt3);margin-top:.5rem;line-height:1.65">
+    (esTaller ? '' : `<p style="font-size:.75rem;color:var(--txt3);margin-top:.5rem;line-height:1.65">
        Arriba están los valores fijos por destino.<br>
        El de <b>por km</b> sale de esta cuenta:
        <b>(km + ${fleteKmParam('kmExtra')}) × 2 × $/km + ${fleteKmParam('recargo')}%</b>.
-       Los cuatro valores se editan acá y el cotizador los toma al instante.</p>`;
+       Los cuatro valores se editan acá y el cotizador los toma al instante.</p>`);
 
   const histHtml = esTaller ? '' : `
     <div class="sec-divider" style="margin:1.4rem 0 .5rem">Historial de cambios</div>
     <div id="precios-historial"><p style="font-size:.8rem;color:var(--txt3)">Cargando…</p></div>`;
 
-  cont.innerHTML = `<div class="sec-divider" style="margin:0 0 .5rem">Equipos</div>` + equiposHtml + fletesHtml + histHtml;
+  // Buscador de equipos: la lista es larga y encontrar una tarifa obligaba a scrolear todo.
+  // Filtra mostrando/ocultando las tarjetas ya dibujadas (ver filtrarPrecios), NO redibujando:
+  // si redibujara, se perdería lo que se esté tipeando en un precio y el foco del campo.
+  const buscadorHtml = `
+    <div style="position:sticky;top:0;z-index:3;background:var(--bg);padding:.2rem 0 .6rem;margin-bottom:.2rem">
+      <div style="position:relative">
+        <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);font-size:.9rem;color:var(--txt3);pointer-events:none">🔍</span>
+        <input type="text" id="precios-busca" placeholder="Buscar equipo…" autocomplete="off"
+               value="${(preciosBusca||'').replace(/"/g,'&quot;')}"
+               oninput="filtrarPrecios()"
+               style="width:100%;box-sizing:border-box;padding:9px 34px 9px 32px;border:1px solid var(--border2);border-radius:9px;background:var(--bg2);color:var(--txt);font-size:.88rem;outline:none">
+        <button type="button" id="precios-busca-x" onclick="limpiarBuscaPrecios()" title="Borrar la búsqueda"
+                style="position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:0;cursor:pointer;padding:5px 8px;color:var(--txt3);font-size:1rem;line-height:1;display:${preciosBusca?'block':'none'}">×</button>
+      </div>
+    </div>`;
+
+  cont.innerHTML = buscadorHtml
+    + `<div class="sec-divider" style="margin:0 0 .5rem">Equipos</div>`
+    + equiposHtml
+    + `<p id="precios-sin-resultados" style="display:none;font-size:.85rem;color:var(--txt3);text-align:center;margin:1.2rem 0"></p>`
+    + `<div id="precios-resto">` + fletesHtml + histHtml + `</div>`;
   if(!esTaller) renderHistorialPrecios();
+  if(preciosBusca) filtrarPrecios();
+}
+
+// Lo que se escribió en la lupa de Lista de precios. Vive afuera de renderPrecios para que
+// el filtro sobreviva a un redibujado (llega un cambio de otro dispositivo, se guarda un
+// precio, etc.) y no se le borre la búsqueda al usuario en la mitad.
+let preciosBusca = '';
+
+// Saca acentos y pasa a minúscula, para que "alo" encuentre "Aló" y "jlg" encuentre "JLG".
+function sinAcentos(s){
+  return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+}
+
+function filtrarPrecios(){
+  const inp = document.getElementById('precios-busca');
+  if(!inp) return;
+  preciosBusca = inp.value;
+  const q = sinAcentos(preciosBusca.trim());
+  const tarjetas = document.querySelectorAll('.precio-eq-card');
+  let visibles = 0;
+  tarjetas.forEach(t=>{
+    const coincide = !q || (t.dataset.busca||'').includes(q);
+    t.style.display = coincide ? '' : 'none';
+    if(coincide) visibles++;
+  });
+  // Buscando un equipo, los fletes y el historial estorban: se esconden hasta limpiar.
+  const resto = document.getElementById('precios-resto');
+  if(resto) resto.style.display = q ? 'none' : '';
+  const aviso = document.getElementById('precios-sin-resultados');
+  if(aviso){
+    aviso.style.display = (q && visibles===0) ? 'block' : 'none';
+    aviso.textContent = `No hay ningún equipo que coincida con "${preciosBusca.trim()}".`;
+  }
+  const btnX = document.getElementById('precios-busca-x');
+  if(btnX) btnX.style.display = q ? 'block' : 'none';
+}
+
+function limpiarBuscaPrecios(){
+  const inp = document.getElementById('precios-busca');
+  if(inp){ inp.value=''; inp.focus(); }
+  preciosBusca = '';
+  filtrarPrecios();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -7697,7 +7944,7 @@ function editEq(id){
   }
   const est=prompt(`Estado de "${eq.nombre}"\n\nEscribí: disponible / fuera de servicio\n(El estado "alquilado" se calcula solo en base a los alquileres cargados)`,eq.estado==='taller'?'fuera de servicio':'disponible');
   if(!est) return;
-  const norm=est.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const norm=est.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
   let nuevoEstado;
   if(norm==='disponible') nuevoEstado='disponible';
   else if(norm==='taller'||norm.includes('fuera')) nuevoEstado='taller';
@@ -7719,7 +7966,7 @@ async function editarCategoriaEq(id){
   const metaActual=equipoMeta(eq);
   const catIn=prompt(`Categoría de "${eq.nombre}"\n\nEscribí: tijera / brazo / autoelevador / otro`, metaActual.categoria);
   if(catIn===null) return;
-  const catNorm=catIn.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const catNorm=catIn.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
   const catsValidas={tijera:'tijera',brazo:'brazo',autoelevador:'autoelevador',otro:'otro'};
   const categoria=catsValidas[catNorm];
   if(!categoria){ alert('Categoría inválida. Usá: tijera / brazo / autoelevador / otro'); return; }
@@ -9071,7 +9318,9 @@ function verDetallePresup(id){
     html += fila('Flete', c.fLabel || 'Sin flete');
     if(c.fleteEspecial) html += fila('Flete especial', c.fleteEspecialNota || 'Sí (negociado con el cliente)');
     if(c.fVal>0) html += fila('Costo de flete', fmt(c.fVal));
-    if(c.fDesglose) html += fila('Desglose del flete', c.fDesglose);
+    // El desglose guardado en presupuestos viejos puede traer la cuenta del por km.
+    // A taller no se le muestra (ver esTallerVista): el costo total sí, la cuenta no.
+    if(c.fDesglose && !esTallerVista()) html += fila('Desglose del flete', c.fDesglose);
     if(c.extras && c.extras.length) c.extras.forEach(x=>{ html += fila(x.concepto, fmt(x.monto)); });
     if(c.usdValor>0) html += fila('Referencia USD', `U$D ${c.usdValor.toLocaleString('es-AR')} (dólar ${c.usdTipo}${c.usdCotizacion?': $'+c.usdCotizacion.toLocaleString('es-AR'):''})`);
     if(c.mostrarIva===false){
@@ -10074,10 +10323,13 @@ function calcFlete2(){
         fVal2=conRecargo;
         fLabel2=`Flete Rosso por km (${tipoKm})`;
         if(dsd2){
-          dsd2.innerHTML=`Google Maps: ${kmInput} km (un tramo) → total: ${kmTotal} km (ida y vuelta + ${fleteKmParam('kmExtra')} km extra c/tramo)<br>`+
-            `${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)}<br>`+
-            `Recargo ${fleteKmParam('recargo')}%: ${fmt(conRecargo-sinRecargo)}<br>`+
-            `<strong>= ${fmt(Math.round(fVal2))}</strong>`;
+          // Taller ve el total, no la cuenta (ver esTallerVista).
+          dsd2.innerHTML = esTallerVista()
+            ? `Traslado ida y vuelta: <strong>${fmt(Math.round(fVal2))}</strong>`
+            : `Google Maps: ${kmInput} km (un tramo) → total: ${kmTotal} km (ida y vuelta + ${fleteKmParam('kmExtra')} km extra c/tramo)<br>`+
+              `${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)}<br>`+
+              `Recargo ${fleteKmParam('recargo')}%: ${fmt(conRecargo-sinRecargo)}<br>`+
+              `<strong>= ${fmt(Math.round(fVal2))}</strong>`;
           dsd2.style.display='block';
         }
       } else if(dsd2){ dsd2.style.display='none'; }
@@ -10178,10 +10430,13 @@ function calcTotalAlq(){
         const conRecargo=sinRecargo*(1+fleteKmParam('recargo')/100);
         fVal=Math.round(conRecargo);
         fLabel=`Flete Rosso por km (${tipoKm})`;
-        fDesglose=`Google Maps: ${kmInput} km (un tramo) → total: ${kmTotal} km (ida y vuelta + ${fleteKmParam('kmExtra')} km extra c/tramo)<br>`+
-                  `${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)}<br>`+
-                  `Recargo ${fleteKmParam('recargo')}%: ${fmt(conRecargo-sinRecargo)}<br>`+
-                  `<strong>= ${fmt(fVal)}</strong>`;
+        // Igual que en el cotizador: taller ve el total, no la cuenta (ver esTallerVista).
+        fDesglose = esTallerVista()
+          ? `Traslado ida y vuelta: <strong>${fmt(fVal)}</strong>`
+          : `Google Maps: ${kmInput} km (un tramo) → total: ${kmTotal} km (ida y vuelta + ${fleteKmParam('kmExtra')} km extra c/tramo)<br>`+
+            `${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)}<br>`+
+            `Recargo ${fleteKmParam('recargo')}%: ${fmt(conRecargo-sinRecargo)}<br>`+
+            `<strong>= ${fmt(fVal)}</strong>`;
         dsd.innerHTML=fDesglose; dsd.style.display='block';
       } else { dsd.style.display='none'; }
     }
@@ -11056,7 +11311,9 @@ function resumenAlquilerHTML(a){
   const notaYaEstaEnDetalle = !!notaEsp && detalleSinEquipo.trim().includes(notaEsp);
 
   // El "Por km ..." de Rosso era una fila aparte; va como aclaración del flete.
-  const detalleFlete = (a.fLabel && a.fVal && a.fTransportista==='Rosso' && a.fLabel.startsWith('Por km')) ? a.fLabel : '';
+  // A taller no se le muestra: ese texto trae la cuenta completa (km extra, $/km y recargo),
+  // que es justo lo que se esconde en Lista de precios. Mostrarlo acá lo filtraría igual.
+  const detalleFlete = (!esTallerVista() && a.fLabel && a.fVal && a.fTransportista==='Rosso' && a.fLabel.startsWith('Por km')) ? a.fLabel : '';
 
   return `
     <div style="margin-bottom:.7rem">
