@@ -6473,21 +6473,23 @@ function renderPrecios(){
     <div style="font-weight:700;color:var(--txt);margin-bottom:.3rem">${titulo}</div>${filas}</div>`;
 
   // ── QUÉ VE TALLER EN FLETES ──────────────────────────────────────────────
-  // Taller ve los precios de flete (los necesita para estimar un viaje), pero NO la cuenta
-  // con la que se arma el precio por km: ni el km extra, ni el recargo, ni la fórmula.
-  // Es información de cómo se forma el costo, no algo que taller use para trabajar.
-  // Lo mismo aplica en el cotizador y en el detalle del alquiler — ver esTallerVista().
+  // Lo que taller NO ve acá:
+  //   - la tarjeta de Rosso Liviana (precios por destino)
+  //   - el km extra, el recargo y la fórmula del precio por km
+  // Lo que sí ve: los destinos de Alejandro, los de Rosso Pesada, y los dos $/km sueltos,
+  // que le alcanzan para estimar un viaje.
+  // La misma regla vale en el cotizador y en el detalle del alquiler — ver esTallerVista().
   const fletesHtml = `<div class="sec-divider" style="margin:1rem 0 .5rem">Fletes</div>` +
     tarjetaDestinos('Alejandro', [
       filaDestino('alejandro.rafaela',     'Alejandro — Rafaela',      fleteAlejandro('rafaela')),
       filaDestino('alejandro.susana',      'Alejandro — Susana',       fleteAlejandro('susana')),
       filaDestino('alejandro.bellaItalia', 'Alejandro — Bella Italia', fleteAlejandro('bellaItalia')),
     ].join('')) +
-    tarjetaDestinos('Rosso — Liviana', [
+    (esTaller ? '' : tarjetaDestinos('Rosso — Liviana', [
       filaDestino('rosso.liviana.rafaela',     'Rosso Liviana — Rafaela',      fleteRosso('liviana','rafaela')),
       filaDestino('rosso.liviana.susana',      'Rosso Liviana — Susana',       fleteRosso('liviana','susana')),
       filaDestino('rosso.liviana.bellaItalia', 'Rosso Liviana — Bella Italia', fleteRosso('liviana','bellaItalia')),
-    ].join('')) +
+    ].join(''))) +
     tarjetaDestinos('Rosso — Pesada', [
       filaDestino('rosso.pesada.rafaela',     'Rosso Pesada — Rafaela',      fleteRosso('pesada','rafaela')),
       filaDestino('rosso.pesada.susana',      'Rosso Pesada — Susana',       fleteRosso('pesada','susana')),
@@ -10004,14 +10006,17 @@ function actualizarDisponibilidadAlq(excludeAlqId){
   // decirlo, porque el conflicto aparecería recién cuando el equipo no esté.
   const riesgos=[];
 
-  // Cargar con fecha anterior al arranque limpio es la fuente del 90% de los choques:
-  // los alquileres viejos de esos meses siguen ocupando las máquinas, así que el equipo
-  // que hoy está libre puede haber estado en obra entonces. Y encima ese alquiler no
-  // cuenta en reportes (ver REPORTES_DESDE_MES). Se avisa antes de que choque.
-  if(REPORTES_DESDE_MES && desde && desde.slice(0,7) < REPORTES_DESDE_MES){
-    riesgos.push(`La fecha de inicio (<b>${fmtD(desde)}</b>) es anterior a ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}, que es desde cuando arrancamos limpio.
-      Este alquiler <b>no va a contar en los reportes</b>, y las máquinas que hoy están libres pueden haber estado ocupadas en esas fechas.
-      Si lo que querés es facturar de acá en adelante, poné la fecha de inicio en ${mesLabel(REPORTES_DESDE_MES).toLowerCase()} o después.`);
+  // Cargar con fecha muy anterior sigue siendo la fuente del 90% de los choques: los
+  // alquileres de esos meses ocupaban maquinas que hoy figuran libres.
+  // Pero el aviso ya NO se dispara por arrancar unos dias antes del corte. Los reportes
+  // cuentan por mes de FACTURA (ver chunkEntraEnElCorte), asi que un alquiler que arranca
+  // el 28/09 y lo factura Walter en octubre cuenta en octubre. Decirle que "no va a contar"
+  // era falso, y mandaba a corregir una fecha que estaba bien.
+  // Solo avisamos si ademas TERMINA antes del corte, o sea que es un alquiler entero del pasado.
+  const terminaAntesDelCorte = hasta && hasta.slice(0,7) < REPORTES_DESDE_MES;
+  if(REPORTES_DESDE_MES && desde && desde.slice(0,7) < REPORTES_DESDE_MES && terminaAntesDelCorte){
+    riesgos.push(`Este alquiler empieza y termina antes de ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}, que es desde cuando arrancamos limpio.
+      <b>No va a contar en los reportes</b>, y las maquinas que hoy estan libres pueden haber estado ocupadas en esas fechas.`);
   }
 
   for(const row of filas){
@@ -11987,7 +11992,11 @@ function renderFacturacion(){
   // facturar quedaban mezclados con los del mes en curso e inflaban el total
   // pendiente. Lo viejo no se borra ni se toca — se guarda detrás de una línea,
   // por si alguna vez hace falta mirarlo.
-  const antesDelCorte = a => !!(REPORTES_DESDE_MES && a.inicio && a.inicio.slice(0,7) < REPORTES_DESDE_MES);
+  // Viejo = el alquiler YA TERMINO antes del corte. Antes se miraba la fecha de inicio, y
+  // eso escondia en el cajon de 'viejos' a un alquiler que arranco el 28/09 pero que Walter
+  // factura en octubre: quedaba fuera de la vista sin estar facturado. Un abierto nunca es
+  // viejo, porque sigue generando periodos.
+  const antesDelCorte = a => !!(REPORTES_DESDE_MES && !a.abierto && a.fin && a.fin.slice(0,7) < REPORTES_DESDE_MES);
   const pendientesTodos=ALQUILERES.filter(a=>!a.mesFacturado && !a.sinFactura && !alqAlDiaFacturado(a) && matchBusca(a)).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
   const pendientesViejos=pendientesTodos.filter(antesDelCorte);
   const pendientes=pendientesTodos.filter(a=>!antesDelCorte(a));
@@ -12062,9 +12071,12 @@ function renderFacturacion(){
   // que hay que poder responder de un vistazo después de cerrar y reingresar todo,
   // porque uno solo que quede sin cerrar desordena el rendimiento de su equipo.
   if(REPORTES_DESDE_MES){
-    const viejosAbiertos = ALQUILERES.filter(a=>
-      a.abierto && !a.retiradoAnticipado && !a.sinFactura &&
-      a.inicio && a.inicio.slice(0,7) < REPORTES_DESDE_MES);
+    // Un abierto solo es "viejo" si ademas YA SE FACTURO antes del corte. Uno recien
+      // cargado que arranca el 28/09 y se factura en octubre no hay que reingresarlo:
+      // marcarlo mandaba a rehacer un alquiler que estaba perfecto.
+      const viejosAbiertos = ALQUILERES.filter(a=>
+        a.abierto && !a.retiradoAnticipado && !a.sinFactura &&
+        a.mesFacturado && a.mesFacturado < REPORTES_DESDE_MES);
 
     h += viejosAbiertos.length
       ? `<div style="background:rgba(201,106,94,.1);border-left:3px solid var(--rojo);border-radius:0 9px 9px 0;padding:11px 15px;margin-bottom:1.2rem">
@@ -13837,7 +13849,7 @@ function setRepTab(t){
 //
 // PARA VOLVER ATRÁS: poner REPORTES_DESDE_MES = '' y todo el historial vuelve a
 // sumar, tal cual estaba. No se borró ningún dato.
-const REPORTES_DESDE_MES = '2026-09';   // formato AAAA-MM
+const REPORTES_DESDE_MES = '2026-10';   // formato AAAA-MM
 
 // ¿Este tramo facturado entra en los reportes?
 // Un tramo sin mes marcado usa la fecha en que arrancó, igual que hacen los
