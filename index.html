@@ -111,12 +111,12 @@ h1,h2,h3,h4{font-weight:700;}
 #menu-mas{
   display:none;position:absolute;right:0;top:calc(100% + 8px);z-index:120;
   background:var(--bg2);border:1px solid var(--border2);border-radius:10px;
-  box-shadow:0 8px 24px rgba(28,27,25,.14);min-width:235px;padding:6px;
+  box-shadow:0 8px 24px rgba(28,27,25,.14);padding:5px;white-space:nowrap;
 }
 #menu-mas.abierto{display:block;}
 #menu-mas button{
   display:block;width:100%;text-align:left;background:none;border:0;cursor:pointer;
-  color:var(--txt);font-size:.85rem;font-weight:600;padding:9px 11px;border-radius:7px;
+  color:var(--txt);font-size:.84rem;font-weight:400;padding:8px 22px 8px 12px;border-radius:6px;
 }
 #menu-mas button:hover{background:var(--bg3);}
 .screen{display:none;padding:1.5rem;max-width:1100px;}
@@ -698,10 +698,10 @@ if ('serviceWorker' in navigator) {
       <div id="mas-caja">
         <button id="btn-mas" onclick="toggleMenuMas(event)" title="M&aacute;s opciones" aria-label="M&aacute;s opciones">&#8942;</button>
         <div id="menu-mas">
-          <button onclick="cerrarMenuMas();abrirCambiarClave()">&#128273; Cambiar mi contrase&ntilde;a</button>
-          <button id="btn-backup" onclick="cerrarMenuMas();descargarBackup()">&#11015; Bajar copia ahora</button>
+          <button onclick="cerrarMenuMas();abrirCambiarClave()">Cambiar mi contrase&ntilde;a</button>
+          <button id="btn-backup" onclick="cerrarMenuMas();descargarBackup()">Bajar copia ahora</button>
           <div style="height:1px;background:var(--border);margin:5px 8px"></div>
-          <button onclick="cerrarMenuMas();logout()">&#8617; Cerrar sesi&oacute;n</button>
+          <button onclick="cerrarMenuMas();logout()">Cerrar sesi&oacute;n</button>
         </div>
       </div>
     </div>
