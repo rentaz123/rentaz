@@ -32,7 +32,7 @@ html{font-size:19px;}
       titulos. Es el truco silencioso de casi todas las apps modernas.
    ──────────────────────────────────────────────────────────────────────── */
 body{
-  font-family:'Segoe UI Variable Text','Segoe UI',-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+  font-family:'Segoe UI','Helvetica Neue',Helvetica,Arial,sans-serif;
   font-size:1.06rem;
   background:var(--bg);
   color:var(--txt);
@@ -125,7 +125,7 @@ h1,h2,h3,h4{font-weight:700;}
 /* DASHBOARD CARDS */
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:1.5rem;}
 .stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.1rem 1.2rem;}
-.stat-card .num{font-size:2.4rem;font-weight:800;letter-spacing:-1px;line-height:1;margin-bottom:4px;}
+.stat-card .num{font-size:2.4rem;font-weight:700;letter-spacing:-1px;line-height:1;margin-bottom:4px;}
 .stat-card .lbl{font-size:.85rem;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;}
 .stat-card.verde .num{color:var(--verde);}
 .stat-card.rojo .num{color:var(--rojo);}
@@ -143,13 +143,13 @@ h1,h2,h3,h4{font-weight:700;}
 .eq-card .eq-cliente{font-size:.72rem;color:var(--txt2);margin-top:2px;}
 
 /* SECCION TITLE */
-.sec-title{font-size:1.2rem;font-weight:800;color:var(--txt);margin-bottom:4px;letter-spacing:-.5px;}
+.sec-title{font-size:1.2rem;font-weight:700;color:var(--txt);margin-bottom:4px;letter-spacing:-.5px;}
 .sec-sub{font-size:.82rem;color:var(--txt3);margin-bottom:1.2rem;}
 .sec-divider{font-size:.72rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;padding:.6rem 0 .4rem;border-bottom:1px solid var(--border);margin-bottom:.8rem;}
 .dash-collapse{border:1px solid var(--border);border-radius:12px;margin-bottom:.6rem;overflow:hidden;background:var(--bg2);}
 .dash-collapse-header{display:flex;align-items:center;gap:8px;cursor:pointer;padding:.75rem .9rem;user-select:none;background:none;border:none;width:100%;text-align:left;font-family:inherit;}
-.dash-collapse-header .dc-title{font-size:.88rem;font-weight:800;color:var(--txt);}
-.dash-collapse-header .dc-badge{background:var(--bg3);color:var(--txt2);font-size:.72rem;font-weight:800;padding:2px 9px;border-radius:10px;}
+.dash-collapse-header .dc-title{font-size:.88rem;font-weight:700;color:var(--txt);}
+.dash-collapse-header .dc-badge{background:var(--bg3);color:var(--txt2);font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:10px;}
 .dash-collapse-header .dc-badge.dc-badge-alert{background:rgba(229,57,53,.12);color:var(--rojo);}
 .dash-collapse-header .dc-arrow{margin-left:auto;font-size:.75rem;color:var(--txt3);transition:transform .15s;}
 .dash-collapse-header.dc-open .dc-arrow{transform:rotate(180deg);}
@@ -157,7 +157,7 @@ h1,h2,h3,h4{font-weight:700;}
 
 /* CALENDARIO */
 .cal-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;}
-.cal-nav h2{font-size:1.3rem;font-weight:800;}
+.cal-nav h2{font-size:1.3rem;font-weight:700;}
 .cal-nav button{background:none;border:1.5px solid var(--border2);border-radius:7px;width:42px;height:42px;cursor:pointer;font-size:1.3rem;display:flex;align-items:center;justify-content:center;color:var(--txt);}
 .leyenda{display:flex;gap:14px;margin-bottom:1rem;flex-wrap:wrap;}
 .leyenda-item{display:flex;align-items:center;gap:6px;font-size:.95rem;color:var(--txt2);}
@@ -167,7 +167,7 @@ h1,h2,h3,h4{font-weight:700;}
 .alm-cell{background:var(--bg2);border-radius:8px;min-height:150px;min-width:0;padding:8px;border:1px solid var(--border);cursor:default;position:relative;overflow:hidden;}
 .alm-cell.otro-mes{opacity:.2;}
 .alm-cell.hoy{border-color:var(--verde);border-width:2px;}
-.alm-num{font-size:1.15rem;font-weight:800;color:var(--txt);margin-bottom:5px;}
+.alm-num{font-size:1.15rem;font-weight:700;color:var(--txt);margin-bottom:5px;}
 .alm-bloque{border-radius:5px;font-size:.92rem;font-weight:700;padding:5px 7px;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;line-height:1.35;}
 .alm-bloque:hover{opacity:.8;}
 .alm-bloque-medio{background:var(--bg3);color:var(--txt3);border:1px dashed var(--border2);font-weight:500;}
@@ -177,7 +177,7 @@ h1,h2,h3,h4{font-weight:700;}
 
 /* COTIZADOR */
 .ccard{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radio);padding:1.1rem;margin-bottom:.8rem;}
-.ccard h3{font-size:.85rem;font-weight:800;margin-bottom:.8rem;}
+.ccard h3{font-size:.85rem;font-weight:700;margin-bottom:.8rem;}
 select,input[type=number],input[type=text],textarea{width:100%;border:1.5px solid var(--border2);border-radius:8px;padding:10px 12px;font-size:1rem;outline:none;background:var(--bg3);color:var(--txt);}
 textarea{font-family:inherit;resize:vertical;line-height:1.4;}
 select:focus,input:focus{border-color:var(--verde);}
@@ -189,7 +189,7 @@ select:focus,input:focus{border-color:var(--verde);}
 .warn-txt{color:var(--rojo);font-size:.75rem;margin-top:4px;display:none;}
 .res-box{background:var(--verde-light);border:1.5px solid var(--verde);border-radius:9px;padding:1rem;}
 .res-lin{display:flex;justify-content:space-between;font-size:.82rem;padding:2px 0;color:var(--txt);}
-.res-lin.tot{font-size:1rem;font-weight:900;border-top:1.5px solid var(--verde);padding-top:7px;margin-top:5px;color:var(--verde);}
+.res-lin.tot{font-size:1rem;font-weight:700;border-top:1.5px solid var(--verde);padding-top:7px;margin-top:5px;color:var(--verde);}
 .iva-box{background:rgba(255,193,7,0.1);border:1px solid rgba(255,193,7,0.3);border-radius:6px;padding:5px 10px;font-size:.78rem;font-weight:700;color:#ffc107;margin-top:.5rem;text-align:center;}
 .btn-cop{width:100%;background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:8px;padding:10px;font-size:.88rem;font-weight:700;cursor:pointer;margin-top:.7rem;}
 .btn-cop:hover{background:#333;}
@@ -202,7 +202,7 @@ select:focus,input:focus{border-color:var(--verde);}
 .banner-blink{animation:bannerBlink 1s ease-in-out 4;}
 .eq-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
 .eq-info{flex:1;}
-.eq-info h4{font-size:.88rem;font-weight:800;}
+.eq-info h4{font-size:.88rem;font-weight:700;}
 .eq-info p{font-size:.72rem;color:var(--txt2);margin-top:1px;}
 .eq-badge{font-size:.68rem;font-weight:700;border-radius:5px;padding:3px 7px;}
 /* Estados, en flota y en alquileres. Los colores se leen igual en toda la app:
@@ -220,7 +220,7 @@ select:focus,input:focus{border-color:var(--verde);}
 /* CLIENTES */
 .cl-item{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radio);padding:.9rem 1rem;margin-bottom:.6rem;cursor:pointer;}
 .cl-item:hover{border-color:var(--verde);}
-.cl-item h4{font-size:.88rem;font-weight:800;margin-bottom:3px;color:var(--txt);}
+.cl-item h4{font-size:.88rem;font-weight:700;margin-bottom:3px;color:var(--txt);}
 .cl-meta{font-size:.72rem;color:var(--txt2);display:flex;gap:10px;flex-wrap:wrap;}
 .search-row{display:flex;gap:8px;margin-bottom:.8rem;}
 .search-row input{flex:1;}
@@ -236,7 +236,7 @@ select:focus,input:focus{border-color:var(--verde);}
 .pago-item.hoy{border-color:rgba(255,193,7,.5);background:rgba(255,193,7,.05);}
 .pago-item.proximo{border-color:var(--border);}
 .pago-item.pagado{opacity:.45;}
-.pago-fecha-badge{min-width:48px;text-align:center;border-radius:8px;padding:5px 8px;font-size:.7rem;font-weight:800;line-height:1.2;}
+.pago-fecha-badge{min-width:48px;text-align:center;border-radius:8px;padding:5px 8px;font-size:.7rem;font-weight:700;line-height:1.2;}
 .pago-fecha-badge.vencido{background:rgba(229,57,53,.2);color:var(--rojo);}
 .pago-fecha-badge.hoy{background:rgba(255,193,7,.2);color:#ffc107;}
 .pago-fecha-badge.proximo{background:var(--bg3);color:var(--txt2);}
@@ -244,7 +244,7 @@ select:focus,input:focus{border-color:var(--verde);}
 .pago-info{flex:1;}
 .pago-concepto{font-size:.88rem;font-weight:700;color:var(--txt);}
 .pago-meta{font-size:.72rem;color:var(--txt2);margin-top:2px;}
-.pago-monto{font-size:.88rem;font-weight:800;color:var(--txt);white-space:nowrap;}
+.pago-monto{font-size:.88rem;font-weight:700;color:var(--txt);white-space:nowrap;}
 .pago-actions{display:flex;gap:6px;}
 .pago-btn{background:none;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;font-size:.72rem;cursor:pointer;color:var(--txt2);}
 .pago-btn:hover{color:var(--txt);border-color:#555;}
@@ -542,7 +542,7 @@ if ('serviceWorker' in navigator) {
 <!-- Selector de responsable (solo para el usuario compartido "taller") -->
 <div id="modal-taller-responsable" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;align-items:center;justify-content:center;">
   <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:300px;max-width:88vw;text-align:center;">
-    <div style="font-size:1rem;font-weight:800;margin-bottom:1rem;color:var(--txt);">¿Quién sos?</div>
+    <div style="font-size:1rem;font-weight:700;margin-bottom:1rem;color:var(--txt);">¿Quién sos?</div>
     <div id="taller-resp-botones" style="display:flex;flex-direction:column;"></div>
   </div>
 </div>
@@ -648,7 +648,6 @@ if ('serviceWorker' in navigator) {
           </div>
         </nav>
       </div>
-      <button class="btn-out" onclick="logout()">↩ Cerrar sesión</button>
     </div>
   </div>
 
@@ -701,6 +700,8 @@ if ('serviceWorker' in navigator) {
         <div id="menu-mas">
           <button onclick="cerrarMenuMas();abrirCambiarClave()">&#128273; Cambiar mi contrase&ntilde;a</button>
           <button id="btn-backup" onclick="cerrarMenuMas();descargarBackup()">&#11015; Bajar copia ahora</button>
+          <div style="height:1px;background:var(--border);margin:5px 8px"></div>
+          <button onclick="cerrarMenuMas();logout()">&#8617; Cerrar sesi&oacute;n</button>
         </div>
       </div>
     </div>
@@ -881,7 +882,7 @@ if ('serviceWorker' in navigator) {
     <div id="modal-pago" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:360px;max-width:92vw;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:1rem">
-          <div style="font-size:1rem;font-weight:800;color:var(--txt);">Nuevo vencimiento</div>
+          <div style="font-size:1rem;font-weight:700;color:var(--txt);">Nuevo vencimiento</div>
           <button onclick="cerrarModalPago()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
         </div>
         <div style="margin-bottom:.7rem">
@@ -942,7 +943,7 @@ if ('serviceWorker' in navigator) {
     <div id="modal-confirmar-pago" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:360px;max-width:92vw;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:.2rem">
-          <div style="font-size:1rem;font-weight:800;color:var(--txt);">Marcar como pagado</div>
+          <div style="font-size:1rem;font-weight:700;color:var(--txt);">Marcar como pagado</div>
           <button onclick="cerrarModalConfirmarPago()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
         </div>
         <div id="confirmar-pago-concepto" style="font-size:.82rem;color:var(--txt2);margin-bottom:1rem;"></div>
@@ -1366,7 +1367,7 @@ if ('serviceWorker' in navigator) {
       <div id="modal-historial-presup" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
         <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:460px;max-width:92vw;max-height:80vh;display:flex;flex-direction:column;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-            <div style="font-size:1rem;font-weight:800;color:var(--txt);">Historial de presupuestos</div>
+            <div style="font-size:1rem;font-weight:700;color:var(--txt);">Historial de presupuestos</div>
             <button onclick="cerrarHistorialPresupuestos()" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
           </div>
           <input type="text" id="hist-presup-buscar" placeholder="Buscar por cliente, CUIT o equipo..." oninput="filtrarHistorialPresup()" autocomplete="off" style="margin-bottom:.8rem">
@@ -1378,7 +1379,7 @@ if ('serviceWorker' in navigator) {
       <div id="modal-presup-detalle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:210;align-items:center;justify-content:center;">
         <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:420px;max-width:92vw;max-height:85vh;display:flex;flex-direction:column;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-            <div style="font-size:1rem;font-weight:800;color:var(--txt);">Detalle del presupuesto</div>
+            <div style="font-size:1rem;font-weight:700;color:var(--txt);">Detalle del presupuesto</div>
             <button onclick="cerrarDetallePresup()" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
           </div>
           <div id="presup-det-contenido" style="overflow-y:auto;flex:1;"></div>
@@ -1467,7 +1468,7 @@ if ('serviceWorker' in navigator) {
                padding 1.5rem) para que al pegarse arriba no se vea el contenido pasando
                por detrás. -->
           <div style="position:sticky;top:0;z-index:2;background:var(--bg2);margin:-1.5rem -1.5rem 1rem;padding:1.4rem 1.5rem .7rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-            <div style="font-size:1rem;font-weight:800;color:var(--txt);" id="ctrl-modal-titulo">Editar registro</div>
+            <div style="font-size:1rem;font-weight:700;color:var(--txt);" id="ctrl-modal-titulo">Editar registro</div>
             <button onclick="cerrarCtrl()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
           </div>
           <div id="ctrl-alq-resumen" style="display:none;margin-bottom:1rem;border:1px solid var(--border);border-radius:10px;padding:.7rem .9rem;background:var(--bg3)"></div>
@@ -1608,7 +1609,7 @@ if ('serviceWorker' in navigator) {
     <div id="modal-factura-prov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:360px;max-width:92vw;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:1rem">
-          <div style="font-size:1rem;font-weight:800;color:var(--txt);">Nueva factura de proveedor</div>
+          <div style="font-size:1rem;font-weight:700;color:var(--txt);">Nueva factura de proveedor</div>
           <button onclick="cerrarModalFacturaProv()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
         </div>
         <div style="margin-bottom:.7rem">
@@ -1650,7 +1651,7 @@ if ('serviceWorker' in navigator) {
     <div id="modal-generar-pago-prov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:360px;max-width:92vw;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:.3rem">
-          <div style="font-size:1rem;font-weight:800;color:var(--txt);">Generar pago</div>
+          <div style="font-size:1rem;font-weight:700;color:var(--txt);">Generar pago</div>
           <button onclick="cerrarModalGenerarPagoProv()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
         </div>
         <div id="pp-pago-resumen" style="font-size:.82rem;color:var(--txt2);margin-bottom:1rem;"></div>
@@ -1680,7 +1681,7 @@ if ('serviceWorker' in navigator) {
 
       <!-- PASO 1: registrar la SALIDA del equipo -->
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:1rem;margin-bottom:1rem;">
-        <div style="font-size:.8rem;font-weight:800;color:var(--txt);margin-bottom:.2rem">Sale el equipo</div>
+        <div style="font-size:.8rem;font-weight:700;color:var(--txt);margin-bottom:.2rem">Sale el equipo</div>
         <div style="font-size:.72rem;color:var(--txt3);margin-bottom:.7rem">La hora de salida ya está puesta con la hora actual. Cargá a dónde va y quién lo lleva, y dale OK. Cuando el equipo vuelva, cerrás el registro desde la lista de abajo.</div>
         <div class="row2" style="margin-bottom:.6rem">
           <div><label class="flabel">Fecha</label><input type="date" id="riv-fecha"></div>
@@ -1713,7 +1714,7 @@ if ('serviceWorker' in navigator) {
     <div id="modal-riv-cerrar" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;align-items:center;justify-content:center;">
       <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:360px;max-width:92vw;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:.3rem">
-          <div style="font-size:1rem;font-weight:800;color:var(--txt)">Vuelve el equipo</div>
+          <div style="font-size:1rem;font-weight:700;color:var(--txt)">Vuelve el equipo</div>
           <button onclick="cerrarModalRivCerrar()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
         </div>
         <div id="riv-cerrar-info" style="font-size:.8rem;color:var(--txt2);margin-bottom:.9rem"></div>
@@ -1738,7 +1739,7 @@ if ('serviceWorker' in navigator) {
                este cuadro es el más largo de la app y cerrarlo obligaba a scrollear hasta
                el fondo. -->
           <div style="position:sticky;top:0;z-index:2;background:var(--bg2);margin:-1.5rem -1.5rem 1rem;padding:1.4rem 1.5rem .7rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-            <div id="alq-modal-titulo" style="font-size:1rem;font-weight:800;color:var(--txt);">Nuevo alquiler</div>
+            <div id="alq-modal-titulo" style="font-size:1rem;font-weight:700;color:var(--txt);">Nuevo alquiler</div>
             <button onclick="cerrarModalAlq()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
           </div>
 
@@ -1799,7 +1800,7 @@ if ('serviceWorker' in navigator) {
           <div id="alq-precio-box" style="display:none;margin-bottom:.7rem;background:var(--bg3);border-radius:8px;padding:.6rem .8rem;">
             <div style="font-size:.72rem;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:3px">Valor alquiler (equipos)</div>
             <div id="alq-precio-detalle" style="font-size:.82rem;color:var(--txt2)"></div>
-            <div id="alq-precio-val" style="font-size:1rem;font-weight:800;color:var(--txt)"></div>
+            <div id="alq-precio-val" style="font-size:1rem;font-weight:700;color:var(--txt)"></div>
           </div>
 
           <!-- FLETE -->
@@ -1999,7 +2000,7 @@ if ('serviceWorker' in navigator) {
   <div id="modal-alq-det" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:380px;max-width:92vw;max-height:88vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <div style="font-size:1rem;font-weight:800;color:var(--txt);">Detalle del alquiler</div>
+        <div style="font-size:1rem;font-weight:700;color:var(--txt);">Detalle del alquiler</div>
         <button onclick="ALQ_DET_ID=null;document.getElementById('modal-alq-det').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
       </div>
       <div id="alq-det-contenido"></div>
@@ -2014,7 +2015,7 @@ if ('serviceWorker' in navigator) {
   <div id="modal-eq-ficha" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:460px;max-width:94vw;max-height:90vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem;">
-        <div id="eq-ficha-nombre" style="font-size:1.05rem;font-weight:800;color:var(--txt);"></div>
+        <div id="eq-ficha-nombre" style="font-size:1.05rem;font-weight:700;color:var(--txt);"></div>
         <button onclick="cerrarFichaEq()" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
       </div>
       <div id="eq-ficha-sub" style="font-size:.78rem;color:var(--txt2);margin-bottom:.8rem;"></div>
@@ -2038,7 +2039,7 @@ if ('serviceWorker' in navigator) {
   <div id="modal-contrato" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:460px;max-width:94vw;max-height:90vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem;">
-        <div style="font-size:1.05rem;font-weight:800;color:var(--txt);">Contrato de locación</div>
+        <div style="font-size:1.05rem;font-weight:700;color:var(--txt);">Contrato de locación</div>
         <button onclick="cerrarContrato()" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
       </div>
       <div id="contrato-sub" style="font-size:.78rem;color:var(--txt2);margin-bottom:.8rem;"></div>
@@ -2056,7 +2057,7 @@ if ('serviceWorker' in navigator) {
   <div id="modal-fletero-det" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <div id="fletero-det-titulo" style="font-size:1rem;font-weight:800;color:var(--txt);">Detalle del fletero</div>
+        <div id="fletero-det-titulo" style="font-size:1rem;font-weight:700;color:var(--txt);">Detalle del fletero</div>
         <button onclick="document.getElementById('modal-fletero-det').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
       </div>
       <div id="fletero-det-contenido"></div>
@@ -2067,7 +2068,7 @@ if ('serviceWorker' in navigator) {
   <div id="modal-viaje-compartido" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:310;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:440px;max-width:92vw;max-height:88vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem;">
-        <div style="font-size:1rem;font-weight:800;color:var(--txt);">Viaje de flete compartido</div>
+        <div style="font-size:1rem;font-weight:700;color:var(--txt);">Viaje de flete compartido</div>
         <button onclick="document.getElementById('modal-viaje-compartido').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
       </div>
       <div style="font-size:.78rem;color:var(--txt2);margin-bottom:.8rem;">Elegí el otro alquiler que viaja en el mismo camión. El flete se va a contar (y cobrar) una sola vez, en el que elijas como principal.</div>
@@ -2079,7 +2080,7 @@ if ('serviceWorker' in navigator) {
   <div id="modal-repgrupo-det" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:460px;max-width:92vw;max-height:88vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem;">
-        <div id="repgrupo-det-titulo" style="font-size:1rem;font-weight:800;color:var(--txt);">Detalle del grupo</div>
+        <div id="repgrupo-det-titulo" style="font-size:1rem;font-weight:700;color:var(--txt);">Detalle del grupo</div>
         <button onclick="document.getElementById('modal-repgrupo-det').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
       </div>
       <div id="repgrupo-det-sub" style="font-size:.75rem;color:var(--txt3);margin-bottom:.8rem;">Estos son los alquileres que arman este número. Si alguno tiene el equipo que no corresponde, tocalo para abrirlo y corregirlo.</div>
@@ -2091,7 +2092,7 @@ if ('serviceWorker' in navigator) {
   <div id="modal-solicitud-larga" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:400;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <div style="font-size:1rem;font-weight:800;color:var(--txt);">Solicitud de alquiler largo</div>
+        <div style="font-size:1rem;font-weight:700;color:var(--txt);">Solicitud de alquiler largo</div>
         <button onclick="document.getElementById('modal-solicitud-larga').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
       </div>
       <div style="margin-bottom:.7rem"><label class="flabel">Nombre del cliente</label><input type="text" id="sollarga-nombre" placeholder="Ej: Juancito Pérez"></div>
@@ -2109,7 +2110,7 @@ if ('serviceWorker' in navigator) {
   <div id="modal-solicitud-espera" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:400;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <div id="modal-solicitud-espera-titulo" style="font-size:1rem;font-weight:800;color:var(--txt);">Solicitud en espera</div>
+        <div id="modal-solicitud-espera-titulo" style="font-size:1rem;font-weight:700;color:var(--txt);">Solicitud en espera</div>
         <button onclick="document.getElementById('modal-solicitud-espera').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
       </div>
       <div style="font-size:.78rem;color:var(--txt2);margin-bottom:1rem">Para cuando el cliente llama y no hay máquina disponible en el momento. Queda anotado acá, y si ese tipo de equipo se libera (retiro, o sale de taller), te avisa automáticamente para que lo llames.</div>
@@ -2149,7 +2150,7 @@ if ('serviceWorker' in navigator) {
   <div id="modal-equipo-nuevo" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:400;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <div style="font-size:1rem;font-weight:800;color:var(--txt);">Agregar equipo a la flota</div>
+        <div style="font-size:1rem;font-weight:700;color:var(--txt);">Agregar equipo a la flota</div>
         <button onclick="document.getElementById('modal-equipo-nuevo').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
       </div>
       <div style="margin-bottom:.7rem"><label class="flabel">Tipo de equipo</label>
@@ -2176,7 +2177,7 @@ if ('serviceWorker' in navigator) {
   <div id="modal-periodo-factura" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:420;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:430px;max-width:92vw;max-height:90vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <div style="font-size:1rem;font-weight:800;color:var(--txt);">Período de la factura</div>
+        <div style="font-size:1rem;font-weight:700;color:var(--txt);">Período de la factura</div>
         <button onclick="document.getElementById('modal-periodo-factura').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
       </div>
       <div id="perfact-info" style="font-size:.82rem;color:var(--txt2);background:var(--bg3);border-radius:8px;padding:.6rem .8rem;margin-bottom:1rem;line-height:1.6"></div>
@@ -2213,7 +2214,7 @@ if ('serviceWorker' in navigator) {
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:680px;max-width:94vw;max-height:90vh;display:flex;flex-direction:column;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:.9rem;">
         <div>
-          <div id="agenda-titulo" style="font-size:1.05rem;font-weight:800;color:var(--txt);">Agenda de las máquinas</div>
+          <div id="agenda-titulo" style="font-size:1.05rem;font-weight:700;color:var(--txt);">Agenda de las máquinas</div>
           <div style="font-size:.8rem;color:var(--txt2);margin-top:2px">Todo lo que tiene cargado cada una, ordenado por fecha</div>
         </div>
         <button onclick="document.getElementById('modal-agenda-maq').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
@@ -2233,7 +2234,7 @@ if ('serviceWorker' in navigator) {
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:640px;max-width:94vw;max-height:90vh;display:flex;flex-direction:column;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:.5rem;">
         <div>
-          <div style="font-size:1.05rem;font-weight:800;color:var(--txt);">Puesta al día de la flota</div>
+          <div style="font-size:1.05rem;font-weight:700;color:var(--txt);">Puesta al día de la flota</div>
           <div style="font-size:.8rem;color:var(--txt2);margin-top:2px">Confirmá dónde está cada máquina hoy. Nada se toca hasta que lo confirmes vos.</div>
         </div>
         <button onclick="cerrarPuestaAlDia()" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
@@ -2253,7 +2254,7 @@ if ('serviceWorker' in navigator) {
   <div id="modal-cerrar-abierto" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:400;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
-        <div style="font-size:1rem;font-weight:800;color:var(--txt);">Confirmar fecha de retiro</div>
+        <div style="font-size:1rem;font-weight:700;color:var(--txt);">Confirmar fecha de retiro</div>
         <button onclick="document.getElementById('modal-cerrar-abierto').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
       </div>
       <div id="cerrarab-info" style="font-size:.82rem;color:var(--txt2);background:var(--bg3);border-radius:8px;padding:.6rem .8rem;margin-bottom:1rem;line-height:1.6"></div>
@@ -2297,7 +2298,7 @@ if ('serviceWorker' in navigator) {
   <div id="modal-cambiar-clave" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:400px;max-width:90vw;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:1rem">
-        <div style="font-size:1rem;font-weight:800;color:var(--txt)">Cambiar mi contraseña</div>
+        <div style="font-size:1rem;font-weight:700;color:var(--txt)">Cambiar mi contraseña</div>
         <button onclick="cerrarCambiarClave()" style="background:none;border:0;color:var(--txt3);font-size:1.3rem;line-height:1;cursor:pointer;padding:0 2px">×</button>
       </div>
       <div id="cc-quien" style="font-size:.8rem;color:var(--txt2);margin-bottom:1rem"></div>
@@ -3374,7 +3375,7 @@ function mostrarAvisoErrorSync(){
     const b = document.createElement('div');
     b.id = 'aviso-sync-error';
     b.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);background:#b71c1c;color:#fff;padding:12px 18px;border-radius:10px;z-index:99999;font-size:.85rem;font-weight:700;box-shadow:0 2px 10px rgba(0,0,0,.35);max-width:92vw;text-align:center;display:flex;gap:10px;align-items:center';
-    b.innerHTML = '<span>⚠️ No se pudo guardar en la nube. No cierres esta pestaña — revisá tu conexión.</span><button onclick="document.getElementById(\'aviso-sync-error\').remove()" style="background:#fff;color:#b71c1c;border:none;border-radius:6px;padding:4px 10px;font-weight:800;cursor:pointer">OK</button>';
+    b.innerHTML = '<span>⚠️ No se pudo guardar en la nube. No cierres esta pestaña — revisá tu conexión.</span><button onclick="document.getElementById(\'aviso-sync-error\').remove()" style="background:#fff;color:#b71c1c;border:none;border-radius:6px;padding:4px 10px;font-weight:700;cursor:pointer">OK</button>';
     document.body.appendChild(b);
   }catch(e){}
 }
@@ -4699,7 +4700,7 @@ function renderDashboard(){
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
         <span style="font-size:.75rem;font-weight:700;background:${color}22;color:${color};padding:2px 7px;border-radius:10px">${label}</span>
-        ${a.tot?`<span style="font-size:.85rem;font-weight:800;color:var(--txt)">${fmt(a.tot)}</span>`:''}
+        ${a.tot?`<span style="font-size:.85rem;font-weight:700;color:var(--txt)">${fmt(a.tot)}</span>`:''}
       </div>
     </div>`;
   };
@@ -4951,7 +4952,7 @@ function renderDashboard(){
             <div class="pago-concepto" style="font-size:1rem">Alquiler: ${a.equipoNombre}</div>
             <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${a.cliente} · ${hora}${a.cargadoPor?` · ${a.cargadoPor}`:''}</div>
           </div>
-          ${a.tot?`<span style="font-size:.85rem;font-weight:800;color:var(--txt)">${fmt(a.tot)}</span>`:''}
+          ${a.tot?`<span style="font-size:.85rem;font-weight:700;color:var(--txt)">${fmt(a.tot)}</span>`:''}
           ${btnBorrar(`eliminarAlq(${a.id})`)}
         </div>`;
       } else {
@@ -6114,7 +6115,7 @@ function cotizar(){
   const destFlete = fleteEspecial ? '' : destinoFromFleteLabel(fLabel);
   const destFleteLiviano = destinoFromFleteLabel(fLabelLiviano);
   const destFlete2 = destinoFromFleteLabel(fLabel2);
-  const clienteLin = clNombre?`<div class="res-lin" style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--verde)"><span style="color:var(--txt2);font-size:.76rem">Cliente</span><span style="font-weight:800">${clNombre}</span></div>`:'';
+  const clienteLin = clNombre?`<div class="res-lin" style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--verde)"><span style="color:var(--txt2);font-size:.76rem">Cliente</span><span style="font-weight:700">${clNombre}</span></div>`:'';
   const itemsLin = `
     <div class="res-lin"><span>${p.nombre}</span><span>${fmt(base)}</span></div>
     <div class="res-lin"><span style="color:var(--txt2);font-size:.76rem">${perLabel}${perModo==='fechas'&&fechaDesdeStr&&fechaHastaStr?' · '+fmtFechaCot(fechaDesdeStr)+' al '+fmtFechaCot(fechaHastaStr):''}</span></div>
@@ -6407,12 +6408,12 @@ function renderPrecios(){
     if(esTaller){
       // Taller solo ve la tarifa diaria, y no puede editarla.
       return `<div class="precio-eq-card" data-busca="${claveBusca}" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem;margin-bottom:.7rem;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
-        <div style="font-weight:800;color:var(--txt)">${p.nombre}${esAuto?' <span style="font-size:.68rem;font-weight:700;color:var(--verde)">(por hora)</span>':''}</div>
-        <div style="font-weight:800;color:var(--txt)">${p.dia!=null?fmt(p.dia):'—'} / día</div>
+        <div style="font-weight:700;color:var(--txt)">${p.nombre}${esAuto?' <span style="font-size:.68rem;font-weight:700;color:var(--verde)">(por hora)</span>':''}</div>
+        <div style="font-weight:700;color:var(--txt)">${p.dia!=null?fmt(p.dia):'—'} / día</div>
       </div>`;
     }
     return `<div class="precio-eq-card" data-busca="${claveBusca}" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem;margin-bottom:.7rem">
-      <div style="font-weight:800;color:var(--txt);margin-bottom:.6rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div style="font-weight:700;color:var(--txt);margin-bottom:.6rem;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span>${p.nombre}</span>
         ${esAuto?'<span style="font-size:.68rem;font-weight:700;color:var(--verde);background:rgba(61,168,32,.12);border-radius:8px;padding:2px 8px">facturable por hora (bloques de 30\')</span>':''}
         ${soloDia?'<span style="font-size:.68rem;font-weight:700;color:var(--txt2);background:var(--bg3);border-radius:8px;padding:2px 8px">solo por día</span>':''}
@@ -6429,11 +6430,11 @@ function renderPrecios(){
   }).join('') + (esTaller ? '' : `<p style="font-size:.75rem;color:var(--txt3);margin-top:.5rem">Los cambios se guardan solos al salir de cada campo. Dejá "Semana", "Mes" u "Hora" vacío si ese equipo no maneja esa tarifa.</p>`);
 
   const fleteCard=(titulo, filas)=>`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem;margin-bottom:.7rem">
-    <div style="font-weight:800;color:var(--txt);margin-bottom:.6rem">${titulo}</div>
+    <div style="font-weight:700;color:var(--txt);margin-bottom:.6rem">${titulo}</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px">${filas}</div>
   </div>`;
   const campoFlete=(label, val, onchange)=> esTaller
-    ? `<div><label class="flabel">${label}</label><div style="font-weight:800;color:var(--txt);padding:.3rem 0">${val!=null?fmt(val):'—'}</div></div>`
+    ? `<div><label class="flabel">${label}</label><div style="font-weight:700;color:var(--txt);padding:.3rem 0">${val!=null?fmt(val):'—'}</div></div>`
     : `<div><label class="flabel">${label}</label><input type="text" inputmode="numeric" class="campo-plata" value="${val!=null?miles(val):''}" onfocus="alEditarPlata(this)" oninput="alEscribirPlata(this)" onchange="${onchange}"></div>`;
 
   // ── Un destino con su desglose: lo que cobra el fletero + lo que suma Rentaz ──
@@ -7790,7 +7791,7 @@ function generarPDFDisponibilidadFlota(){
       clip-path:polygon(0 0, 260px 0, 230px 100%, 0 100%);}
     .hdr-logo img{width:170px;display:block;}
     .hdr-right{position:absolute;right:0;top:0;bottom:0;left:220px;display:flex;align-items:center;justify-content:flex-end;padding:14px 32px;}
-    .hdr-titulo{font-size:26px;font-weight:900;color:#fff;letter-spacing:1px;line-height:1.2;text-align:right}
+    .hdr-titulo{font-size:26px;font-weight:700;color:#fff;letter-spacing:1px;line-height:1.2;text-align:right}
     .body{padding:26px 36px 20px;}
     .fecha{text-align:right;font-size:13px;color:#222;margin-bottom:16px;}
     table{width:100%;border-collapse:collapse;margin-bottom:10px;}
@@ -7976,7 +7977,7 @@ function renderPuestaAlDia(){
 
     return `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 0;border-bottom:1px solid var(--border);${estilo}">
       <div style="flex:1;min-width:220px">
-        <div style="font-size:.86rem;font-weight:800;color:var(--txt)">${ok?'✓ ':''}${e.nombre}</div>
+        <div style="font-size:.86rem;font-weight:700;color:var(--txt)">${ok?'✓ ':''}${e.nombre}</div>
         <div style="font-size:.76rem;color:var(--txt2);margin-top:1px">La app dice: ${dice}</div>
       </div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">${acciones}</div>
@@ -8340,7 +8341,7 @@ function renderEqFichaProb(){
     if(incidenciaEditandoId===i.id) return formEditarIncidenciaHTML(i);
     return `<div class="eq-item" style="cursor:default;flex-direction:column;align-items:flex-start;gap:4px;border-color:var(--rojo)55;background:var(--rojo)0d">
     <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-      <span style="font-size:.85rem;font-weight:800;color:var(--rojo)">⚠️ ${i.descripcion}</span>
+      <span style="font-size:.85rem;font-weight:700;color:var(--rojo)">⚠️ ${i.descripcion}</span>
       <span style="font-size:.7rem;font-weight:700;color:${urgCol[i.urgencia]||'var(--txt2)'};background:${urgCol[i.urgencia]||'var(--txt2)'}22;padding:2px 7px;border-radius:8px">${i.urgencia||'Media'}</span>
     </div>
     <div style="font-size:.78rem;color:var(--txt2)">${fmtFechaHora(i.fecha,i.hora)}${i.reportadoPor?' · reportó '+i.reportadoPor:''}</div>
@@ -8366,7 +8367,7 @@ function renderEqFichaProb(){
     if(incidenciaEditandoId===i.id) return formEditarIncidenciaHTML(i);
     return `<div class="eq-item" style="cursor:default;flex-direction:column;align-items:flex-start;gap:2px;opacity:.85">
     <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-      <span style="font-size:.85rem;font-weight:800">${i.descripcion}</span>
+      <span style="font-size:.85rem;font-weight:700">${i.descripcion}</span>
       <span style="display:flex;gap:8px;align-items:center">
         <button type="button" onclick="mostrarFormEditarIncidencia(${i.id})" style="background:none;border:none;color:var(--txt3);cursor:pointer;font-size:.78rem;text-decoration:underline">editar</button>
         <button type="button" onclick="eliminarIncidenciaEq(${i.id})" style="background:none;border:none;color:var(--rojo);cursor:pointer;font-size:.85rem">✕</button>
@@ -8410,11 +8411,11 @@ function renderEqFichaProb(){
   }
 
   if(abiertas.length){
-    h+=`<div style="font-size:.75rem;font-weight:800;color:var(--rojo);margin:.6rem 0 .3rem">PENDIENTES (${abiertas.length})</div>`;
+    h+=`<div style="font-size:.75rem;font-weight:700;color:var(--rojo);margin:.6rem 0 .3rem">PENDIENTES (${abiertas.length})</div>`;
     h+=abiertas.map(renderAbierta).join('');
   }
   if(resueltas.length){
-    h+=`<div style="font-size:.75rem;font-weight:800;color:var(--txt2);margin:.8rem 0 .3rem">RESUELTOS</div>`;
+    h+=`<div style="font-size:.75rem;font-weight:700;color:var(--txt2);margin:.8rem 0 .3rem">RESUELTOS</div>`;
     h+=resueltas.map(renderResuelta).join('');
   }
   if(!todas.length){
@@ -8595,7 +8596,7 @@ function renderEqFichaHist(){
   } else {
     h+=eventos.map(s=>`<div class="eq-item" style="cursor:default;flex-direction:column;align-items:flex-start;gap:2px">
           <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-            <span style="font-size:.85rem;font-weight:800">${s.tipo}</span>
+            <span style="font-size:.85rem;font-weight:700">${s.tipo}</span>
             <button type="button" onclick="eliminarServicioEq(${s.id})" style="background:none;border:none;color:var(--rojo);cursor:pointer;font-size:.85rem">✕</button>
           </div>
           <div style="font-size:.78rem;color:var(--txt2)">${fmtFecha(s.fecha)}${s.horas?' · '+s.horas+' hs':''}</div>
@@ -9067,7 +9068,7 @@ function generarPDF(){
       clip-path:polygon(0 0, 260px 0, 230px 100%, 0 100%);}
     .hdr-logo img{width:170px;display:block;}
     .hdr-right{position:absolute;right:0;top:0;bottom:0;left:220px;display:flex;align-items:center;justify-content:flex-end;padding:14px 32px;}
-    .hdr-titulo{font-size:34px;font-weight:900;color:#fff;letter-spacing:2px;line-height:1;}
+    .hdr-titulo{font-size:34px;font-weight:700;color:#fff;letter-spacing:2px;line-height:1;}
     .body{padding:26px 36px 20px;}
     .fecha{text-align:right;font-size:13px;color:#222;margin-bottom:16px;}
     .sres{font-size:14px;margin-bottom:6px;}
@@ -9087,7 +9088,7 @@ function generarPDF(){
     .iva-txt{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#3da820;margin-top:6px;}
     .total-num{text-align:right;}
     .total-label{font-size:15px;font-weight:700;}
-    .total-monto{font-size:20px;font-weight:900;margin-left:10px;}
+    .total-monto{font-size:20px;font-weight:700;margin-left:10px;}
     .footer{display:flex;justify-content:space-between;align-items:flex-end;border-top:1px solid #ddd;padding:12px 36px 12px;background:#fff;margin-top:auto;}
     .body{padding:26px 36px 20px;display:flex;flex-direction:column;min-height:calc(100vh - 96px);}
     .footer-datos{font-size:10px;color:#333;line-height:2;font-weight:700;}
@@ -9345,7 +9346,7 @@ function verDetallePresup(id){
 
   let html = `
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;">
-      <span style="font-size:.78rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${p.estadoConv==='convertido'?'var(--txt3)':'var(--azul)'};background:${p.estadoConv==='convertido'?'var(--txt3)':'var(--azul)'}18;padding:3px 9px;border-radius:10px">${p.estadoConv==='convertido'?'Ya convertido':'Pendiente'}</span>
+      <span style="font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${p.estadoConv==='convertido'?'var(--txt3)':'var(--azul)'};background:${p.estadoConv==='convertido'?'var(--txt3)':'var(--azul)'}18;padding:3px 9px;border-radius:10px">${p.estadoConv==='convertido'?'Ya convertido':'Pendiente'}</span>
       <span style="font-size:.74rem;color:var(--txt3)">Generado ${fechaStr}</span>
     </div>`;
 
@@ -9390,11 +9391,11 @@ function verDetallePresup(id){
     if(c.extras && c.extras.length) c.extras.forEach(x=>{ html += fila(x.concepto, fmt(x.monto)); });
     if(c.usdValor>0) html += fila('Referencia USD', `U$D ${c.usdValor.toLocaleString('es-AR')} (dólar ${c.usdTipo}${c.usdCotizacion?': $'+c.usdCotizacion.toLocaleString('es-AR'):''})`);
     if(c.mostrarIva===false){
-      html += `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:900;color:var(--verde)"><span>TOTAL</span><span>${fmt(c.tot)}</span></div>`;
+      html += `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:700;color:var(--verde)"><span>TOTAL</span><span>${fmt(c.tot)}</span></div>`;
     } else {
       html += fila('Subtotal', fmt(c.sub));
       html += fila('IVA (21%)', fmt(c.iva));
-      html += `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:900;color:var(--verde)"><span>TOTAL</span><span>${fmt(c.tot)}</span></div>`;
+      html += `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:700;color:var(--verde)"><span>TOTAL</span><span>${fmt(c.tot)}</span></div>`;
     }
     }
   } else {
@@ -9403,7 +9404,7 @@ function verDetallePresup(id){
     if(p.rangoFecha) html += fila('Fechas', p.rangoFecha);
     html += fila('Valor alquiler', fmt(p.base));
     if(p.fVal>0) html += fila('Flete', fmt(p.fVal));
-    html += `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:900;color:var(--verde)"><span>TOTAL</span><span>${fmt(p.total)}</span></div>`;
+    html += `<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:700;color:var(--verde)"><span>TOTAL</span><span>${fmt(p.total)}</span></div>`;
   }
 
   document.getElementById('presup-det-contenido').innerHTML = html;
@@ -9460,8 +9461,8 @@ function renderHistorialPresupuestos(filtro){
     const fechaStr = f.toLocaleDateString('es-AR') + ' ' + f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
     const convertido = p.estadoConv==='convertido';
     const badge = convertido
-      ? `<span style="font-size:.68rem;font-weight:800;text-transform:uppercase;color:var(--txt3);background:var(--bg);padding:2px 7px;border-radius:8px;margin-left:6px">Ya convertido</span>`
-      : `<span style="font-size:.68rem;font-weight:800;text-transform:uppercase;color:var(--azul);background:var(--azul)18;padding:2px 7px;border-radius:8px;margin-left:6px">Pendiente</span>`;
+      ? `<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--txt3);background:var(--bg);padding:2px 7px;border-radius:8px;margin-left:6px">Ya convertido</span>`
+      : `<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--azul);background:var(--azul)18;padding:2px 7px;border-radius:8px;margin-left:6px">Pendiente</span>`;
     return `<div style="border:1px solid var(--border);border-radius:8px;padding:.7rem .9rem;margin-bottom:.6rem;cursor:pointer;" onclick="verDetallePresup(${p.id})">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
         <div>
@@ -9890,7 +9891,7 @@ function verAgendaDeMaquinas(eqId){
     }).join('') : `<div style="padding:7px 0;border-top:1px solid var(--border);font-size:.79rem;color:var(--txt3)">Sin ningún alquiler cargado.</div>`;
 
     return `<div style="margin-bottom:1rem;background:var(--bg3);border-radius:9px;padding:.7rem .85rem">
-      <div style="font-size:.88rem;font-weight:800;color:var(--txt)">${m.nombre}</div>
+      <div style="font-size:.88rem;font-weight:700;color:var(--txt)">${m.nombre}</div>
       <div style="font-size:.78rem;margin:2px 0 4px">${estado}</div>
       ${filas}
     </div>`;
@@ -10537,7 +10538,7 @@ function calcTotalAlq(){
       ${fVal?`<div style="display:flex;justify-content:space-between"><span>${fLabel}</span><span>${fmt(fVal)}</span></div>`:''}
       ${alqExtras.map(x=>`<div style="display:flex;justify-content:space-between"><span>${x.concepto}</span><span>${fmt(x.monto)}</span></div>`).join('')}
       ${fVal2?`<div style="display:flex;justify-content:space-between"><span>${fLabel2}</span><span>${fmt(fVal2)}</span></div>`:''}
-      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--verde);margin-top:5px;padding-top:5px;font-weight:800;color:var(--verde)"><span>${sinFacturaPreview?'Total (SIN factura, sin IVA)':'Total + IVA'}</span><span>${fmt(tot)}</span></div>`;
+      <div style="display:flex;justify-content:space-between;border-top:1px solid var(--verde);margin-top:5px;padding-top:5px;font-weight:700;color:var(--verde)"><span>${sinFacturaPreview?'Total (SIN factura, sin IVA)':'Total + IVA'}</span><span>${fmt(tot)}</span></div>`;
     box.style.display='block';
   } else { box.style.display='none'; }
 }
@@ -11392,8 +11393,8 @@ function resumenAlquilerHTML(a){
             del recuadro. Ahora la fila envuelve: si las dos cosas no entran juntas, la
             etiqueta baja de renglón entera en vez de aplastar el título. */''}
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
-        <div style="flex:1 1 auto;min-width:145px;font-size:1.05rem;font-weight:800;color:var(--txt);line-height:1.25">${a.equipoNombre}${duracionTxt?`<span style="font-weight:600;color:var(--txt2);font-size:.85rem"> · ${duracionTxt}</span>`:''}</div>
-        <span style="flex:0 0 auto;white-space:nowrap;font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:${estadoColor};background:${estadoColor}18;padding:3px 9px;border-radius:10px;text-align:center">${estadoLbl}</span>
+        <div style="flex:1 1 auto;min-width:145px;font-size:1.05rem;font-weight:700;color:var(--txt);line-height:1.25">${a.equipoNombre}${duracionTxt?`<span style="font-weight:600;color:var(--txt2);font-size:.85rem"> · ${duracionTxt}</span>`:''}</div>
+        <span style="flex:0 0 auto;white-space:nowrap;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${estadoColor};background:${estadoColor}18;padding:3px 9px;border-radius:10px;text-align:center">${estadoLbl}</span>
       </div>
       <div style="font-size:.9rem;font-weight:700;color:var(--txt);margin-top:.35rem">${a.cliente}</div>
       ${clLinea?`<div style="font-size:.78rem;color:var(--txt2);margin-top:2px;line-height:1.45">${clLinea}</div>`:''}
@@ -11455,7 +11456,7 @@ function resumenAlquilerHTML(a){
     ${a.localidad?fila('Localidad de destino', a.localidad):''}
     ${a.sub?fila('Subtotal', fmt(a.sub)):''}
     ${a.iva?fila('IVA (21%)', fmt(a.iva)):''}
-    ${a.tot?`<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:900;color:var(--verde)"><span>TOTAL</span><span>${fmt(a.tot)}</span></div>`:''}
+    ${a.tot?`<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:700;color:var(--verde)"><span>TOTAL</span><span>${fmt(a.tot)}</span></div>`:''}
     ${a.obs?fila('Observaciones', a.obs):''}
     ${a.solicitante?fila('Solicitado por', a.solicitante):''}
   `;
@@ -11742,7 +11743,7 @@ function abrirViajeCompartido(id){
     .slice(0,25);
   cont.innerHTML = candidatos.length
     ? candidatos.map(c=>`<div class="eq-item" style="cursor:pointer;flex-direction:column;align-items:flex-start;gap:2px" onclick="elegirViajeCompartido(${a.id},${c.id})">
-        <div style="font-size:.85rem;font-weight:800;color:var(--txt)">${c.equipoNombre}</div>
+        <div style="font-size:.85rem;font-weight:700;color:var(--txt)">${c.equipoNombre}</div>
         <div style="font-size:.75rem;color:var(--txt2)">${c.cliente} · ${fmtD(c.inicio)} al ${fmtD(c.fin)} · ${c.localidad||'—'} · ${fmt(c.fVal||0)}</div>
       </div>`).join('')
     : `<p style="color:var(--txt3);font-size:.85rem;text-align:center">No hay otros alquileres con flete de ${a.fTransportista} disponibles para vincular.</p>`;
@@ -12033,7 +12034,7 @@ function renderFacturacion(){
   if(totalesMalos.length){
     const sumaDif = totalesMalos.reduce((s,x)=>s+x.diferencia,0);
     h += `<div style="background:rgba(229,168,59,.14);border-left:3px solid #e5a83b;border-radius:0 9px 9px 0;padding:11px 15px;margin-bottom:1.2rem">
-      <div style="font-size:.85rem;font-weight:800;color:var(--txt);margin-bottom:3px">
+      <div style="font-size:.85rem;font-weight:700;color:var(--txt);margin-bottom:3px">
         ${totalesMalos.length} alquiler${totalesMalos.length!==1?'es':''} con el total mal calculado
       </div>
       <div style="font-size:.78rem;color:var(--txt2);line-height:1.5;margin-bottom:8px">
@@ -12080,7 +12081,7 @@ function renderFacturacion(){
 
     h += viejosAbiertos.length
       ? `<div style="background:rgba(201,106,94,.1);border-left:3px solid var(--rojo);border-radius:0 9px 9px 0;padding:11px 15px;margin-bottom:1.2rem">
-          <div style="font-size:.85rem;font-weight:800;color:var(--txt);margin-bottom:3px">
+          <div style="font-size:.85rem;font-weight:700;color:var(--txt);margin-bottom:3px">
             ${viejosAbiertos.length===1
               ? `Queda 1 alquiler abierto que arrancó antes de ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}`
               : `Quedan ${viejosAbiertos.length} alquileres abiertos que arrancaron antes de ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}`}
@@ -12115,7 +12116,7 @@ function renderFacturacion(){
   if(corriendo.length){
     const totalDias=corriendo.reduce((s,x)=>s+x.dias,0);
     h += `<div style="background:rgba(229,168,59,.12);border-left:3px solid #e5a83b;border-radius:0 9px 9px 0;padding:11px 15px;margin-bottom:1.2rem">
-      <div style="font-size:.85rem;font-weight:800;color:var(--txt);margin-bottom:3px">
+      <div style="font-size:.85rem;font-weight:700;color:var(--txt);margin-bottom:3px">
         ${corriendo.length} alquiler${corriendo.length!==1?'es':''} abierto${corriendo.length!==1?'s':''} con días sin facturar
         <span style="font-weight:600;color:var(--txt2)">· ${totalDias} día${totalDias!==1?'s':''} en total</span>
       </div>
@@ -12460,7 +12461,7 @@ function renderRivadavia(){
       abiertosCont.innerHTML='';
     } else {
       let ha=`<div style="background:rgba(59,130,229,0.08);border:1px solid rgba(59,130,229,0.3);border-radius:12px;padding:.9rem;margin-bottom:1rem">
-        <div style="font-size:.85rem;font-weight:800;color:var(--txt);margin-bottom:.6rem">En la calle ahora (${abiertos.length})</div>`;
+        <div style="font-size:.85rem;font-weight:700;color:var(--txt);margin-bottom:.6rem">En la calle ahora (${abiertos.length})</div>`;
       abiertos.forEach(r=>{
         ha+=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--bg2);border-radius:8px;padding:.6rem .7rem;margin-bottom:.5rem;flex-wrap:wrap">
           <div style="font-size:.8rem;color:var(--txt)">
@@ -12508,8 +12509,8 @@ function renderRivadavia(){
 
     h+=`<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:12px;padding:.9rem;margin-bottom:1rem">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.6rem;flex-wrap:wrap;gap:6px">
-        <div style="font-size:.95rem;font-weight:800;color:var(--txt)">${grupo.ym==='sin-fecha'?'Sin fecha':mesLabelRiv(grupo.ym)}</div>
-        <div style="font-size:.82rem;font-weight:800;color:var(--verde)">${fmt(totalMonto)}</div>
+        <div style="font-size:.95rem;font-weight:700;color:var(--txt)">${grupo.ym==='sin-fecha'?'Sin fecha':mesLabelRiv(grupo.ym)}</div>
+        <div style="font-size:.82rem;font-weight:700;color:var(--verde)">${fmt(totalMonto)}</div>
       </div>
       <div style="font-size:.76rem;color:var(--txt2);margin-bottom:.3rem">${regs.length} registro${regs.length!==1?'s':''} · ${totalMediasHoras} media${totalMediasHoras!==1?'s':''} hora${totalMediasHoras!==1?'s':''} = <b style="color:var(--txt)">${horasTxt} h</b> × ${fmt(rivPrecioHora())}/h = <b style="color:var(--verde)">${fmt(totalMonto)}</b>${facturado?' · facturado':(algunoFacturado?` · ${pendientes} pendiente(s)`:'')}</div>
       <div style="font-size:.72rem;color:var(--txt3);margin-bottom:.7rem">(${rivFmtDuracion(totalMin)} de uso real anotado — se factura por media hora)</div>`;
@@ -13076,7 +13077,7 @@ function marcarSalidaConfirmada(id, opts){
     btnFila.style.pointerEvents='none';
     const ok=document.createElement('span');
     ok.textContent='Salió';
-    ok.style.cssText='color:var(--verde);font-weight:800;font-size:.78rem;margin-left:6px;';
+    ok.style.cssText='color:var(--verde);font-weight:700;font-size:.78rem;margin-left:6px;';
     btnFila.insertAdjacentElement('afterend', ok);
   }
   // Sin cartel de confirmación: ya se confirmó en el paso anterior y el botón de la fila
@@ -13527,7 +13528,7 @@ function renderAlq(){
     return`<div class="eq-item" style="flex-direction:column;align-items:flex-start;gap:6px;cursor:pointer" onclick="verDetalleAlq(${a.id})">
       <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
         <div>
-          <div style="font-size:.9rem;font-weight:800;color:var(--txt)">${a.equipoNombre}${a.grupoId?` <span style="font-size:.7rem;font-weight:700;color:var(--verde)">${a.grupoCant} equipos</span>`:''}</div>
+          <div style="font-size:.9rem;font-weight:700;color:var(--txt)">${a.equipoNombre}${a.grupoId?` <span style="font-size:.7rem;font-weight:700;color:var(--verde)">${a.grupoCant} equipos</span>`:''}</div>
           <div style="font-size:.78rem;color:var(--txt2);margin-top:2px">${a.cliente}</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
@@ -13620,7 +13621,7 @@ function renderSolicitudesEspera(){
       const diasStyle = d>=14 ? 'background:#e65100;color:#fff'
         : d>=7 ? 'background:#ef6c0022;color:#ef6c00'
         : 'background:var(--bg3);color:var(--txt2)';
-      diasBadge=`<span class="eq-badge" style="${diasStyle};font-weight:800">${d>=7?'':''}${d} día${d!==1?'s':''}</span>`;
+      diasBadge=`<span class="eq-badge" style="${diasStyle};font-weight:700">${d>=7?'':''}${d} día${d!==1?'s':''}</span>`;
     }
     // Si pidió varios equipos, se marca cuál de ellos es el que está disponible ahora.
     const tiposTxt = tiposS.map(t=> (s.estado==='pendiente' && hayEquipoLibreDeTipo(t.tipo))
@@ -13630,7 +13631,7 @@ function renderSolicitudesEspera(){
     return`<div class="eq-item" style="flex-direction:column;align-items:flex-start;gap:6px">
       <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
         <div>
-          <div style="font-size:.9rem;font-weight:800;color:var(--txt)">${tiposTxt}</div>
+          <div style="font-size:.9rem;font-weight:700;color:var(--txt)">${tiposTxt}</div>
           <div style="font-size:.78rem;color:var(--txt2);margin-top:2px">${s.cliente}${s.telefono?' · '+s.telefono:''}${(()=>{const h=historialAlqCliente(s.clienteId,s.cliente); return h>0?` · <span style="color:${h>=5?'#00838f':'var(--txt3)'};font-weight:${h>=5?800:400}">${h} alquiler${h!==1?'es':''} previo${h!==1?'s':''}</span>`:'';})()}</div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
@@ -14188,8 +14189,8 @@ function mostrarDetalleGrupoMaquina(key){
   document.getElementById('repgrupo-det-contenido').innerHTML = ordenadas.length
     ? ordenadas.map(({a,dias,monto})=>`<div class="eq-item" style="cursor:pointer;flex-direction:column;align-items:flex-start;gap:2px" onclick="document.getElementById('modal-repgrupo-det').style.display='none';verDetalleAlq(${a.id})">
         <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-          <span style="font-size:.85rem;font-weight:800">${a.equipoNombre}</span>
-          <span style="font-weight:800;color:var(--verde);font-size:.85rem">${fmt(monto)}</span>
+          <span style="font-size:.85rem;font-weight:700">${a.equipoNombre}</span>
+          <span style="font-weight:700;color:var(--verde);font-size:.85rem">${fmt(monto)}</span>
         </div>
         <div style="font-size:.78rem;color:var(--txt2)">${a.cliente} · ${fmtD(a.inicio)} al ${fmtD(a.fin)} · ${dias} día${dias!==1?'s':''}${a.mesFacturado?' · '+mesLabel(a.mesFacturado):''}</div>
       </div>`).join('')
@@ -14327,12 +14328,12 @@ function renderRepFletes(){
     const totalMes=fleteros.reduce((s,x)=>s+x.monto,0);
     return `<div style="margin:1.1rem 0 .5rem;padding-bottom:5px;border-bottom:1px solid var(--border2);display:flex;justify-content:space-between;align-items:baseline">
         <h4 style="font-size:.8rem;color:var(--txt2);text-transform:uppercase;letter-spacing:.03em">${mesLabel(mes)}</h4>
-        <span style="font-size:.82rem;font-weight:800;color:var(--verde)">${fmt(totalMes)}</span>
+        <span style="font-size:.82rem;font-weight:700;color:var(--verde)">${fmt(totalMes)}</span>
       </div>` +
       fleteros.map(x=>`<div class="eq-item" style="cursor:pointer;flex-direction:column;align-items:flex-start;gap:6px" onclick="verDetalleFletero('${esc(x.nombre)}','${mes}')">
         <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
           <h4 style="font-size:.9rem">${x.nombre}</h4>
-          <span style="font-weight:800;color:var(--verde);font-size:.9rem">${fmt(x.monto)}</span>
+          <span style="font-weight:700;color:var(--verde);font-size:.9rem">${fmt(x.monto)}</span>
         </div>
         <div style="font-size:.78rem;color:var(--txt2)">Viajes de ida: ${x.ida} · Viajes de vuelta (retiro): ${x.vuelta} · Total viajes: ${x.ida+x.vuelta} · Tocá para ver el detalle</div>
       </div>`).join('');
@@ -14358,8 +14359,8 @@ function verDetalleFletero(nombre, mes){
   filas.forEach(({ev})=>{ totalMonto+=ev.monto; if(ev.tipo==='ida') totalIda++; else totalVuelta++; });
   const filasHtml=filas.map(({a,ev})=>`<div class="eq-item" style="cursor:pointer;flex-direction:column;align-items:flex-start;gap:4px" onclick="document.getElementById('modal-fletero-det').style.display='none';verDetalleAlq(${a.id})">
       <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-        <div style="font-size:.85rem;font-weight:800;color:var(--txt)">${ev.tipo==='ida'?'Ida':'Vuelta'} — ${a.equipoNombre}</div>
-        <span style="font-weight:800;color:var(--verde);font-size:.82rem">${fmt(ev.monto)}</span>
+        <div style="font-size:.85rem;font-weight:700;color:var(--txt)">${ev.tipo==='ida'?'Ida':'Vuelta'} — ${a.equipoNombre}</div>
+        <span style="font-weight:700;color:var(--verde);font-size:.82rem">${fmt(ev.monto)}</span>
       </div>
       <div style="font-size:.75rem;color:var(--txt2)">${a.cliente} · ${a.localidad||'—'}</div>
       <div style="font-size:.75rem;color:var(--txt2)">${fmtD(ev.fecha)}</div>
@@ -14386,7 +14387,7 @@ function renderRepRanking(){
   const lista=Object.values(porCliente).sort((a,b)=>b.cantidad-a.cantidad||b.total-a.total);
   if(!lista.length) return `<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">No hubo alquileres en ${repPeriodo? 'los últimos '+repPeriodo+' días' : 'el historial'}.</p>`;
   return lista.map((x,i)=>`<div class="eq-item" style="cursor:default">
-      <div style="width:28px;text-align:center;font-weight:900;color:var(--txt3);font-size:.95rem">${i+1}</div>
+      <div style="width:28px;text-align:center;font-weight:700;color:var(--txt3);font-size:.95rem">${i+1}</div>
       <div class="eq-info"><h4>${x.cliente}</h4><p>${fmt(x.total)} facturados</p></div>
       <span class="eq-badge eq-alquilado">${x.cantidad} alquiler${x.cantidad!==1?'es':''}</span>
     </div>`).join('');
@@ -14425,7 +14426,7 @@ function renderRepHistorial(){
           <div style="display:flex;justify-content:space-between;align-items:center">
             <div><div style="font-size:.84rem;font-weight:700;color:var(--txt)">${a.equipoNombre}</div>
             <div style="font-size:.76rem;color:var(--txt2);margin-top:1px">${a.cliente}</div></div>
-            ${a.tot?`<span style="font-weight:800;color:var(--txt);font-size:.82rem">${fmt(a.tot)}</span>`:''}
+            ${a.tot?`<span style="font-weight:700;color:var(--txt);font-size:.82rem">${fmt(a.tot)}</span>`:''}
           </div>
           <div style="font-size:.73rem;color:var(--txt2);margin-top:3px">${fmtD(a.inicio)} al ${fmtD(a.fin)}${a.fTransportista&&a.fTransportista!=='Sin flete'?' · '+a.fTransportista:''}</div>
         </div>`).join('')}
@@ -14457,7 +14458,7 @@ function renderRepPerdidas(){
   });
   const rankingTipos=Object.values(porTipo).sort((a,b)=>b.cant-a.cant);
   const resumenHtml=`<div style="background:var(--bg3);border-radius:10px;padding:.8rem .9rem;margin-bottom:1rem">
-    <div style="font-size:.85rem;font-weight:800;color:var(--txt);margin-bottom:.5rem">Total perdidas: ${perdidas.length}</div>
+    <div style="font-size:.85rem;font-weight:700;color:var(--txt);margin-bottom:.5rem">Total perdidas: ${perdidas.length}</div>
     <div style="display:flex;flex-direction:column;gap:4px">
       ${rankingTipos.map(t=>`<div style="display:flex;justify-content:space-between;font-size:.8rem;color:var(--txt2)"><span>${t.nombre}</span><b style="color:var(--rojo)">${t.cant}</b></div>`).join('')}
     </div>
