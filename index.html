@@ -1421,7 +1421,15 @@ if ('serviceWorker' in navigator) {
         <input type="text" id="alq-busca-cliente" placeholder="Buscar por cliente, equipo o fletero..." oninput="alqFiltro==='espera'?renderSolicitudesEspera():renderAlq()" style="width:100%;padding:.6rem .8rem .6rem 34px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--txt);font-size:.85rem">
       </div>
 
-      <div id="lista-alq"></div>
+      <!-- Barra de seleccion multiple. Aparece sola cuando hay algo tildado. -->
+<div id="alq-barra-sel" style="display:none;position:sticky;top:0;z-index:5;align-items:center;gap:10px;flex-wrap:wrap;background:var(--bg2);border:1px solid var(--border2);border-radius:10px;padding:9px 13px;margin-bottom:.7rem;box-shadow:var(--sombra)">
+  <span id="alq-sel-txt" style="font-size:.85rem;color:var(--txt)"></span>
+  <span style="flex:1"></span>
+  <button onclick="seleccionarTodosAlq()" class="btn-lim" style="width:auto;margin-top:0;padding:6px 11px;font-size:.78rem">Seleccionar todos</button>
+  <button onclick="limpiarSelAlq()" class="btn-lim" style="width:auto;margin-top:0;padding:6px 11px;font-size:.78rem">Quitar selecci&oacute;n</button>
+  <button onclick="eliminarAlqSeleccionados()" class="btn-lim" style="width:auto;margin-top:0;padding:6px 11px;font-size:.78rem;border-color:var(--rojo);color:var(--rojo)">Eliminar</button>
+</div>
+<div id="lista-alq"></div>
       <div id="lista-solicitudes-espera" style="display:none"></div>
 
     </div>
@@ -13525,11 +13533,16 @@ function renderAlq(){
     else if(futuro){badgeClass='eq-libre';badgeTxt='Programado';}
     else if(a.pickupPendiente){badgeClass='eq-fuera';badgeTxt='Falta retirar el equipo';}
     else{badgeClass='';badgeTxt='Finalizado';}
+      // El casillero corta el click con stopPropagation: sin eso, tildar abria el detalle.
     return`<div class="eq-item" style="flex-direction:column;align-items:flex-start;gap:6px;cursor:pointer" onclick="verDetalleAlq(${a.id})">
       <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-        <div>
+        <div style="display:flex;align-items:center;gap:11px;min-width:0">
+          <input type="checkbox" onclick="event.stopPropagation()" onchange="toggleSelAlq(${a.id},this.checked)"
+                 ${alqSeleccionados.has(a.id)?'checked':''} style="width:16px;height:16px;flex:0 0 auto;cursor:pointer;accent-color:var(--verde)">
+          <div style="min-width:0">
           <div style="font-size:.9rem;font-weight:700;color:var(--txt)">${a.equipoNombre}${a.grupoId?` <span style="font-size:.7rem;font-weight:700;color:var(--verde)">${a.grupoCant} equipos</span>`:''}</div>
           <div style="font-size:.78rem;color:var(--txt2);margin-top:2px">${a.cliente}</div>
+          </div>
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <span class="eq-badge ${badgeClass}" style="${a.pausado?'background:#e5a83b22;color:#e5a83b':(!badgeClass?'background:var(--bg3);color:var(--txt3)':'')}">${badgeTxt}</span>
@@ -13545,8 +13558,68 @@ function renderAlq(){
       </div>
     </div>`;
   }).join('');
+
+  // La barra de seleccion se recalcula con la lista: si un alquiler tildado dejo de
+  // existir (lo borro otro dispositivo), deja de contar.
+  actualizarBarraSelAlq();
 }
 
+// ── SELECCION MULTIPLE EN ALQUILERES ──────────────────────────────────────
+// Los ids tildados viven afuera de renderAlq: la lista se redibuja sola cada vez que
+// llega un cambio de otra compu, y si la seleccion viviera adentro se borraria sola
+// mientras la persona esta eligiendo.
+let alqSeleccionados = new Set();
+
+function toggleSelAlq(id, tildado){
+  if(tildado) alqSeleccionados.add(id); else alqSeleccionados.delete(id);
+  actualizarBarraSelAlq();
+}
+
+// Lo que se ve AHORA en pantalla, que es lo unico que se puede seleccionar de una.
+function idsAlqVisibles(){
+  return [...document.querySelectorAll('#lista-alq input[type=checkbox]')]
+    .map(c => Number((c.getAttribute('onchange')||'').match(/toggleSelAlq\((\d+)/)?.[1]))
+    .filter(n => !isNaN(n));
+}
+
+function seleccionarTodosAlq(){
+  idsAlqVisibles().forEach(id => alqSeleccionados.add(id));
+  renderAlq();
+}
+
+function limpiarSelAlq(){
+  alqSeleccionados.clear();
+  renderAlq();
+}
+
+function actualizarBarraSelAlq(){
+  const barra = document.getElementById('alq-barra-sel');
+  if(!barra) return;
+  // Un alquiler borrado desde otra pantalla no tiene que seguir contando como elegido.
+  [...alqSeleccionados].forEach(id => { if(!ALQUILERES.some(a=>a.id===id)) alqSeleccionados.delete(id); });
+  const n = alqSeleccionados.size;
+  barra.style.display = n ? 'flex' : 'none';
+  const txt = document.getElementById('alq-sel-txt');
+  if(txt) txt.innerHTML = `<b>${n}</b> alquiler${n!==1?'es':''} seleccionado${n!==1?'s':''}`;
+}
+
+async function eliminarAlqSeleccionados(){
+  const ids = [...alqSeleccionados].filter(id => ALQUILERES.some(a=>a.id===id));
+  if(!ids.length) return;
+  const elegidos = ALQUILERES.filter(a => ids.includes(a.id));
+  // Se listan uno por uno antes de borrar: con 9 alquileres tildados, "eliminar 9" no
+  // dice nada y es imposible darse cuenta de que se colo uno que no iba.
+  const muestra = elegidos.slice(0,12).map(a=>`  - ${a.equipoNombre} — ${a.cliente}`).join('\n');
+  const resto = elegidos.length>12 ? `\n  ...y ${elegidos.length-12} mas` : '';
+  const ok = await confirmSiNo(
+    `Vas a eliminar ${ids.length} alquiler${ids.length!==1?'es':''}:\n\n${muestra}${resto}\n\nSe puede deshacer despues.`,
+    {si:`Eliminar ${ids.length}`, no:'Cancelar'});
+  if(!ok) return;
+  ALQUILERES = ALQUILERES.filter(a => !ids.includes(a.id));
+  alqSeleccionados.clear();
+  marcarAccionUndo(`Eliminar ${ids.length} alquiler${ids.length!==1?'es':''}`, 'alquileres');
+  guardar(); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
+}
 async function eliminarAlq(id){
   if(!(await confirmSiNo('¿Eliminar este alquiler?',{si:'Eliminar',no:'Cancelar'})))return;
   const a=ALQUILERES.find(x=>x.id===id);
@@ -13628,6 +13701,7 @@ function renderSolicitudesEspera(){
       ? `<b style="color:#00838f">${t.tipoNombre} ✓</b>`
       : t.tipoNombre
     ).join(' · ');
+      // El casillero corta el click con stopPropagation: sin eso, tildar abria el detalle.
     return`<div class="eq-item" style="flex-direction:column;align-items:flex-start;gap:6px">
       <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
         <div>
