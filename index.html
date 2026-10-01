@@ -1348,7 +1348,8 @@ if ('serviceWorker' in navigator) {
       <!-- OBSERVACIONES -->
       <div class="ccard">
         <label class="flabel">Observaciones (opcional)</label>
-        <textarea id="cot-obs" rows="3" placeholder="Una observacion por renglon. Ej:&#10;fechas tentativas, a confirmar&#10;el cliente pide factura A" oninput="cotizar()"></textarea>
+        <textarea id="cot-obs" rows="3" placeholder="Una observacion por renglon. Ej:&#10;fechas tentativas, a confirmar&#10;el cliente pide factura A" oninput="cotizar()">D&iacute;as corridos.
+Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos.</textarea>
         <div style="font-size:.72rem;color:var(--txt3);margin-top:6px">Se muestra en el PDF y en el texto para WhatsApp — útil, por ejemplo, para aclarar fechas si cotizaste por cantidad de días sin fecha concreta.</div>
       </div>
 
@@ -1475,10 +1476,13 @@ if ('serviceWorker' in navigator) {
                Los márgenes negativos lo estiran hasta los bordes del recuadro (que tiene
                padding 1.5rem) para que al pegarse arriba no se vea el contenido pasando
                por detrás. -->
-          <div style="position:sticky;top:0;z-index:2;background:var(--bg2);margin:-1.5rem -1.5rem 1rem;padding:1.4rem 1.5rem .7rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="position:sticky;top:0;z-index:2;background:var(--bg2);margin:-1.5rem -1.5rem 0;padding:1.4rem 1.5rem .8rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
             <div style="font-size:1rem;font-weight:700;color:var(--txt);" id="ctrl-modal-titulo">Editar registro</div>
             <button onclick="cerrarCtrl()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
           </div>
+          <!-- Aire bajo el encabezado. Va aparte y no pegajoso: si fuera margen
+               del encabezado seria transparente y el contenido se veria por detras. -->
+          <div style="height:1rem"></div>
           <div id="ctrl-alq-resumen" style="display:none;margin-bottom:1rem;border:1px solid var(--border);border-radius:10px;padding:.7rem .9rem;background:var(--bg3)"></div>
           <div style="margin-bottom:.7rem">
             <label class="flabel">Cliente</label>
@@ -1746,10 +1750,13 @@ if ('serviceWorker' in navigator) {
           <!-- Encabezado pegajoso con la cruz siempre visible (ver nota en modal-ctrl):
                este cuadro es el más largo de la app y cerrarlo obligaba a scrollear hasta
                el fondo. -->
-          <div style="position:sticky;top:0;z-index:2;background:var(--bg2);margin:-1.5rem -1.5rem 1rem;padding:1.4rem 1.5rem .7rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="position:sticky;top:0;z-index:2;background:var(--bg2);margin:-1.5rem -1.5rem 0;padding:1.4rem 1.5rem .8rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
             <div id="alq-modal-titulo" style="font-size:1rem;font-weight:700;color:var(--txt);">Nuevo alquiler</div>
             <button onclick="cerrarModalAlq()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.15rem;line-height:1;padding:0 2px;flex-shrink:0">✕</button>
           </div>
+          <!-- Aire bajo el encabezado. Va aparte y no pegajoso: si fuera margen
+               del encabezado seria transparente y el contenido se veria por detras. -->
+          <div style="height:1rem"></div>
 
           <!-- CLIENTE -->
           <div style="margin-bottom:.7rem">
@@ -2298,6 +2305,50 @@ if ('serviceWorker' in navigator) {
     </div>
   </div>
 
+  <!-- Factura que cubre varios equipos del mismo cliente. Encabezado y pie fijos con el
+       cuerpo scrolleable: asi ningun texto queda tapado por detras del encabezado. -->
+  <div id="modal-fact-varios" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:center;justify-content:center;">
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;width:620px;max-width:94vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:1.3rem 1.5rem .85rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex:0 0 auto">
+        <div>
+          <div style="font-size:1rem;font-weight:700;color:var(--txt)">Cargar factura</div>
+          <div id="fv-cliente" style="font-size:.82rem;color:var(--txt2);margin-top:2px"></div>
+        </div>
+        <button onclick="cerrarFacturaVarios()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.3rem;line-height:1;padding:0 2px">&times;</button>
+      </div>
+
+      <div style="padding:1.1rem 1.5rem;overflow-y:auto;flex:1 1 auto">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:1rem">
+          <div style="flex:1;min-width:170px">
+            <label class="flabel">N&deg; de factura</label>
+            <input type="text" id="fv-numero" placeholder="0001-00000000" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--txt);font-size:.85rem">
+          </div>
+          <div>
+            <label class="flabel">Fecha de la factura</label>
+            <input type="date" id="fv-fecha" style="padding:8px 10px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--txt);font-size:.85rem">
+          </div>
+        </div>
+
+        <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;background:var(--bg3);border-radius:9px;padding:9px 11px;margin-bottom:.6rem">
+          <div>
+            <label class="flabel">Mismo cierre para todos</label>
+            <input type="date" id="fv-hasta-todos" style="padding:7px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--txt);font-size:.82rem">
+          </div>
+          <button onclick="aplicarHastaATodos()" class="btn-lim" style="width:auto;margin-top:0;padding:7px 12px;font-size:.78rem">Aplicar</button>
+          <span style="font-size:.74rem;color:var(--txt3);flex:1;min-width:140px">Despu&eacute;s correg&iacute; el que haya cerrado antes.</span>
+        </div>
+
+        <div id="fv-filas"></div>
+      </div>
+
+      <div style="padding:.9rem 1.5rem;border-top:1px solid var(--border);display:flex;gap:9px;align-items:center;flex-wrap:wrap;flex:0 0 auto">
+        <span id="fv-total" style="font-size:.85rem;color:var(--txt2)"></span>
+        <span style="flex:1"></span>
+        <button onclick="cerrarFacturaVarios()" style="background:none;border:1px solid var(--border2);color:var(--txt);border-radius:8px;padding:.6rem 1rem;font-size:.84rem;font-weight:600;cursor:pointer">Cancelar</button>
+        <button id="fv-guardar" onclick="guardarFacturaVarios()" class="btn-nuevo" style="padding:.6rem 1.2rem;font-size:.84rem">Guardar</button>
+      </div>
+    </div>
+  </div>
   <!-- Cada uno cambia SU propia contraseña, sin pasar por el panel de Supabase ni
        depender de que Mateo se la resetee. Lo ven todos los roles (el botón está en el
        pie del menú, fuera del <nav>, así que aplicarRestriccionesRol no lo toca).
@@ -5782,6 +5833,11 @@ function autocompletarLocalidadCot2(sel){
   if(localidad) document.getElementById('cot2-localidad').value = localidad;
 }
 // ── COSTOS ADICIONALES DE FLETE (peajes, etc.) — cotizador ────
+// Observaciones que van por defecto en todo presupuesto. Se precargan en el campo,
+// asi que se pueden editar o borrar antes de mandarlo si ese cliente necesita otra cosa.
+// Salen en el PDF y en el texto de WhatsApp porque viajan dentro de "obs".
+const OBS_COT_POR_DEFECTO = 'Días corridos.\nPresupuesto válido por 15 días, sujeto a disponibilidad de equipos.';
+
 let cotExtras=[];
 function agregarExtraCot(){
   const concepto=(document.getElementById('cot-extra-concepto').value||'').trim()||'Peaje';
@@ -6297,7 +6353,7 @@ function limpiar(){
   document.getElementById('per-fechas-resumen').style.display='none';
   document.getElementById('cot-localidad-box').style.display='none';
   document.getElementById('cot-localidad').value='';
-  document.getElementById('cot-obs').value='';
+  document.getElementById('cot-obs').value=OBS_COT_POR_DEFECTO;
   document.getElementById('cot-extras-box').style.display='none';
   cotExtras=[]; renderExtrasCot();
   cotEquiposExtra=[]; renderEquiposExtraCot();
@@ -12013,7 +12069,25 @@ function renderFacturacion(){
   const sinFacturaLista=ALQUILERES.filter(a=>a.sinFactura && !a.mesFacturado && matchBusca(a)).sort((a,b)=>(b.creadoEn||0)-(a.creadoEn||0));
   const totalPendiente=pendientes.reduce((s,a)=>s+(a.tot||0),0);
 
-  let h = `<div style="font-size:.85rem;color:var(--txt2);margin-bottom:${pendientesViejos.length?'.4rem':'1rem'}">Pendientes de facturar: <b style="color:${pendientes.length?'var(--rojo)':'var(--verde)'}">${pendientes.length}</b>${pendientes.length?` · Total sin facturar: <b style="color:var(--txt)">${fmt(totalPendiente)}</b>`:''}${REPORTES_DESDE_MES?` <span style="color:var(--txt3)">· desde ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}</span>`:''}</div>`;
+  // Barra de la factura con varios equipos. Se arma antes del listado para que quede
+  // arriba de todo y se vea sin scrollear.
+  const selFact = ALQUILERES.filter(a=>factSeleccionados.has(a.id));
+  const clientesSel = [...new Set(selFact.map(a=>a.clienteId!=null?String(a.clienteId):(a.cliente||'').trim().toLowerCase()))];
+  const mismoCliente = clientesSel.length===1;
+  let hSel = '';
+  if(selFact.length){
+    hSel = `<div style="position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--bg2);border:1px solid ${mismoCliente?'var(--border2)':'var(--rojo)'};border-radius:10px;padding:9px 13px;margin-bottom:.8rem;box-shadow:var(--sombra)">
+      <span style="font-size:.85rem;color:var(--txt)"><b>${selFact.length}</b> equipo${selFact.length!==1?'s':''} seleccionado${selFact.length!==1?'s':''}</span>
+      ${mismoCliente
+        ? `<span style="font-size:.8rem;color:var(--txt2)">· ${selFact[0].cliente}</span>`
+        : `<span style="font-size:.8rem;color:var(--rojo);font-weight:600">· son de clientes distintos, no pueden ir en la misma factura</span>`}
+      <span style="flex:1"></span>
+      <button onclick="limpiarSelFact()" class="btn-lim" style="width:auto;margin-top:0;padding:6px 11px;font-size:.78rem">Quitar selección</button>
+      ${mismoCliente ? `<button onclick="abrirFacturaVarios()" class="btn-nuevo" style="padding:6px 12px;font-size:.78rem">Cargar factura de los ${selFact.length}</button>` : ''}
+    </div>`;
+  }
+
+  let h = hSel + `<div style="font-size:.85rem;color:var(--txt2);margin-bottom:${pendientesViejos.length?'.4rem':'1rem'}">Pendientes de facturar: <b style="color:${pendientes.length?'var(--rojo)':'var(--verde)'}">${pendientes.length}</b>${pendientes.length?` · Total sin facturar: <b style="color:var(--txt)">${fmt(totalPendiente)}</b>`:''}${REPORTES_DESDE_MES?` <span style="color:var(--txt3)">· desde ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}</span>`:''}</div>`;
 
   if(pendientesViejos.length){
     const totalViejos=pendientesViejos.reduce((s,a)=>s+(a.tot||0),0);
@@ -12174,6 +12248,9 @@ function renderFacturacion(){
           ? `${fmtD(a.inicio)} al ${fmtD(a.fin)} (retiro) · A facturar: ${fmtD(a.inicio)} al ${fmtD(finFact)}`
           : `${fmtD(a.inicio)} al ${fmtD(a.fin)}`);
       return `<div class="pago-item" style="border-color:var(--border2);margin-bottom:.5rem">
+          <input type="checkbox" onchange="toggleSelFact(${a.id},this.checked)" ${factSeleccionados.has(a.id)?'checked':''}
+                 title="Tildar para cargar una factura que cubre varios equipos"
+                 style="width:16px;height:16px;flex:0 0 auto;cursor:pointer;accent-color:var(--verde);margin-right:11px">
         <div class="pago-info">
           <div class="pago-concepto" style="font-size:1rem">${a.equipoNombre} · ${a.cliente}</div>
           <div class="pago-meta" style="font-size:.82rem;margin-top:3px">${periodoTxt} · ${fmt(a.tot||0)} · sugerido: ${mesLabel(mesSug)}</div>
@@ -13439,7 +13516,12 @@ async function agregarDiasFacturablesAlq(id, periodo){
 
   recalcularTotalesAlq(a);
 
-  const numeroFactura = (prompt('N° de factura (viene el siguiente al último cargado — corregilo si no coincide):', siguienteNumeroFactura())||'').trim();
+  // Cuando una sola factura de Walter cubre varios equipos, el numero y el mes llegan
+  // desde el cuadro de arriba y son los mismos para todos: no hay que preguntarlos
+  // una vez por maquina (ver cargarFacturaVarios).
+  const numeroFactura = (periodo.numeroFactura !== undefined)
+    ? String(periodo.numeroFactura||'').trim()
+    : (prompt('N° de factura (viene el siguiente al último cargado — corregilo si no coincide):', siguienteNumeroFactura())||'').trim();
 
   if(!a.diasAgregados) a.diasAgregados=[];
   // Guardamos el RANGO exacto que cubre esta factura (ej: 24/07 al 06/08), no solo la
@@ -13455,8 +13537,9 @@ async function agregarDiasFacturablesAlq(id, periodo){
   // caso se pregunta, porque la respuesta correcta depende de cómo se emitió la factura.
   const mesActual = hoyISO().slice(0,7);
   const mesDelPeriodo = String(nuevaFin).slice(0,7);
-  let mesFacturado = mesActual;
-  if(mesDelPeriodo && mesDelPeriodo < mesActual){
+  let mesFacturado = (periodo.mesFacturado) ? periodo.mesFacturado : mesActual;
+  // Si el mes ya vino decidido desde el cuadro de varios equipos, no se vuelve a preguntar.
+  if(!periodo.mesFacturado && mesDelPeriodo && mesDelPeriodo < mesActual){
     const alMesDelPeriodo = await confirmSiNo(
       `Esta factura cubre días que terminan en ${mesLabel(mesDelPeriodo)}, pero hoy estamos en ${mesLabel(mesActual)}.\n\n`+
       `¿En qué mes tiene que contar para los reportes?`,
@@ -13466,6 +13549,10 @@ async function agregarDiasFacturablesAlq(id, periodo){
   a.diasAgregados.push({fecha:hoyISO(), desde, hasta:nuevaFin, dias:diasChunk, tarifa, monto:montoChunk, detalle, mesFacturado, facturadoEn:Date.now(), numeroFactura});
 
   marcarAccionUndo(`Cargar factura de "${a.equipoNombre}" — ${a.cliente} (${fmtFechaCot(desde)} al ${fmtFechaCot(nuevaFin)})`, 'alquileres');
+  // En modo bucle (una factura con varios equipos) no se guarda ni se redibuja por cada
+  // uno: lo hace cargarFacturaVarios al terminar, asi no se disparan siete sincronizaciones
+  // ni siete carteles.
+  if(periodo.silencioso) return {ok:true, desde, hasta:nuevaFin, monto:montoChunk, detalle};
   guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion(); renderReportes();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
   alert(`Factura ${fmtD(desde)} al ${fmtD(nuevaFin)} — ${detalle} (${fmt(montoChunk)})${numeroFactura?' · N° '+numeroFactura:''}.\n\nYa cuenta para el reporte de ${mesLabel(mesActual)}. Si en realidad corresponde a otro mes, tocá "cambiar" al lado de esta factura en el detalle del alquiler.`);
@@ -13564,6 +13651,156 @@ function renderAlq(){
   actualizarBarraSelAlq();
 }
 
+// ── FACTURA QUE CUBRE VARIOS EQUIPOS ──────────────────────────────────────
+// Walter emite UNA factura por varias maquinas del mismo cliente, y cada maquina puede
+// tener su propio tramo: una entro despues, otra se devolvio antes. Antes habia que
+// cargarla equipo por equipo repitiendo numero y fecha. Aca se carga una sola vez y
+// cada equipo lleva su desde/hasta propio.
+let factSeleccionados = new Set();
+
+function toggleSelFact(id, tildado){
+  if(tildado) factSeleccionados.add(id); else factSeleccionados.delete(id);
+  renderFacturacion();
+}
+function limpiarSelFact(){ factSeleccionados.clear(); renderFacturacion(); }
+
+// Precio por N dias segun la lista: 5+ dias se arma en semanas (un resto de 5 o 6 se
+// redondea a una semana mas) y 4+ semanas pasan a mes si hay tarifa mensual.
+// Es la misma regla del cotizador; aca esta una sola vez para que no se desincronice.
+function presupuestoPorDias(tipo, dias){
+  const p = precioTipo(tipo);
+  if(!p || !p.dia || dias<=0) return {monto:0, detalle:''};
+  if(dias<=4 || !p.sem) return {monto:dias*p.dia, detalle:`${dias} día${dias!==1?'s':''} × ${fmt(p.dia)}`};
+  let semanas=Math.floor(dias/7), resto=dias%7;
+  if(resto>=5){ semanas+=1; resto=0; }
+  let meses=0;
+  if(p.mes && semanas>=4){ meses=Math.floor(semanas/4); semanas=semanas%4; }
+  const monto = meses*(p.mes||0) + semanas*(p.sem||0) + resto*p.dia;
+  const partes=[];
+  if(meses>0) partes.push(`${meses} mes${meses>1?'es':''}`);
+  if(semanas>0) partes.push(`${semanas} sem${semanas>1?'s':''}`);
+  if(resto>0) partes.push(`${resto} día${resto!==1?'s':''}`);
+  return {monto, detalle:partes.join(' + ')};
+}
+
+// Desde cuando se factura cada equipo: el dia siguiente al ultimo ya facturado, o el
+// inicio si todavia no tiene ninguna. Es lo que evita cobrar dos veces el mismo dia.
+function desdeSugeridoFact(a){
+  const esPrimera = !!a.abierto && (!a.diasAgregados || !a.diasAgregados.length) && !a.mesFacturado;
+  if(esPrimera) return a.inicio;
+  const d = new Date(a.fin+'T00:00:00'); d.setDate(d.getDate()+1);
+  return fechaISOLocal(d);
+}
+
+function abrirFacturaVarios(){
+  const sel = ALQUILERES.filter(a=>factSeleccionados.has(a.id));
+  if(!sel.length) return;
+  document.getElementById('fv-cliente').textContent = sel[0].cliente;
+  document.getElementById('fv-numero').value = siguienteNumeroFactura();
+  document.getElementById('fv-fecha').value = hoyISO();
+  document.getElementById('fv-hasta-todos').value = hoyISO();
+  const fmtD = s => { const[y,m,d]=String(s).split('-'); return `${d}/${m}/${y.slice(2)}`; };
+  document.getElementById('fv-filas').innerHTML = sel.map(a=>{
+    const desde = desdeSugeridoFact(a);
+    const hasta = hoyISO() > desde ? hoyISO() : desde;
+    return `<div class="fv-fila" data-id="${a.id}" style="padding:.7rem 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:.86rem;font-weight:600;color:var(--txt);margin-bottom:.4rem">${a.equipoNombre}</div>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+        <div><label class="flabel">Desde</label>
+          <input type="date" class="fv-desde" value="${desde}" onchange="recalcFacturaVarios()" style="padding:7px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--txt);font-size:.82rem"></div>
+        <div><label class="flabel">Hasta</label>
+          <input type="date" class="fv-hasta" value="${hasta}" onchange="recalcFacturaVarios()" style="padding:7px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--txt);font-size:.82rem"></div>
+        <div style="flex:1;min-width:120px"><label class="flabel">Importe</label>
+          <input type="text" inputmode="numeric" class="fv-monto campo-plata" onfocus="alEditarPlata(this)" oninput="alEscribirPlata(this)" onchange="recalcFacturaVarios()" style="width:100%"></div>
+      </div>
+      <div class="fv-detalle" style="font-size:.74rem;color:var(--txt3);margin-top:4px"></div>
+    </div>`;
+  }).join('');
+  recalcFacturaVarios(true);
+  document.getElementById('modal-fact-varios').style.display='flex';
+}
+
+function cerrarFacturaVarios(){ document.getElementById('modal-fact-varios').style.display='none'; }
+
+// El "hasta" de arriba es un atajo: la mayoria de los equipos cierran el mismo dia y
+// despues se corrige el que no.
+function aplicarHastaATodos(){
+  const h = document.getElementById('fv-hasta-todos').value;
+  if(!h) return;
+  document.querySelectorAll('#fv-filas .fv-hasta').forEach(i=>{ i.value = h; });
+  recalcFacturaVarios(true);
+}
+
+// resugerir=true vuelve a escribir los importes desde la lista de precios. Si es false
+// respeta lo que el usuario ya corrigio a mano.
+function recalcFacturaVarios(resugerir){
+  let total = 0, hayError = false;
+  document.querySelectorAll('#fv-filas .fv-fila').forEach(fila=>{
+    const a = ALQUILERES.find(x=>x.id===Number(fila.dataset.id));
+    const desde = fila.querySelector('.fv-desde').value;
+    const hasta = fila.querySelector('.fv-hasta').value;
+    const inpMonto = fila.querySelector('.fv-monto');
+    const det = fila.querySelector('.fv-detalle');
+    if(!a || !desde || !hasta || hasta < desde){
+      det.innerHTML = '<span style="color:var(--rojo)">Revisá las fechas</span>';
+      hayError = true; return;
+    }
+    const dias = Math.round((new Date(hasta+'T00:00:00') - new Date(desde+'T00:00:00'))/86400000) + 1;
+    const sug = presupuestoPorDias(a.tipo, dias);
+    if(resugerir) inpMonto.value = miles(sug.monto);
+    const monto = parseFloat(String(inpMonto.value).replace(/\./g,'').replace(',','.')) || 0;
+    total += monto;
+    const cobrados = (sug.monto && a.tipo && precioTipo(a.tipo).dia)
+      ? Math.round((monto / precioTipo(a.tipo).dia) * 10) / 10 : null;
+    det.innerHTML = `${dias} día${dias!==1?'s':''}${sug.detalle?' · '+sug.detalle:''}`
+      + (cobrados!=null && Math.abs(cobrados-dias) > 0.05 ? ` · <b style="color:#b3791f">se cobran ${String(cobrados).replace('.',',')}</b>` : '');
+  });
+  const btn = document.getElementById('fv-guardar');
+  document.getElementById('fv-total').innerHTML = `TOTAL <b style="color:var(--txt)">${fmt(total)}</b>`;
+  btn.disabled = hayError; btn.style.opacity = hayError ? '.5' : '1';
+}
+
+async function guardarFacturaVarios(){
+  const numero = (document.getElementById('fv-numero').value||'').trim();
+  const fecha  = document.getElementById('fv-fecha').value;
+  const filas = [...document.querySelectorAll('#fv-filas .fv-fila')].map(fila=>({
+    id: Number(fila.dataset.id),
+    desde: fila.querySelector('.fv-desde').value,
+    hasta: fila.querySelector('.fv-hasta').value,
+    monto: parseFloat(String(fila.querySelector('.fv-monto').value).replace(/\./g,'').replace(',','.')) || 0
+  }));
+  if(filas.some(f=>!f.desde || !f.hasta || f.hasta < f.desde || f.monto<=0)){
+    alert('Hay alguna fila con fechas o importe sin completar.'); return;
+  }
+  // El mes se decide UNA vez para toda la factura: es una sola factura de Walter, no
+  // puede contar mitad en un mes y mitad en otro.
+  const mesActual = hoyISO().slice(0,7);
+  const mesFact = (fecha||hoyISO()).slice(0,7);
+  let mesFacturado = mesFact;
+  if(mesFact !== mesActual){
+    const alDeLaFactura = await confirmSiNo(
+      `La factura tiene fecha de ${mesLabel(mesFact)} y hoy estamos en ${mesLabel(mesActual)}.\n\n¿En qué mes cuenta para los reportes?`,
+      {si:`${mesLabel(mesFact)} (la fecha de la factura)`, no:`${mesLabel(mesActual)} (este mes)`});
+    mesFacturado = alDeLaFactura ? mesFact : mesActual;
+  }
+  const total = filas.reduce((s,f)=>s+f.monto,0);
+  const cli = (ALQUILERES.find(a=>a.id===filas[0].id)||{}).cliente || '';
+  if(!(await confirmSiNo(
+      `Factura ${numero||'(sin número)'} — ${cli}\n${filas.length} equipo${filas.length!==1?'s':''} · ${fmt(total)}\n\nCuenta en ${mesLabel(mesFacturado)}.`,
+      {si:'Guardar', no:'Revisar'}))) return;
+
+  cerrarFacturaVarios();
+  for(const fx of filas){
+    await agregarDiasFacturablesAlq(fx.id, {
+      desde: fx.desde, hasta: fx.hasta, montoManual: fx.monto,
+      numeroFactura: numero, mesFacturado, silencioso: true
+    });
+  }
+  factSeleccionados.clear();
+  marcarAccionUndo(`Cargar factura ${numero||''} — ${cli} (${filas.length} equipos)`, 'alquileres');
+  guardar(); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion(); renderReportes();
+  alert(`Listo. Factura ${numero||''} — ${filas.length} equipo${filas.length!==1?'s':''} por ${fmt(total)}.\n\nCuenta en el reporte de ${mesLabel(mesFacturado)}.`);
+}
 // ── SELECCION MULTIPLE EN ALQUILERES ──────────────────────────────────────
 // Los ids tildados viven afuera de renderAlq: la lista se redibuja sola cada vez que
 // llega un cambio de otra compu, y si la seleccion viviera adentro se borraria sola
