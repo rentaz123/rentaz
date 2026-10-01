@@ -2305,6 +2305,40 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
     </div>
   </div>
 
+  <!-- Actualizar toda la lista cargando el dolar nuevo. Encabezado y pie fijos, cuerpo
+       scrolleable: el listado puede ser largo y no tiene que tapar los botones. -->
+  <div id="modal-actualizar-dolar" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:center;justify-content:center;">
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;width:720px;max-width:95vw;max-height:90vh;display:flex;flex-direction:column;overflow:hidden">
+      <div style="padding:1.25rem 1.5rem .85rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex:0 0 auto">
+        <div>
+          <div style="font-size:1rem;font-weight:700;color:var(--txt)">Actualizar precios por d&oacute;lar</div>
+          <div style="font-size:.8rem;color:var(--txt2);margin-top:2px">No se aplica nada hasta que aprietes Aplicar.</div>
+        </div>
+        <button onclick="cerrarActualizarDolar()" title="Cerrar" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.3rem;line-height:1;padding:0 2px">&times;</button>
+      </div>
+
+      <div style="padding:1.1rem 1.5rem;overflow-y:auto;flex:1 1 auto">
+        <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-bottom:1rem">
+          <div>
+            <label class="flabel">D&oacute;lar actual</label>
+            <div style="padding:9px 12px;border:1px dashed var(--border2);border-radius:8px;background:var(--bg3);font-size:.95rem;font-weight:700;font-variant-numeric:tabular-nums" id="ad-actual">&mdash;</div>
+          </div>
+          <div>
+            <label class="flabel">D&oacute;lar nuevo</label>
+            <input type="text" inputmode="numeric" id="ad-nuevo" oninput="recalcActualizarDolar()" placeholder="1600" style="width:130px;padding:9px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--txt);font-size:.95rem;font-weight:700;font-variant-numeric:tabular-nums">
+          </div>
+          <div id="ad-pct" style="padding-bottom:11px;font-size:.95rem"></div>
+        </div>
+        <div id="ad-tabla"></div>
+      </div>
+
+      <div style="padding:.9rem 1.5rem;border-top:1px solid var(--border);display:flex;gap:9px;align-items:center;flex-wrap:wrap;flex:0 0 auto">
+        <span style="font-size:.76rem;color:var(--txt3);flex:1;min-width:180px">Los valores en d&oacute;lares no cambian. Queda anotado en el historial.</span>
+        <button onclick="cerrarActualizarDolar()" style="background:none;border:1px solid var(--border2);color:var(--txt);border-radius:8px;padding:.6rem 1rem;font-size:.84rem;font-weight:600;cursor:pointer">Cancelar</button>
+        <button id="ad-aplicar" onclick="aplicarActualizarDolar()" class="btn-nuevo" style="padding:.6rem 1.2rem;font-size:.84rem">Aplicar</button>
+      </div>
+    </div>
+  </div>
   <!-- Factura que cubre varios equipos del mismo cliente. Encabezado y pie fijos con el
        cuerpo scrolleable: asi ningun texto queda tapado por detras del encabezado. -->
   <div id="modal-fact-varios" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;align-items:center;justify-content:center;">
@@ -2468,7 +2502,8 @@ const SB_CONFIGS = [
   { clave:'EQ_CHECKLIST',     get:()=>EQ_CHECKLIST,     set:v=>EQ_CHECKLIST=v },
   { clave:'PRECIOS_OVERRIDE', get:()=>PRECIOS_OVERRIDE, set:v=>PRECIOS_OVERRIDE=v },
   { clave:'FLETES_OVERRIDE',  get:()=>FLETES_OVERRIDE,  set:v=>FLETES_OVERRIDE=v },
-  { clave:'FICHAS_TECNICAS',  get:()=>FICHAS_TECNICAS,  set:v=>FICHAS_TECNICAS=v }
+  { clave:'FICHAS_TECNICAS',  get:()=>FICHAS_TECNICAS,  set:v=>FICHAS_TECNICAS=v },
+  { clave:'DOLAR_REF',        get:()=>DOLAR_REF,        set:v=>DOLAR_REF=v }
 ];
 
 // ── Foto de lo ultimo que sabemos que quedo guardado ──────────────────────
@@ -4073,6 +4108,41 @@ function elegirResponsableTaller(nombre){
 // nota larga junto a "ejecutarMigracionesFlota" (más abajo en el archivo) sobre por qué
 // esto es importante: correrlas sobre datos locales viejos, antes de que llegue el
 // estado real de Firebase, puede pisar cambios recientes de otro dispositivo.
+// Al cargar la lista de octubre (dolar 1600) quedaron overrides guardados con los valores
+// de septiembre. Un override le gana a la tabla base, asi que esos campos seguirian
+// mostrando el precio viejo. Se borran SOLO los que coinciden exactamente con el precio
+// anterior: si alguno tiene otro valor fue una decision y no se toca.
+const PRECIOS_SEPT_2026 = {
+  autoelevador:{dia:130000,sem:650000,mes:2210000,hora:75000},
+  mls15:{dia:130000}, alo60:{dia:130000},
+  mls19:{dia:145000,sem:725000,mes:2465000},
+  genie2032:{dia:145000,sem:725000,mes:2465000},
+  zoomlion:{dia:145000,sem:725000,mes:2465000},
+  jlg:{dia:160000,sem:800000,mes:2720000},
+  genie3246:{dia:175000,sem:875000,mes:2975000},
+  alo140w:{dia:190000,sem:950000,mes:3230000},
+  alo160w:{dia:205000,sem:1025000,mes:3485000},
+  haulotte:{dia:540000,sem:1800000,mes:4650000},
+  snorkel:{dia:540000,sem:1800000,mes:4650000},
+  alo140e:{dia:540000,sem:1800000,mes:4650000}
+};
+function limpiarOverridesDeLaListaVieja(){
+  if(localStorage.getItem('rtz_fix_precios_oct2026')) return;
+  let toco = false;
+  Object.keys(PRECIOS_OVERRIDE||{}).forEach(tipo=>{
+    const viejo = PRECIOS_SEPT_2026[tipo]; if(!viejo) return;
+    ['dia','sem','mes','hora'].forEach(campo=>{
+      const ov = PRECIOS_OVERRIDE[tipo][campo];
+      if(ov!=null && viejo[campo]!=null && Number(ov)===Number(viejo[campo])){
+        delete PRECIOS_OVERRIDE[tipo][campo];
+        toco = true;
+      }
+    });
+    if(Object.keys(PRECIOS_OVERRIDE[tipo]).length===0) delete PRECIOS_OVERRIDE[tipo];
+  });
+  localStorage.setItem('rtz_fix_precios_oct2026','1');
+  if(toco) guardarPreciosOverride();
+}
 function correrMigracionesQueGuardan(){
   ejecutarMigracionesFlota();
   repararBugPickupMasivo();
@@ -6419,9 +6489,44 @@ const PRECIOS={
   snorkel:{dia:540000,sem:1800000,mes:4650000,hora:null,nombre:'Brazo Snorkel (16m)'},
   alo140e:{dia:540000,sem:1800000,mes:4650000,hora:null,nombre:'Alo 140E 4x4 (14m)'},
 };
+
+// ── VALOR EN DOLARES DE CADA EQUIPO ───────────────────────────────────────
+// Este es el dato que NO cambia cuando se mueve el dolar. Los pesos salen de
+// multiplicar por DOLAR_REF y redondear al mil de arriba.
+//   - Equipos normales: un solo USD por dia. La semana son 5 dias y el mes 17.
+//   - 4x4 y brazo: no siguen esa regla, cada tarifa lleva su propio USD.
+//   - Los de 6m solo trabajan por dia.
+// El autoelevador ademas tiene USD por hora.
+const PRECIOS_USD = {
+  autoelevador:{dia:85, hora:50},
+  mls15:{dia:85},
+  alo60:{dia:85},
+  mls19:{dia:95},
+  genie2032:{dia:95},
+  zoomlion:{dia:95},
+  jlg:{dia:105},
+  genie3246:{dia:115},
+  alo140w:{dia:125},
+  alo160w:{dia:135},
+  haulotte:{dia:360, sem:1200, mes:3100},
+  snorkel:{dia:360, sem:1200, mes:3100},
+  alo140e:{dia:360, sem:1200, mes:3100},
+};
+// Cuantos dias se cobran en cada paquete, para los equipos que siguen la regla.
+const DIAS_SEMANA_PAQUETE = 5, DIAS_MES_PAQUETE = 17;
 // Overrides editables desde la pantalla "Lista de precios". Se guardan aparte de PRECIOS
 // (que queda como base/respaldo) y se combinan en tiempo de ejecución con precioTipo().
 let PRECIOS_OVERRIDE = JSON.parse(localStorage.getItem('rtz_precios_override') || '{}');
+
+// Dolar de referencia con el que se armo la lista. Los precios en pesos salen de
+// multiplicar el valor en dolares de cada equipo por este numero. Se guarda y se
+// sincroniza como un ajuste mas, para que todas las computadoras vean el mismo.
+// Lo ven todos los roles MENOS taller (ver renderPrecios).
+let DOLAR_REF = JSON.parse(localStorage.getItem('rtz_dolar_ref') || 'null') || {valor:1500, actualizado:'2026-08-01'};
+function guardarDolarRef(){
+  localStorage.setItem('rtz_dolar_ref', JSON.stringify(DOLAR_REF));
+  sincronizarFirebase();
+}
 // Marketlift S-15 y Alo 60 (ambos de 6m) solo se trabajan por día — si habían quedado
 // overrides viejos de tarifa semanal/mensual cargados desde "Lista de precios", los
 // limpiamos acá para que nunca se vuelvan a sugerir.
@@ -6457,6 +6562,109 @@ function precioTipo(tipo){
 function guardarPreciosOverride(){
   localStorage.setItem('rtz_precios_override', JSON.stringify(PRECIOS_OVERRIDE));
   sincronizarFirebase();
+}
+// ── ACTUALIZAR PRECIOS POR DOLAR ──────────────────────────────────────────
+// Cada equipo tiene su valor en dolares (PRECIOS_USD). Al cargar un dolar nuevo, los
+// pesos se recalculan solos: USD x dolar, redondeado al mil de arriba para que nunca
+// quede un precio con $500 colgado. La semana y el mes salen del dia YA redondeado, asi
+// la semana sigue siendo exactamente 5 dias y el mes 17 — que es lo que se le explica al
+// cliente. Los 4x4 no siguen esa regla: cada tarifa tiene su propio USD y se redondea sola.
+function redondearArribaMil(n){ return n>0 ? Math.ceil(n/1000)*1000 : 0; }
+
+// Devuelve {dia, sem, mes, hora} en pesos para un equipo con un dolar dado.
+function preciosConDolar(tipo, dolar){
+  const u = PRECIOS_USD[tipo];
+  if(!u || !dolar) return null;
+  const dia = redondearArribaMil(u.dia * dolar);
+  const r = {dia, sem:null, mes:null, hora:null};
+  if(u.hora) r.hora = redondearArribaMil(u.hora * dolar);
+  // Si el equipo trae sem/mes propios en dolares (los 4x4), se usan esos.
+  if(u.sem != null) r.sem = redondearArribaMil(u.sem * dolar);
+  if(u.mes != null) r.mes = redondearArribaMil(u.mes * dolar);
+  // Si no, se derivan del dia redondeado — salvo los de 6m, que no tienen paquete.
+  if(r.sem == null && PRECIOS[tipo] && PRECIOS[tipo].sem != null) r.sem = dia * DIAS_SEMANA_PAQUETE;
+  if(r.mes == null && PRECIOS[tipo] && PRECIOS[tipo].mes != null) r.mes = dia * DIAS_MES_PAQUETE;
+  return r;
+}
+
+function abrirActualizarDolar(){
+  document.getElementById('ad-actual').textContent = fmt(DOLAR_REF.valor);
+  document.getElementById('ad-nuevo').value = '';
+  document.getElementById('ad-tabla').innerHTML =
+    '<p style="font-size:.84rem;color:var(--txt3);text-align:center;margin:1.4rem 0">Escribí el dólar nuevo para ver cómo quedan los precios.</p>';
+  document.getElementById('ad-aplicar').disabled = true;
+  document.getElementById('ad-aplicar').style.opacity = '.5';
+  document.getElementById('modal-actualizar-dolar').style.display = 'flex';
+  document.getElementById('ad-nuevo').focus();
+}
+function cerrarActualizarDolar(){ document.getElementById('modal-actualizar-dolar').style.display='none'; }
+
+function recalcActualizarDolar(){
+  const nuevo = parseFloat(String(document.getElementById('ad-nuevo').value).replace(/\./g,'').replace(',','.')) || 0;
+  const cont = document.getElementById('ad-tabla');
+  const btn = document.getElementById('ad-aplicar');
+  const pctEl = document.getElementById('ad-pct');
+  if(nuevo <= 0){
+    cont.innerHTML = '<p style="font-size:.84rem;color:var(--txt3);text-align:center;margin:1.4rem 0">Escribí el dólar nuevo para ver cómo quedan los precios.</p>';
+    pctEl.textContent = ''; btn.disabled = true; btn.style.opacity='.5'; return;
+  }
+  const pct = ((nuevo / DOLAR_REF.valor) - 1) * 100;
+  pctEl.innerHTML = `<b style="color:${pct>=0?'var(--verde)':'var(--rojo)'}">${pct>=0?'+':''}${pct.toFixed(1).replace('.',',')}%</b>`;
+  let filas = '';
+  Object.keys(PRECIOS_USD).forEach(tipo=>{
+    const act = precioTipo(tipo);
+    const n = preciosConDolar(tipo, nuevo);
+    if(!n) return;
+    const cel = (viejo, nuevoV) => nuevoV==null
+      ? '<td style="text-align:right;color:var(--txt3)">—</td>'
+      : `<td style="text-align:right;font-variant-numeric:tabular-nums">${fmt(viejo||0)} <span style="color:var(--txt3)">→</span> <b>${fmt(nuevoV)}</b></td>`;
+    filas += `<tr>
+      <td style="padding:6px 8px">${act.nombre}</td>
+      <td style="text-align:right;color:var(--txt2);padding:6px 8px">${PRECIOS_USD[tipo].dia} USD</td>
+      ${cel(act.dia, n.dia)}${cel(act.sem, n.sem)}${cel(act.mes, n.mes)}
+    </tr>`;
+  });
+  cont.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:.82rem">
+    <tr style="font-size:.63rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.06em">
+      <th style="text-align:left;padding:5px 8px;border-bottom:1px solid var(--border)">Equipo</th>
+      <th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--border)">USD/día</th>
+      <th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--border)">Día</th>
+      <th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--border)">Semana</th>
+      <th style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--border)">Mes</th>
+    </tr>${filas}</table>`;
+  btn.disabled = false; btn.style.opacity = '1';
+}
+
+async function aplicarActualizarDolar(){
+  const nuevo = parseFloat(String(document.getElementById('ad-nuevo').value).replace(/\./g,'').replace(',','.')) || 0;
+  if(nuevo <= 0) return;
+  const anterior = DOLAR_REF.valor;
+  const pct = ((nuevo/anterior)-1)*100;
+  if(!(await confirmSiNo(
+      `Dólar ${fmt(anterior)} → ${fmt(nuevo)} (${pct>=0?'+':''}${pct.toFixed(1).replace('.',',')}%)\n\n`+
+      `Se actualizan los ${Object.keys(PRECIOS_USD).length} equipos. Queda anotado en el historial y se puede deshacer.`,
+      {si:'Aplicar', no:'Cancelar'}))) return;
+
+  // Los precios nuevos se escriben como override, que es de donde lee precioTipo().
+  Object.keys(PRECIOS_USD).forEach(tipo=>{
+    const antes = precioTipo(tipo);
+    const n = preciosConDolar(tipo, nuevo);
+    if(!n) return;
+    if(!PRECIOS_OVERRIDE[tipo]) PRECIOS_OVERRIDE[tipo] = {};
+    ['dia','sem','mes','hora'].forEach(campo=>{
+      if(n[campo] == null) return;
+      if(Number(antes[campo]) === Number(n[campo])) return;
+      PRECIOS_OVERRIDE[tipo][campo] = n[campo];
+      registrarCambioPrecio('equipo', `${tipo}.${campo}`, `${antes.nombre} — ${campo}`, antes[campo], n[campo]);
+    });
+  });
+  DOLAR_REF = {valor:nuevo, actualizado:hoyISO()};
+  guardarDolarRef();
+  guardarPreciosOverride();
+  cerrarActualizarDolar();
+  marcarAccionUndo(`Actualizar precios por dólar (${fmt(anterior)} → ${fmt(nuevo)})`, 'precios');
+  renderPrecios();
+  alert(`Listo. Dólar ${fmt(nuevo)}.\n\nLos ${Object.keys(PRECIOS_USD).length} equipos quedaron actualizados. Revisalos antes de mandar un presupuesto.`);
 }
 function renderPrecios(){
   const cont=document.getElementById('precios-cont');
@@ -6594,7 +6802,19 @@ function renderPrecios(){
       </div>
     </div>`;
 
-  cont.innerHTML = buscadorHtml
+  // Barra del dolar de referencia. Taller no la ve: para el la lista es en pesos y
+  // solo el valor diario (ver mas arriba en este mismo render).
+  const fmtFechaDolar = s => { if(!s) return ''; const[y,m,d]=String(s).split('-'); return `${d}/${m}/${y}`; };
+  const dolarHtml = esTaller ? '' : `
+    <div style="display:flex;align-items:center;gap:11px;flex-wrap:wrap;background:var(--bg2);border-radius:10px;padding:.7rem 1rem;margin-bottom:.9rem;box-shadow:var(--sombra)">
+      <span style="font-size:.82rem;color:var(--txt2)">D&oacute;lar de referencia</span>
+      <span style="font-size:1.05rem;font-weight:700;font-variant-numeric:tabular-nums;color:var(--txt)">${fmt(DOLAR_REF.valor)}</span>
+      <span style="font-size:.76rem;color:var(--txt3)">&middot; desde el ${fmtFechaDolar(DOLAR_REF.actualizado)}</span>
+      <span style="flex:1"></span>
+      <button onclick="abrirActualizarDolar()" class="btn-nuevo" style="padding:7px 13px;font-size:.79rem">Actualizar por d&oacute;lar</button>
+    </div>`;
+
+  cont.innerHTML = dolarHtml + buscadorHtml
     + `<div class="sec-divider" style="margin:0 0 .5rem">Equipos</div>`
     + equiposHtml
     + `<p id="precios-sin-resultados" style="display:none;font-size:.85rem;color:var(--txt3);text-align:center;margin:1.2rem 0"></p>`
