@@ -2503,7 +2503,8 @@ const SB_CONFIGS = [
   { clave:'PRECIOS_OVERRIDE', get:()=>PRECIOS_OVERRIDE, set:v=>PRECIOS_OVERRIDE=v },
   { clave:'FLETES_OVERRIDE',  get:()=>FLETES_OVERRIDE,  set:v=>FLETES_OVERRIDE=v },
   { clave:'FICHAS_TECNICAS',  get:()=>FICHAS_TECNICAS,  set:v=>FICHAS_TECNICAS=v },
-  { clave:'DOLAR_REF',        get:()=>DOLAR_REF,        set:v=>DOLAR_REF=v }
+  { clave:'DOLAR_REF',        get:()=>DOLAR_REF,        set:v=>DOLAR_REF=v },
+  { clave:'PRECIOS_USD_OVERRIDE', get:()=>PRECIOS_USD_OVERRIDE, set:v=>PRECIOS_USD_OVERRIDE=v }
 ];
 
 // ── Foto de lo ultimo que sabemos que quedo guardado ──────────────────────
@@ -6563,6 +6564,51 @@ function guardarPreciosOverride(){
   localStorage.setItem('rtz_precios_override', JSON.stringify(PRECIOS_OVERRIDE));
   sincronizarFirebase();
 }
+// Valores en dolares editados a mano. Se guardan aparte de PRECIOS_USD (que queda como
+// base) y se combinan al vuelo, igual que PRECIOS / PRECIOS_OVERRIDE.
+let PRECIOS_USD_OVERRIDE = JSON.parse(localStorage.getItem('rtz_precios_usd_override') || '{}');
+function guardarPreciosUsdOverride(){
+  localStorage.setItem('rtz_precios_usd_override', JSON.stringify(PRECIOS_USD_OVERRIDE));
+  sincronizarFirebase();
+}
+function usdTipo(tipo){
+  const base = PRECIOS_USD[tipo] || {};
+  const ov = PRECIOS_USD_OVERRIDE[tipo] || {};
+  const r = {};
+  ['dia','sem','mes','hora'].forEach(c=>{
+    const v = (ov[c]!==undefined && ov[c]!==null) ? ov[c] : base[c];
+    if(v!==undefined && v!==null) r[c] = Number(v);
+  });
+  return r;
+}
+
+// Cambiar el valor en dolares de un equipo recalcula sus pesos al instante con el dolar
+// vigente. Es el mismo criterio que el boton de actualizar, pero para un solo equipo:
+// el dolar es el dato y el peso la consecuencia.
+function setUsdOverride(tipo, campo, valorTxt, el){
+  const v = parseFloat(String(valorTxt).replace(/\./g,'').replace(',','.'));
+  const antesUsd = usdTipo(tipo)[campo];
+  if(isNaN(v) || v<=0){ if(el) el.value = antesUsd!=null ? miles(antesUsd) : ''; return; }
+  if(Number(antesUsd) === v) return;
+  if(!PRECIOS_USD_OVERRIDE[tipo]) PRECIOS_USD_OVERRIDE[tipo] = {};
+  PRECIOS_USD_OVERRIDE[tipo][campo] = v;
+
+  // Y se vuelcan los pesos de ese equipo con el dolar actual.
+  const antes = precioTipo(tipo);
+  const n = preciosConDolar(tipo, DOLAR_REF.valor);
+  if(n){
+    if(!PRECIOS_OVERRIDE[tipo]) PRECIOS_OVERRIDE[tipo] = {};
+    ['dia','sem','mes','hora'].forEach(c=>{
+      if(n[c]==null || Number(antes[c])===Number(n[c])) return;
+      PRECIOS_OVERRIDE[tipo][c] = n[c];
+      registrarCambioPrecio('equipo', `${tipo}.${c}`, `${antes.nombre} — ${c}`, antes[c], n[c]);
+    });
+    guardarPreciosOverride();
+  }
+  guardarPreciosUsdOverride();
+  marcarAccionUndo(`Cambiar USD de "${antes.nombre}" (${campo})`, 'precios');
+  renderPrecios();
+}
 // ── ACTUALIZAR PRECIOS POR DOLAR ──────────────────────────────────────────
 // Cada equipo tiene su valor en dolares (PRECIOS_USD). Al cargar un dolar nuevo, los
 // pesos se recalculan solos: USD x dolar, redondeado al mil de arriba para que nunca
@@ -6573,7 +6619,7 @@ function redondearArribaMil(n){ return n>0 ? Math.ceil(n/1000)*1000 : 0; }
 
 // Devuelve {dia, sem, mes, hora} en pesos para un equipo con un dolar dado.
 function preciosConDolar(tipo, dolar){
-  const u = PRECIOS_USD[tipo];
+  const u = usdTipo(tipo);
   if(!u || !dolar) return null;
   const dia = redondearArribaMil(u.dia * dolar);
   const r = {dia, sem:null, mes:null, hora:null};
@@ -6665,6 +6711,48 @@ async function aplicarActualizarDolar(){
   marcarAccionUndo(`Actualizar precios por dólar (${fmt(anterior)} → ${fmt(nuevo)})`, 'precios');
   renderPrecios();
   alert(`Listo. Dólar ${fmt(nuevo)}.\n\nLos ${Object.keys(PRECIOS_USD).length} equipos quedaron actualizados. Revisalos antes de mandar un presupuesto.`);
+}
+// Dos hojas dentro de Precios: la de pesos (la de siempre) y la de dolares. Separadas a
+// proposito — mezclar las dos monedas en la misma pantalla se presta a confusion.
+// Taller no ve la de dolares ni la solapa.
+let preciosTab = 'pesos';
+function setPreciosTab(t){ preciosTab = t; renderPrecios(); }
+
+function renderPreciosUsd(){
+  const fila = (tipo) => {
+    const p = precioTipo(tipo), u = usdTipo(tipo);
+    const esPesado = PRECIOS_USD[tipo] && PRECIOS_USD[tipo].sem != null;
+    const soloDia = !PRECIOS[tipo].sem;
+    const inp = (campo, val) => `<input type="text" inputmode="numeric" value="${val!=null?miles(val):''}"
+        onfocus="alEditarPlata(this)" oninput="alEscribirPlata(this)"
+        onchange="setUsdOverride('${tipo}','${campo}',this.value,this)"
+        style="width:92px;padding:7px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg2);color:var(--txt);font-size:.86rem;font-weight:600;font-variant-numeric:tabular-nums">`;
+    const enPesos = v => v!=null ? `<div style="font-size:.72rem;color:var(--txt3);margin-top:3px;font-variant-numeric:tabular-nums">${fmt(v)}</div>` : '';
+    let cols = `<div><label class="flabel">USD / día</label>${inp('dia',u.dia)}${enPesos(p.dia)}</div>`;
+    if(esPesado){
+      cols += `<div><label class="flabel">USD / semana</label>${inp('sem',u.sem)}${enPesos(p.sem)}</div>`;
+      cols += `<div><label class="flabel">USD / mes</label>${inp('mes',u.mes)}${enPesos(p.mes)}</div>`;
+    } else if(!soloDia){
+      cols += `<div><label class="flabel">Semana · ${DIAS_SEMANA_PAQUETE} días</label><div style="padding:7px 0;font-size:.86rem;font-weight:600;font-variant-numeric:tabular-nums">${u.dia!=null?miles(u.dia*DIAS_SEMANA_PAQUETE):'—'} USD</div>${enPesos(p.sem)}</div>`;
+      cols += `<div><label class="flabel">Mes · ${DIAS_MES_PAQUETE} días</label><div style="padding:7px 0;font-size:.86rem;font-weight:600;font-variant-numeric:tabular-nums">${u.dia!=null?miles(u.dia*DIAS_MES_PAQUETE):'—'} USD</div>${enPesos(p.mes)}</div>`;
+    } else {
+      cols += `<div><label class="flabel">Semana</label><div style="padding:7px 0;color:var(--txt3)">—</div></div>`;
+      cols += `<div><label class="flabel">Mes</label><div style="padding:7px 0;color:var(--txt3)">—</div></div>`;
+    }
+    if(u.hora!=null) cols += `<div><label class="flabel">USD / hora</label>${inp('hora',u.hora)}${enPesos(p.hora)}</div>`;
+    const etiqueta = esPesado
+      ? '<span style="font-size:.66rem;font-weight:700;color:#b3791f;background:rgba(179,121,31,.12);border-radius:8px;padding:2px 8px;margin-left:7px">4x4 — USD propio en cada tarifa</span>'
+      : (soloDia ? '<span style="font-size:.66rem;font-weight:700;color:var(--txt2);background:var(--bg3);border-radius:8px;padding:2px 8px;margin-left:7px">solo por día</span>' : '');
+    return `<div class="precio-eq-card" data-busca="${sinAcentos(p.nombre+' '+tipo)}" style="background:var(--bg2);border-radius:10px;padding:.85rem 1rem;margin-bottom:.6rem;box-shadow:var(--sombra)">
+      <div style="font-weight:700;font-size:.9rem;color:var(--txt);margin-bottom:.55rem">${p.nombre}${etiqueta}</div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">${cols}</div>
+    </div>`;
+  };
+  return Object.keys(PRECIOS_USD).map(fila).join('')
+    + `<p style="font-size:.76rem;color:var(--txt3);margin-top:.6rem;line-height:1.6">
+        El valor en dólares es el dato que no cambia cuando se mueve el dólar. Los pesos (en gris) salen de
+        multiplicar por el dólar de referencia y redondear al mil de arriba.<br>
+        Si cambiás un valor acá, los pesos de ese equipo se recalculan al instante y queda en el historial.</p>`;
 }
 function renderPrecios(){
   const cont=document.getElementById('precios-cont');
@@ -6814,7 +6902,17 @@ function renderPrecios(){
       <button onclick="abrirActualizarDolar()" class="btn-nuevo" style="padding:7px 13px;font-size:.79rem">Actualizar por d&oacute;lar</button>
     </div>`;
 
-  cont.innerHTML = dolarHtml + buscadorHtml
+  // Solapas pesos / dolares. Taller no las ve: para el solo existe la de pesos.
+  const tabBtn = (id,txtB) => `<button onclick="setPreciosTab('${id}')" style="background:${preciosTab===id?'var(--bg2)':'none'};border:1px solid ${preciosTab===id?'var(--border2)':'transparent'};color:${preciosTab===id?'var(--txt)':'var(--txt2)'};font-weight:600;font-size:.84rem;padding:7px 14px;border-radius:9px;cursor:pointer;box-shadow:${preciosTab===id?'var(--sombra)':'none'}">${txtB}</button>`;
+  const tabsHtml = esTaller ? '' : `<div style="display:flex;gap:4px;margin-bottom:.9rem">${tabBtn('pesos','Precios en pesos')}${tabBtn('usd','Valores en d&oacute;lares')}</div>`;
+
+  if(!esTaller && preciosTab==='usd'){
+    cont.innerHTML = dolarHtml + tabsHtml + buscadorHtml + renderPreciosUsd();
+    if(preciosBusca) filtrarPrecios();
+    return;
+  }
+
+  cont.innerHTML = dolarHtml + tabsHtml + buscadorHtml
     + `<div class="sec-divider" style="margin:0 0 .5rem">Equipos</div>`
     + equiposHtml
     + `<p id="precios-sin-resultados" style="display:none;font-size:.85rem;color:var(--txt3);text-align:center;margin:1.2rem 0"></p>`
