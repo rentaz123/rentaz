@@ -2582,6 +2582,10 @@ async function aplicarActualizacionApp(){
       for(const k of keys) await caches.delete(k);
     }
   }catch(e){}
+  // Deja una marca para que al volver a cargar NO pida la clave de nuevo: esto es una
+  // actualizacion, no alguien abriendo la app. sessionStorage se borra al cerrar la
+  // pestana, asi que la regla de "siempre pide clave al entrar" sigue intacta.
+  try{ sessionStorage.setItem('rtz_recarga_actualizacion', '1'); }catch(e){}
   location.reload(true);
 }
 setInterval(chequearActualizacionApp, 5*60*1000);
@@ -4213,26 +4217,66 @@ async function login(){
       return;
     }
 
-    sbPerfil = perfil;
-    ROL_ACTUAL = perfil.rol;
-    localStorage.setItem('rtz_user', perfil.usuario);
-    localStorage.setItem('rtz_rol', ROL_ACTUAL);
-
-    // Los datos se bajan ANTES de mostrar la app. Si entrara primero y cargara
-    // despues, se podria llegar a guardar algo sobre un estado a medio traer.
-    const ok = await cargarTodoDesdeSupabase();
-    if(!ok){ await sb.auth.signOut(); sbSesion = null; return; }
-    escucharCambiosEnVivo();
-
-    document.getElementById('auth-screen').style.display='none';
+    if(!(await entrarConPerfil(perfil))) return;
     err.style.display='none';
-    mostrarBienvenida(perfil.usuario);
+    return;
   }catch(e){
     console.error('Error al entrar:', e);
     alert('No se pudo entrar: ' + e.message);
+    return;
   }finally{
     if(btn){ btn.disabled = false; btn.textContent = btn.dataset.txt || 'Entrar'; }
   }
+}
+
+// Todo lo que pasa DESPUES de que la clave fue aceptada. Esta aparte para que lo
+// pueda usar tambien la recarga por actualizacion, que ya tiene sesion valida y no
+// tiene por que volver a pedir la clave.
+async function entrarConPerfil(perfil){
+  sbPerfil = perfil;
+  ROL_ACTUAL = perfil.rol;
+  localStorage.setItem('rtz_user', perfil.usuario);
+  localStorage.setItem('rtz_rol', ROL_ACTUAL);
+
+  // Los datos se bajan ANTES de mostrar la app. Si entrara primero y cargara
+  // despues, se podria llegar a guardar algo sobre un estado a medio traer.
+  const ok = await cargarTodoDesdeSupabase();
+  if(!ok){ await sb.auth.signOut(); sbSesion = null; return false; }
+  escucharCambiosEnVivo();
+
+  document.getElementById('auth-screen').style.display='none';
+  mostrarBienvenida(perfil.usuario);
+  return true;
+}
+
+// Trae el perfil (usuario, rol, activo) del usuario que tiene la sesion abierta.
+async function traerPerfil(userId){
+  const { data: perfil, error } = await sb
+    .from('perfiles').select('usuario, nombre, rol, activo')
+    .eq('id', userId).single();
+  if(error || !perfil) return {error:'Entraste, pero tu usuario no tiene un rol asignado. Avisale a Mateo.'};
+  if(!perfil.activo) return {error:'Tu usuario esta dado de baja.'};
+  return {perfil};
+}
+
+// Al recargar por una ACTUALIZACION no se vuelve a pedir la clave: la sesion sigue
+// siendo valida y recargar no fue decision de la persona. Abrir la app sigue pidiendo
+// clave siempre, que es la regla de Mateo (28/08/26) — la marca vive en sessionStorage,
+// que se borra al cerrar la pestana.
+async function reentrarTrasActualizacion(){
+  let marca = null;
+  try{ marca = sessionStorage.getItem('rtz_recarga_actualizacion'); }catch(e){}
+  if(!marca) return;
+  try{ sessionStorage.removeItem('rtz_recarga_actualizacion'); }catch(e){}
+  if(!sb) return;
+  try{
+    const { data } = await sb.auth.getSession();
+    if(!data || !data.session) return;          // sin sesion: se pide la clave como siempre
+    sbSesion = data.session;
+    const r = await traerPerfil(data.session.user.id);
+    if(r.error){ await sb.auth.signOut(); sbSesion = null; return; }
+    await entrarConPerfil(r.perfil);
+  }catch(e){ console.error('No se pudo volver a entrar tras la actualizacion:', e); }
 }
 // La pantalla de bienvenida (el "¡Bienvenido!" con los dibujos de las maquinas y
 // el "toca para continuar") se saco: era un clic de mas cada vez que alguien
@@ -4533,6 +4577,9 @@ function aplicarRestriccionesRol(){
     const inpU = document.getElementById('inp-u');
     if(inpU) inpU.value = savedUser;
   }
+  // Unica excepcion a "siempre pide clave": cuando la recarga la disparo el boton de
+  // actualizar. Ahi la persona ya estaba adentro y no decidio salir.
+  reentrarTrasActualizacion();
 })();
 // Muestra/oculta lo que se está tipeando en la contraseña. Sirve para no errarle cuando
 // uno la copia de un papel o de un WhatsApp, que es como la van a tener Walter y Alejandro.
