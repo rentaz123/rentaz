@@ -12062,7 +12062,8 @@ ${a.precio?fila('Alquiler', fmt(a.precio)+(detalleSinEquipo?`<div style="font-we
     ${a.localidad?fila('Localidad de destino', a.localidad):''}
     ${a.sub?fila('Subtotal', fmt(a.sub)):''}
     ${a.iva?fila('IVA (21%)', fmt(a.iva)):''}
-    ${a.tot?`<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:700;color:var(--verde)"><span>TOTAL</span><span>${fmt(a.tot)}</span></div>`:''}
+    ${a.tot?`<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:700;color:var(--verde)"><span>TOTAL</span><span>${fmt(a.tot)}</span></div>`:''}
+
       `}
     ${a.obs?fila('Observaciones', a.obs):''}
     ${a.solicitante?fila('Solicitado por', a.solicitante):''}
@@ -12104,20 +12105,20 @@ function verDetalleAlq(id){
     botones+=`<button onclick="marcarEquipoRetiradoFisico(${a.id})" class="btn-nuevo" style="flex:1;padding:8px;font-size:.8rem">Marcar equipo retirado</button>`;
   }
   if(!a.retiradoAnticipado && !a.abierto && a.fin>=hoy){
-    botones+=`<button onclick="marcarRetiroAnticipado(${a.id})" class="btn-lim" title="Usar solo si el alquiler YA tiene fecha de retiro fija y el cliente lo devuelve ANTES de esa fecha" style="flex:1;padding:8px;font-size:.8rem">Marcar retiro anticipado</button>
+    if(!esTallerVista()) botones+=`<button onclick="marcarRetiroAnticipado(${a.id})" class="btn-lim" title="Usar solo si el alquiler YA tiene fecha de retiro fija y el cliente lo devuelve ANTES de esa fecha" style="flex:1;padding:8px;font-size:.8rem">Marcar retiro anticipado</button>
     <div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Usar cuando el cliente devuelve el equipo antes de la fecha ya pactada.</div>`;
   }
   if(!a.retiradoAnticipado){
     if(a.pausado){
-      botones+=`<button onclick="reanudarAlq(${a.id})" class="btn-nuevo" style="flex:1;padding:8px;font-size:.8rem;background:#e5a83b">▶️ Reanudar alquiler</button>`;
+      if(!esTallerVista()) botones+=`<button onclick="reanudarAlq(${a.id})" class="btn-nuevo" style="flex:1;padding:8px;font-size:.8rem;background:#e5a83b">▶️ Reanudar alquiler</button>`;
     } else {
-      botones+=`<button onclick="pausarAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem;color:#e5a83b">Pausar alquiler (clima, etc.)</button>`;
+      if(!esTallerVista()) botones+=`<button onclick="pausarAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem;color:#e5a83b">Pausar alquiler (clima, etc.)</button>`;
     }
   }
   botones+=`<button onclick="editarAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Editar</button>`;
-  botones+=`<button onclick="compensarDiaAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Compensar día sin cargo</button>`;
+  if(!esTallerVista()) botones+=`<button onclick="compensarDiaAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Compensar día sin cargo</button>`;
   if(a.abierto){
-    botones+=`<button onclick="agregarDiasFacturablesAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Agregar factura parcial (días confirmados)</button>`;
+    if(!esTallerVista()) botones+=`<button onclick="agregarDiasFacturablesAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Agregar factura parcial (días confirmados)</button>`;
   } else if(a.mesFacturado && !a.modoHoras){
     // Alquiler de fecha fija YA facturado al que el cliente le suma días: Walter emite una
     // SEGUNDA factura, con su propio número. Hasta acá no había forma de cargarla — la
@@ -12128,12 +12129,12 @@ function verDetalleAlq(id){
     // a.fin); lo único que faltaba era el botón, que se mostraba solo si era abierto.
     // Se pide que ya tenga su primera factura cargada: si todavía no se facturó nada, el
     // alquiler va a salir en UNA sola factura y lo que corresponde es "Editar" las fechas.
-    botones+=`<button onclick="agregarDiasFacturablesAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Agregar otra factura (días extra)</button>
+    if(!esTallerVista()) botones+=`<button onclick="agregarDiasFacturablesAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Agregar otra factura (días extra)</button>
     <div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">El cliente sumó días después de la factura ya emitida: esto carga la SEGUNDA factura con su propio N° y su propio mes, sin tocar la primera.</div>`;
   }
   botones+=`<button onclick="${a.abierto?`abrirModalCerrarAbierto(${a.id})`:`toggleAbierto(${a.id})`}" class="btn-lim" title="${a.abierto?'Usar cuando el cliente avisa que retira — cierra el alquiler abierto y calcula los días reales':'Marcar sin fecha fija de retiro'}" style="flex:1;padding:8px;font-size:.8rem">${a.abierto?'Confirmar fecha de retiro':'Marcar como abierto'}</button>${a.abierto?'<div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Este alquiler es ABIERTO (sin fecha fija) — usar esto (no "retiro anticipado") apenas el cliente avise que retira.</div>':''}`;
   if(!a.abierto && !a.pickupPendiente && !a.retiradoAnticipado){
-    botones+=`<button onclick="avisarTallerRetiro(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Avisar a taller: retirar equipo</button>`;
+    if(!esTallerVista()) botones+=`<button onclick="avisarTallerRetiro(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Avisar a taller: retirar equipo</button>`;
   }
   // La facturación (marcar facturado, N° de factura, mes) se gestiona SOLO desde la
   // pantalla de Facturación — tenerlo también acá duplicaba el punto de acción y era
@@ -12147,21 +12148,21 @@ function verDetalleAlq(id){
     const mesMostrar = a.mesFacturado || (ultimoChunk?ultimoChunk.mesFacturado:null);
     const numMostrar = a.mesFacturado ? a.numeroFactura : (ultimoChunk?ultimoChunk.numeroFactura:null);
     const pendienteTxt = a.inicio ? `Facturación pendiente — por ahora contaría en ${mesLabel(a.inicio.slice(0,7))}` : 'Facturación pendiente';
-    botones+=`<div style="width:100%;font-size:.78rem;color:var(--txt2);padding:6px 2px">${mesMostrar?'Facturado '+mesLabel(mesMostrar):pendienteTxt}${numMostrar?' · N° '+numMostrar:''} — se gestiona desde "Facturación"</div>`;
+    if(!esTallerVista()) botones+=`<div style="width:100%;font-size:.78rem;color:var(--txt2);padding:6px 2px">${mesMostrar?'Facturado '+mesLabel(mesMostrar):pendienteTxt}${numMostrar?' · N° '+numMostrar:''} — se gestiona desde "Facturación"</div>`;
   } else {
-    botones+=`<div style="width:100%;font-size:.78rem;color:var(--txt3);padding:6px 2px">Sin facturar — se marca desde "Facturación"</div>`;
+    if(!esTallerVista()) botones+=`<div style="width:100%;font-size:.78rem;color:var(--txt3);padding:6px 2px">Sin facturar — se marca desde "Facturación"</div>`;
   }
   botones+=`<button onclick="mostrarCambioEquipo(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Cambiar equipo (mismo precio)</button>`;
   if(a.fTransportista && a.fTransportista!=='Sin flete'){
     const yaVinculado = !!a.fleteViajaConId;
-    botones+=`<button onclick="abrirViajeCompartido(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem${yaVinculado?';border-color:var(--verde);color:var(--verde)':''}">${yaVinculado?'Viaje de flete compartido (ver/quitar)':'Marcar viaje de flete compartido'}</button>`;
+    if(!esTallerVista()) botones+=`<button onclick="abrirViajeCompartido(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem${yaVinculado?';border-color:var(--verde);color:var(--verde)':''}">${yaVinculado?'Viaje de flete compartido (ver/quitar)':'Marcar viaje de flete compartido'}</button>`;
     const fleteroCambiado = a.fTransportistaIda || a.fTransportistaRetiro;
-    botones+=`<button onclick="cambiarFletero(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem${fleteroCambiado?';border-color:var(--verde);color:var(--verde)':''}">${fleteroCambiado?'Cambiar fletero (ida/vuelta) — cambiado':'Cambiar fletero (ida o vuelta)'}</button>`;
+    if(!esTallerVista()) botones+=`<button onclick="cambiarFletero(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem${fleteroCambiado?';border-color:var(--verde);color:var(--verde)':''}">${fleteroCambiado?'Cambiar fletero (ida/vuelta) — cambiado':'Cambiar fletero (ida o vuelta)'}</button>`;
     // Viaje en falso: el camión sale y vuelve sin cargar (el cliente no estaba, la obra
     // no estaba lista). Al transportista se le paga igual. Antes solo se podían cargar
     // costos extra al crear el alquiler, así que esto —que pasa DESPUÉS— no tenía lugar.
     const falsos = (a.fExtras||[]).filter(x=>x.tipo==='viaje-falso').length;
-    botones+=`<button onclick="cargarViajeEnFalso(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem${falsos?';border-color:#e5a83b;color:#b3791f':''}">${falsos?`Viaje en falso (${falsos}) — agregar otro`:'Cargar viaje en falso'}</button>`;
+    if(!esTallerVista()) botones+=`<button onclick="cargarViajeEnFalso(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem${falsos?';border-color:#e5a83b;color:#b3791f':''}">${falsos?`Viaje en falso (${falsos}) — agregar otro`:'Cargar viaje en falso'}</button>`;
   }
   if(ROL_ACTUAL==='taller' || checklistSalidaListo(a.id)){
     botones+=`<button onclick="abrirContrato(${a.id})" class="btn-nuevo" style="flex:1;padding:8px;font-size:.8rem">Contrato / Checklist</button>`;
