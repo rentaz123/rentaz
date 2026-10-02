@@ -3547,6 +3547,8 @@ async function cargarTodoDesdeSupabase(){
 // Aca se escucha la renovacion y se le pasa el token nuevo al socket, y ademas se
 // reconecta si se cayo por dormir la compu, perder wifi o cambiar de red.
 let sbCanalVivo = null;
+let sbUltimoErrorVivo = null;
+let sbUltimoEstadoCanal = '(todavía no respondió)';
 let sbEstadoVivo = 'conectando';   // conectando | ok | caido
 let sbReconectarTimer = null;
 
@@ -3561,10 +3563,29 @@ function pintarEstadoVivo(){
   const m = mapa[sbEstadoVivo] || mapa.conectando;
   el.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${m.color};display:inline-block"></span>`
     + `<span style="font-size:.74rem;color:var(--txt3)">${m.txt}</span>`;
-  el.title = m.tit;
+  el.title = m.tit + ' (tocá para ver el detalle)';
+  el.style.cursor = 'pointer';
+  el.onclick = mostrarDetalleConexion;
   el.style.display = 'flex';
 }
 function marcarEstadoVivo(e){ sbEstadoVivo = e; pintarEstadoVivo(); }
+
+// Para poder diagnosticar sin abrir la consola del navegador.
+function mostrarDetalleConexion(){
+  const estadoCanal = (sbCanalVivo && sbCanalVivo.state) || 'sin canal';
+  const socket = (sb && sb.realtime && sb.realtime.isConnected && sb.realtime.isConnected()) ? 'conectado' : 'desconectado';
+  alert(
+    'CONEXIÓN EN VIVO\n\n' +
+    'Semáforo: ' + sbEstadoVivo + '\n' +
+    'Último aviso del servidor: ' + sbUltimoEstadoCanal + '\n' +
+    'Estado del canal: ' + estadoCanal + '\n' +
+    'Socket: ' + socket + '\n' +
+    'Error: ' + (sbUltimoErrorVivo || '(ninguno)') + '\n' +
+    'Clave: ' + String(SB_KEY).slice(0,16) + '…\n' +
+    'Sesión: ' + (sbSesion ? 'sí' : 'no') + '\n\n' +
+    'Pasale esta pantalla a Claude si algo dice error.'
+  );
+}
 
 // Si se cayo, reintentar con esperas cada vez mas largas (5s, 10s, 20s… hasta 1 min).
 let sbIntentos = 0;
@@ -3664,8 +3685,11 @@ function escucharCambiosEnVivo(){
   // Antes se llamaba subscribe() sin mirar el resultado: si fallaba, la app seguia
   // como si nada y los cambios no llegaban nunca, sin ninguna senal.
   sbCanalVivo = canal;
-  canal.subscribe((estado)=>{
-    if(estado === 'SUBSCRIBED'){ sbIntentos = 0; marcarEstadoVivo('ok'); }
+  canal.subscribe((estado, err)=>{
+    sbUltimoEstadoCanal = estado;
+    if(err) sbUltimoErrorVivo = (err && (err.message || err.toString())) || String(err);
+    console.log('[tiempo real]', estado, err || '');
+    if(estado === 'SUBSCRIBED'){ sbIntentos = 0; sbUltimoErrorVivo = null; marcarEstadoVivo('ok'); }
     else if(estado === 'CHANNEL_ERROR' || estado === 'TIMED_OUT' || estado === 'CLOSED'){
       marcarEstadoVivo('caido');
       programarReconexionVivo();
