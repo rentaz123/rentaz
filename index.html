@@ -716,6 +716,12 @@ if ('serviceWorker' in navigator) {
 
       <!-- Stats -->
       <div class="stat-grid" id="dash-stats"></div>
+      <!-- Solo taller: el pedido que entra por telefono cuando no hay nadie de oficina.
+           Va arriba de todo porque es lo que necesitan a mano cuando suena el telefono. -->
+      <button id="btn-solicitud-taller" onclick="abrirModalSolicitudLarga()" style="display:none;width:100%;background:var(--bg2);border:1px dashed var(--border2);border-radius:var(--radio);padding:.9rem 1rem;margin-bottom:1rem;cursor:pointer;font-family:inherit;text-align:left;box-shadow:var(--sombra)">
+        <div style="font-size:.9rem;font-weight:700;color:var(--txt)">+ Cargar una solicitud</div>
+        <div style="font-size:.78rem;color:var(--txt2);margin-top:2px">Llam&oacute; un cliente pidiendo un equipo: anot&aacute; los datos y le llega a la oficina.</div>
+      </button>
       <!-- Aviso de máquinas trabadas. Se llena solo desde renderDashboard() y queda
            vacío cuando no hay ninguna, así el panel no se ensucia. -->
       <div id="dash-puesta-al-dia"></div>
@@ -3803,10 +3809,13 @@ function esTallerVista(){ return ROL_ACTUAL==='taller'; }
 let ROL_ACTUAL = localStorage.getItem('rtz_rol') || 'admin';
 // Taller no puede cargar cotizaciones ni alquileres de más de esta cantidad de días —
 // si el cliente necesita más tiempo, tiene que hablar directamente con Mateo.
-const TOPE_DIAS_TALLER = 4;
+// Taller carga solo alquileres de 1 dia o ABIERTOS (los de ultimo momento: llaman,
+// sale la maquina, y la fecha de vuelta se define despues). Cualquier otra duracion
+// la carga la oficina. Antes el tope era 4 dias.
+const TOPE_DIAS_TALLER = 1;
 function limitarDiasTaller(dias){
   if(ROL_ACTUAL==='taller' && dias>TOPE_DIAS_TALLER){
-    alert(`Como taller, se puede cargar hasta ${TOPE_DIAS_TALLER} días. Para más días, el cliente tiene que hablar directamente con Mateo.`);
+    alert(`Como taller, se puede cargar hasta ${TOPE_DIAS_TALLER} día${TOPE_DIAS_TALLER!==1?'s':''}. Para más días, el cliente tiene que hablar directamente con Mateo.`);
     return TOPE_DIAS_TALLER;
   }
   return dias;
@@ -3816,8 +3825,11 @@ function limitarDiasTaller(dias){
 // avisarSolicitudesLargasNuevas, que solo avisa al rol admin, no a facturación).
 function abrirModalSolicitudLarga(){
   const sel=document.getElementById('sollarga-equipo');
-  const origen=document.getElementById('cot-eq');
-  if(sel && origen) sel.innerHTML = origen.innerHTML;
+  // Antes copiaba las opciones del cotizador. Taller ya no tiene cotizador, asi que
+  // la lista se arma sola desde la lista de precios.
+  if(sel){
+    sel.innerHTML = Object.keys(PRECIOS).map(t=>`<option value="${t}">${precioTipo(t).nombre}</option>`).join('');
+  }
   document.getElementById('sollarga-nombre').value='';
   document.getElementById('sollarga-telefono').value='';
   document.getElementById('sollarga-dias').value='';
@@ -4320,7 +4332,9 @@ function entrarAlApp(){
 // Los usuarios de taller solo ven: Inicio (panel simplificado, sin montos),
 // Cotizador, Equipos, Clientes, Alquileres, Control y Precios (solo día +
 // fletes). No ven Calendario ni Reportes, y nada del panel financiero.
-const PANTALLAS_TALLER = ['home','calendario','cotizador','equipos','clientes','alquileres','control','precios','rivadavia'];
+// Taller ya no cotiza: toma el pedido como SOLICITUD y la oficina sigue. El precio
+// diario se lo pueden decir al cliente mirando Precios, que si ven.
+const PANTALLAS_TALLER = ['home','calendario','equipos','clientes','alquileres','control','precios','rivadavia'];
 // Cambia la vista a la de otro usuario. Solo funciona si el que esta conectado
 // de verdad es Mateo: aunque alguien lo llame a mano desde la consola, si no es
 // el, no hace nada.
@@ -4491,6 +4505,9 @@ function aplicarRestriccionesRol(){
   });
   const solLargaBox=document.getElementById('cot-solicitud-larga-box');
   if(solLargaBox) solLargaBox.style.display = esTaller ? 'block' : 'none';
+  // El boton de solicitud en el Inicio: solo taller, que es quien ya no cotiza.
+  const btnSol=document.getElementById('btn-solicitud-taller');
+  if(btnSol) btnSol.style.display = esTaller ? 'block' : 'none';
   // generarPDF() ya abre el diálogo de impresión automáticamente al tocarlo — para
   // taller lo relabelamos como "Imprimir" para que quede claro que es lo que hace.
   const btnPdf=document.getElementById('cot-btn-pdf');
@@ -5850,7 +5867,7 @@ function calcDiasDesde(){
       hasta=maxHastaD.toISOString().slice(0,10);
       document.getElementById('cot-fecha-hasta').value=hasta;
       dias=TOPE_DIAS_TALLER;
-      alert(`Como taller, se puede cotizar hasta ${TOPE_DIAS_TALLER} días. Para más días, el cliente tiene que hablar directamente con Mateo.`);
+      alert(`Como taller, se puede cotizar hasta ${TOPE_DIAS_TALLER} día${TOPE_DIAS_TALLER!==1?'s':''}. Para más días, el cliente tiene que hablar directamente con Mateo.`);
     }
     fechaDesdeStr=desde; fechaHastaStr=hasta;
     document.getElementById('cot-dias').value=dias;
@@ -9421,13 +9438,13 @@ async function guardarChecklistContrato(tipo){
   if(tipo==='salida'){
     const a=ALQUILERES.find(x=>x.id===contratoAlqId);
     if(a && a.entregaPendiente){
-      const alqId=a.id;
-      if(await confirmSiNo(`Checklist de salida guardado.\n\n¿Marcamos ahora que "${a.equipoNombre}" salió del depósito?`,
-                           {si:'Sí, ya salió', no:'Todavía no'})){
-        const modalContrato=document.getElementById('modal-contrato');
-        if(modalContrato) modalContrato.style.display='none';
-        marcarSalidaConfirmada(alqId);
-      }
+      // Guardar el checklist NO marca la salida. Son dos momentos distintos: el checklist
+      // se hace mientras se prepara la maquina, y la salida recien cuando el camion arranca.
+      // Encadenarlos hacia que un equipo figurara en la obra estando todavia en el deposito.
+      // Ahora queda en "Para entregar" y la salida se marca desde ahi.
+      const modalContrato=document.getElementById('modal-contrato');
+      if(modalContrato) modalContrato.style.display='none';
+      alert(`Contrato y checklist de salida guardados.\\n\\n"${a.equipoNombre}" queda en "Para entregar".\\nCuando el equipo salga del depósito, marcá la salida desde ahí.`);
       return;
     }
   }
@@ -11273,7 +11290,10 @@ function calcDiasAlq(){
     // el día de salida siempre cuenta completo, el de retiro solo si es después
     // de las 12:00.
     let dias=diasAlquilerPorFecha(desde, hasta, horaRetiro);
-    if(ROL_ACTUAL==='taller' && dias>TOPE_DIAS_TALLER){
+    // En un alquiler ABIERTO la fecha de retorno es provisoria: se pone cualquiera para
+    // poder cargarlo y despues la corrige la facturacion. Aplicarle el tope no tiene
+    // sentido, y les saltaba un cartel cada vez que lo tildaban.
+    if(!abierto && ROL_ACTUAL==='taller' && dias>TOPE_DIAS_TALLER){
       // El último día cuenta o no según la regla del mediodía; ajustamos la cantidad
       // de días calendario a sumar para que el total dé exactamente TOPE_DIAS_TALLER.
       const cuentaUltimoDia=(horaRetiro||'00:00')>'12:00';
@@ -11282,7 +11302,7 @@ function calcDiasAlq(){
       hasta=maxHastaD.toISOString().slice(0,10);
       document.getElementById('alq-hasta').value=hasta;
       dias=TOPE_DIAS_TALLER;
-      alert(`Como taller, se puede cargar hasta ${TOPE_DIAS_TALLER} días. Para más días, el cliente tiene que hablar directamente con Mateo.`);
+      alert(`Como taller, se puede cargar hasta ${TOPE_DIAS_TALLER} día${TOPE_DIAS_TALLER!==1?'s':''}. Para más días, el cliente tiene que hablar directamente con Mateo.`);
     }
     res.textContent=`${dias} día${dias!==1?'s':''} (${fmtFechaCot(desde)} ${horaEntrega} al ${fmtFechaCot(hasta)} ${horaRetiro})`;
     res.style.display='block';
@@ -11870,6 +11890,8 @@ function copiarAlq(id){
 }
 
 function resumenAlquilerHTML(a){
+  // Taller ve el alquiler pero sin un solo numero (ver el bloque de importes mas abajo).
+  const esTallerDet = esTallerVista();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
   const fila=(lbl,val)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span style="color:var(--txt2)">${lbl}</span><span class="multilinea" style="font-weight:700;color:var(--txt);text-align:right;max-width:60%">${val}</span></div>`;
 
@@ -11979,9 +12001,9 @@ function resumenAlquilerHTML(a){
     ${fila('Retiro', txtRetiro)}
     ${a.pausado?fila('Pausado desde', `${fmtD(a.pausadoDesde)}${a.pausadoMotivo?' — '+a.pausadoMotivo:''}`):''}
     ${a.salidaSinChecklist?`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.8rem;color:#b3791f;font-weight:700">⚠️ Salió sin checklist — lo marcó ${a.salidaSinChecklistPor||'oficina'}${a.salidaSinChecklistFecha?' el '+fmtD(a.salidaSinChecklistFecha):''}. El checklist de salida sigue pendiente.</div>`:''}
-    ${a.sinFactura && !a.mesFacturado ? fila('Facturación', 'SIN factura (cargado así de entrada — ya cuenta en reportes)') : ''}
-    ${a.diasCompensados?fila('Días compensados (sin cargo)', `${a.diasCompensados} día${a.diasCompensados!==1?'s':''}`+((a.compensaciones&&a.compensaciones.length)?': '+a.compensaciones.map(c=>`${c.dias}d${c.motivo?' — '+c.motivo:''}`).join('; '):'')):''}
-    ${(a.diasAgregados&&a.diasAgregados.length)?`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem">
+    ${(!esTallerDet && a.sinFactura && !a.mesFacturado) ? fila('Facturación', 'SIN factura (cargado así de entrada — ya cuenta en reportes)') : ''}
+    ${(!esTallerDet && a.diasCompensados)?fila('Días compensados (sin cargo)', `${a.diasCompensados} día${a.diasCompensados!==1?'s':''}`+((a.compensaciones&&a.compensaciones.length)?': '+a.compensaciones.map(c=>`${c.dias}d${c.motivo?' — '+c.motivo:''}`).join('; '):'')):''}
+    ${(!esTallerDet && a.diasAgregados&&a.diasAgregados.length)?`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.85rem">
       <div style="color:var(--txt2);margin-bottom:5px">Facturas cargadas</div>
       ${a.diasAgregados.map((c,i)=>`<div style="display:flex;flex-direction:column;gap:2px;padding:5px 0;border-bottom:1px dashed var(--border)">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -11997,7 +12019,7 @@ function resumenAlquilerHTML(a){
         </div>
       </div>`).join('')}
     </div>`:''}
-    ${a.ajusteRetiroAnticipado?fila('Descuento por retiro anticipado', `${a.ajusteRetiroAnticipado.diasReales} día${a.ajusteRetiroAnticipado.diasReales!==1?'s':''} usados de ${a.ajusteRetiroAnticipado.diasContratados} facturados = -${fmt(a.ajusteRetiroAnticipado.monto)}`):''}
+    ${(!esTallerDet && a.ajusteRetiroAnticipado)?fila('Descuento por retiro anticipado', `${a.ajusteRetiroAnticipado.diasReales} día${a.ajusteRetiroAnticipado.diasReales!==1?'s':''} usados de ${a.ajusteRetiroAnticipado.diasContratados} facturados = -${fmt(a.ajusteRetiroAnticipado.monto)}`):''}
     ${a.modoHoras?fila('Facturación por hora', `${String(a.minutosUso/60).replace('.',',')} hs usadas → ${a.bloques30} bloque${a.bloques30!==1?'s':''} de 30' → ${String(a.horasFacturadas).replace('.',',')} hora${a.horasFacturadas!==1?'s':''} facturada${a.horasFacturadas!==1?'s':''}`):''}
     ${(!a.abierto && !a.retiradoAnticipado && !a.modoHoras && a.fin && finFacturableAlq(a)!==a.fin)?fila('Se factura hasta', `${fmtD(finFacturableAlq(a))} — el día del retiro no se cobra`):''}
     ${(a.abierto && !a.retiradoAnticipado)?(()=>{
@@ -12018,7 +12040,17 @@ function resumenAlquilerHTML(a){
         : `${diasHastaAhora} días (dentro de los ${diasEnPrecioBase} ya incluidos en el precio base)`;
       return fila('Lleva', detalle);
     })():''}
-    ${a.precio?fila('Alquiler', fmt(a.precio)+(detalleSinEquipo?`<div style="font-weight:500;color:var(--txt2);font-size:.78rem;margin-top:1px">${detalleSinEquipo}</div>`:'')):''}
+          ${/* Taller NO ve plata: ni importes, ni descuentos, ni bonificaciones. Solo lo que
+           necesita para mover la maquina: quien la lleva, si comparte camion y adonde va.
+           Los valores siguen estando en el contrato, que es otra pantalla y hay que
+           leerlo en detalle. */''}
+      ${esTallerDet ? `
+        ${(a.fTransportistaIda && a.fTransportistaIda!==a.fTransportista)?fila('Transportista de ida', a.fTransportistaIda):''}
+        ${(a.fTransportistaRetiro && a.fTransportistaRetiro!==a.fTransportista)?fila('Transportista del retiro', a.fTransportistaRetiro):''}
+        ${a.fleteViajaConId?fila('Viaje compartido', 'Va en el mismo camión que otro equipo'):''}
+        ${a.localidad?fila('Localidad de destino', a.localidad):''}
+      ` : `
+${a.precio?fila('Alquiler', fmt(a.precio)+(detalleSinEquipo?`<div style="font-weight:500;color:var(--txt2);font-size:.78rem;margin-top:1px">${detalleSinEquipo}</div>`:'')):''}
     ${(a.precioEspecial && !notaYaEstaEnDetalle)?fila('Precio especial', (a.precioEspecialNota||'').trim() || 'Sí (negociado con el cliente)'):''}
     ${a.fVal?fila('Flete ('+a.fTransportista+')', fmt(a.fVal)+(detalleFlete?`<div style="font-weight:500;color:var(--txt2);font-size:.78rem;margin-top:1px">${detalleFlete}</div>`:'')):''}
     ${(a.fTransportistaIda && a.fTransportistaIda!==a.fTransportista)?fila('Transportista de ida', `${a.fTransportistaIda}${a.fCostoIdaOverride!=null?' — '+fmt(a.fCostoIdaOverride):''}`):''}
@@ -12030,7 +12062,8 @@ function resumenAlquilerHTML(a){
     ${a.localidad?fila('Localidad de destino', a.localidad):''}
     ${a.sub?fila('Subtotal', fmt(a.sub)):''}
     ${a.iva?fila('IVA (21%)', fmt(a.iva)):''}
-    ${a.tot?`<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:700;color:var(--verde)"><span>TOTAL</span><span>${fmt(a.tot)}</span></div>`:''}
+    ${a.tot?`<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:700;color:var(--verde)"><span>TOTAL</span><span>${fmt(a.tot)}</span></div>`:''}
+      `}
     ${a.obs?fila('Observaciones', a.obs):''}
     ${a.solicitante?fila('Solicitado por', a.solicitante):''}
   `;
@@ -14134,8 +14167,8 @@ function renderAlq(){
     return`<div class="eq-item" style="flex-direction:column;align-items:flex-start;gap:6px;cursor:pointer" onclick="verDetalleAlq(${a.id})">
       <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
         <div style="display:flex;align-items:center;gap:11px;min-width:0">
-          <input type="checkbox" onclick="event.stopPropagation()" onchange="toggleSelAlq(${a.id},this.checked)"
-                 ${alqSeleccionados.has(a.id)?'checked':''} style="width:16px;height:16px;flex:0 0 auto;cursor:pointer;accent-color:var(--verde)">
+          ${esTallerVista() ? '' : `<input type="checkbox" onclick="event.stopPropagation()" onchange="toggleSelAlq(${a.id},this.checked)"
+                 ${alqSeleccionados.has(a.id)?'checked':''} style="width:16px;height:16px;flex:0 0 auto;cursor:pointer;accent-color:var(--verde)">`}
           <div style="min-width:0">
           <div style="font-size:.9rem;font-weight:700;color:var(--txt)">${a.equipoNombre}${a.grupoId?` <span style="font-size:.7rem;font-weight:700;color:var(--verde)">${a.grupoCant} equipos</span>`:''}</div>
           <div style="font-size:.78rem;color:var(--txt2);margin-top:2px">${a.cliente}</div>
@@ -14143,12 +14176,12 @@ function renderAlq(){
         </div>
         <div style="display:flex;gap:6px;align-items:center">
           <span class="eq-badge ${badgeClass}" style="${a.pausado?'background:#e5a83b22;color:#e5a83b':(!badgeClass?'background:var(--bg3);color:var(--txt3)':'')}">${badgeTxt}</span>
-          <button onclick="event.stopPropagation();eliminarAlq(${a.id})" style="background:none;border:none;color:var(--txt3);cursor:pointer;font-size:.85rem">✕</button>
+          ${esTallerVista() ? '' : `<button onclick="event.stopPropagation();eliminarAlq(${a.id})" style="background:none;border:none;color:var(--txt3);cursor:pointer;font-size:.85rem">✕</button>`}
         </div>
       </div>
       <div style="font-size:.75rem;color:var(--txt2)">
         ${fmtD(a.inicio)} al ${fmtD(a.fin)} · ${a.dias} día${a.dias!==1?'s':''}
-        ${a.tot?' · '+fmt(a.tot):''}
+        ${(a.tot && !esTallerVista())?' · '+fmt(a.tot):''}
         ${a.fTransportista&&a.fTransportista!=='Sin flete'?' · '+a.fTransportista:''}
         ${a.obs?' · '+a.obs.replace(/\s*\n+\s*/g,' · '):''}
         ${checklistSalidaListo(a.id)?` · <span style="color:var(--verde);font-weight:700">Contrato${CONTRATOS[a.id]&&CONTRATOS[a.id].enviado?' enviado':''}</span>`:''}
@@ -14342,6 +14375,8 @@ function limpiarSelAlq(){
 function actualizarBarraSelAlq(){
   const barra = document.getElementById('alq-barra-sel');
   if(!barra) return;
+  // La seleccion multiple hoy solo sirve para eliminar, asi que taller no la ve.
+  if(esTallerVista()){ alqSeleccionados.clear(); barra.style.display = 'none'; return; }
   // Un alquiler borrado desde otra pantalla no tiene que seguir contando como elegido.
   [...alqSeleccionados].forEach(id => { if(!ALQUILERES.some(a=>a.id===id)) alqSeleccionados.delete(id); });
   const n = alqSeleccionados.size;
@@ -14351,6 +14386,7 @@ function actualizarBarraSelAlq(){
 }
 
 async function eliminarAlqSeleccionados(){
+  if(esTallerVista()) return;
   const ids = [...alqSeleccionados].filter(id => ALQUILERES.some(a=>a.id===id));
   if(!ids.length) return;
   const elegidos = ALQUILERES.filter(a => ids.includes(a.id));
@@ -14368,6 +14404,9 @@ async function eliminarAlqSeleccionados(){
   guardar(); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
 }
 async function eliminarAlq(id){
+  // Taller no borra alquileres. El boton no se le muestra, pero la funcion se frena
+  // igual: esconder un boton no es lo mismo que impedir la accion.
+  if(esTallerVista()) return;
   if(!(await confirmSiNo('¿Eliminar este alquiler?',{si:'Eliminar',no:'Cancelar'})))return;
   const a=ALQUILERES.find(x=>x.id===id);
   ALQUILERES=ALQUILERES.filter(a=>a.id!==id);
