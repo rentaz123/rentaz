@@ -3624,14 +3624,18 @@ function verificarConexionVivo(){
   const estado = sbCanalVivo && sbCanalVivo.state;
   if(estado !== 'joined'){ marcarEstadoVivo('conectando'); escucharCambiosEnVivo(); }
 }
-function escucharCambiosEnVivo(){
+async function escucharCambiosEnVivo(){
   if(!sb || !sbSesion) return;
 
   // Si ya habia un canal abierto, lo cerramos primero. Supabase no deja
   // agregarle avisos a un canal ya conectado: tira "cannot add postgres_changes
   // callbacks after subscribe()" y la persona no puede entrar. Pasa si alguien
   // entra dos veces sin cerrar sesion en el medio.
-  try{ sb.removeAllChannels(); }catch(e){ console.error('Al cerrar canales previos:', e); }
+  // OJO: removeAllChannels() CIERRA el socket y tarda. Antes se llamaba sin esperarlo y
+  // enseguida se creaba el canal nuevo sobre un socket a medio cerrar: el resultado era
+  // siempre "CHANNEL_ERROR: transport failure" y el tiempo real no funcionaba nunca.
+  // Reproducido y verificado: sin esperar falla, esperando conecta.
+  try{ await sb.removeAllChannels(); }catch(e){ console.error('Al cerrar canales previos:', e); }
   // Siempre con el token vigente: si se renovo, el socket tiene que enterarse.
   try{ if(sbSesion && sbSesion.access_token) sb.realtime.setAuth(sbSesion.access_token); }catch(e){}
   marcarEstadoVivo('conectando');
