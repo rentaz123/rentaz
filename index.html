@@ -3549,6 +3549,7 @@ function escucharCambiosEnVivo(){
 
   SB_LISTAS.forEach(({tabla, get, set})=>{
     canal.on('postgres_changes', { event:'*', schema:'public', table:tabla }, (msg)=>{
+      tomarFotoParaAvisos();   // antes de aplicar el cambio, para poder comparar
       const fila = msg.new || msg.old;
       if(!fila) return;
       const lista = (get() || []).slice();
@@ -3575,6 +3576,7 @@ function escucharCambiosEnVivo(){
   });
 
   canal.on('postgres_changes', { event:'*', schema:'public', table:'contratos' }, (msg)=>{
+    tomarFotoParaAvisos();
     const fila = msg.new || msg.old;
     if(!fila) return;
     const k = String(fila.alquiler_id);
@@ -3592,6 +3594,50 @@ function escucharCambiosEnVivo(){
   canal.subscribe();
 }
 
+// ── AVISOS EN TIEMPO REAL ─────────────────────────────────────────────────
+// Los 11 avisos (banner + beep + notificacion) estaban colgados SOLO de
+// aplicarEstadoRemoto(), que es el camino viejo de bajar el estado completo. El camino
+// nuevo —el de tiempo real, que trae un registro a la vez— repintaba la pantalla pero
+// no avisaba nada. Resultado: taller no se enteraba de un alquiler nuevo hasta recargar.
+// Aca se saca una foto de antes del cambio y, cuando termina la rafaga, se comparan.
+let sbFotoAvisos = null;
+
+function tomarFotoParaAvisos(){
+  if(sbFotoAvisos) return;           // ya hay una de esta rafaga
+  sbFotoAvisos = {
+    alquileres:   (ALQUILERES||[]).slice(),
+    incidencias:  (EQ_INCIDENCIAS||[]).slice(),
+    pagosProv:    (PAGOS_PROVEEDORES||[]).slice(),
+    presupuestos: (PRESUPUESTOS||[]).slice(),
+    solLargas:    (SOLICITUDES_LARGAS||[]).slice(),
+    equipos:      (EQUIPOS||[]).slice(),
+    contratos:    Object.assign({}, CONTRATOS||{})
+  };
+}
+
+// Mismo reparto por rol que en aplicarEstadoRemoto: cada uno recibe lo suyo y nada mas.
+function dispararAvisosRemotos(previo){
+  if(!previo) return;
+  try{
+    if(ROL_ACTUAL==='admin'){
+      avisarIncidenciasNuevas(previo.incidencias, EQ_INCIDENCIAS);
+      avisarPagosProvNuevos(previo.pagosProv, PAGOS_PROVEEDORES);
+      avisarContratosListos(previo.contratos, CONTRATOS);
+      avisarSolicitudesLargasNuevas(previo.solLargas, SOLICITUDES_LARGAS);
+      avisarPresupuestosTallerNuevos(previo.presupuestos, PRESUPUESTOS);
+      avisarSolicitudesEsperaCubiertasNuevas(previo.equipos, previo.alquileres);
+      avisarEquipoRetiradoFisicoNuevo(previo.alquileres, ALQUILERES);
+    }
+    if(ROL_ACTUAL==='facturacion'){
+      avisarPagosProvPagados(previo.pagosProv, PAGOS_PROVEEDORES);
+      avisarContratosListos(previo.contratos, CONTRATOS);
+    }
+    if(ROL_ACTUAL==='taller'){
+      avisarAlquileresNuevos(previo.alquileres, ALQUILERES);
+      avisarRetirosPendientesNuevos(previo.alquileres, ALQUILERES);
+    }
+  }catch(e){ console.error('No se pudo avisar del cambio remoto:', e); }
+}
 // Repinta la pantalla que se este viendo, sin sacar a la persona de donde esta.
 let sbRepintarTimer = null;
 function repintarPorCambioRemoto(){
@@ -3606,6 +3652,9 @@ function repintarPorCambioRemoto(){
       else if(id==='alquileres' && typeof renderAlq==='function') renderAlq();
       else if(id==='calendario' && typeof renderCal==='function') renderCal();
     }catch(e){ console.error('No se pudo repintar:', e); }
+    // Terminada la rafaga, se compara contra la foto y se avisa lo que corresponda.
+    const previo = sbFotoAvisos; sbFotoAvisos = null;
+    dispararAvisosRemotos(previo);
   }, 250);
 }
 
@@ -6754,6 +6803,26 @@ function renderPreciosUsd(){
         multiplicar por el dólar de referencia y redondear al mil de arriba.<br>
         Si cambiás un valor acá, los pesos de ese equipo se recalculan al instante y queda en el historial.</p>`;
 }
+// Secciones plegables de la pantalla de Precios. La pagina es larga: 13 equipos, 4
+// tarjetas de fletes y el historial. Poder cerrar lo que no se esta mirando evita
+// scrollear de punta a punta para llegar al historial.
+let preciosSec = JSON.parse(localStorage.getItem('rtz_precios_sec') || 'null')
+  || {equipos:true, fletes:true, historial:false};
+function togglePreciosSec(k){
+  preciosSec[k] = !preciosSec[k];
+  localStorage.setItem('rtz_precios_sec', JSON.stringify(preciosSec));
+  renderPrecios();
+}
+// Encabezado con flecha y contador, igual a los desplegables de Inicio.
+function cabeceraSecPrecios(clave, titulo, cuantos){
+  const abierto = !!preciosSec[clave];
+  return `<button class="dash-collapse-header ${abierto?'dc-open':''}" onclick="togglePreciosSec('${clave}')"
+            style="padding:.55rem 0;border-bottom:1px solid var(--border);margin-bottom:${abierto?'.8rem':'.2rem'}">
+      <span class="dc-title" style="font-size:.72rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em">${titulo}</span>
+      ${cuantos!=null?`<span class="dc-badge">${cuantos}</span>`:''}
+      <span class="dc-arrow">&#9662;</span>
+    </button>`;
+}
 function renderPrecios(){
   const cont=document.getElementById('precios-cont');
   const tipos=Object.keys(PRECIOS);
@@ -6840,7 +6909,7 @@ function renderPrecios(){
   // Lo que sí ve: los destinos de Alejandro, los de Rosso Pesada, y los dos $/km sueltos,
   // que le alcanzan para estimar un viaje.
   // La misma regla vale en el cotizador y en el detalle del alquiler — ver esTallerVista().
-  const fletesHtml = `<div class="sec-divider" style="margin:1rem 0 .5rem">Fletes</div>` +
+  const fletesHtml = cabeceraSecPrecios('fletes', 'Fletes', null) + (!preciosSec.fletes ? '' :
     tarjetaDestinos('Alejandro', [
       filaDestino('alejandro.rafaela',     'Alejandro — Rafaela',      fleteAlejandro('rafaela')),
       filaDestino('alejandro.susana',      'Alejandro — Susana',       fleteAlejandro('susana')),
@@ -6868,11 +6937,11 @@ function renderPrecios(){
        Arriba están los valores fijos por destino.<br>
        El de <b>por km</b> sale de esta cuenta:
        <b>(km + ${fleteKmParam('kmExtra')}) × 2 × $/km + ${fleteKmParam('recargo')}%</b>.
-       Los cuatro valores se editan acá y el cotizador los toma al instante.</p>`);
+       Los cuatro valores se editan acá y el cotizador los toma al instante.</p>`));
 
-  const histHtml = esTaller ? '' : `
-    <div class="sec-divider" style="margin:1.4rem 0 .5rem">Historial de cambios</div>
-    <div id="precios-historial"><p style="font-size:.8rem;color:var(--txt3)">Cargando…</p></div>`;
+  const histHtml = esTaller ? '' :
+    '<div style="margin-top:1.4rem"></div>' + cabeceraSecPrecios('historial', 'Historial de cambios', null)
+    + (preciosSec.historial ? `<div id="precios-historial"><p style="font-size:.8rem;color:var(--txt3)">Cargando…</p></div>` : '');
 
   // Buscador de equipos: la lista es larga y encontrar una tarifa obligaba a scrolear todo.
   // Filtra mostrando/ocultando las tarjetas ya dibujadas (ver filtrarPrecios), NO redibujando:
@@ -6913,11 +6982,12 @@ function renderPrecios(){
   }
 
   cont.innerHTML = dolarHtml + tabsHtml + buscadorHtml
-    + `<div class="sec-divider" style="margin:0 0 .5rem">Equipos</div>`
-    + equiposHtml
+    + cabeceraSecPrecios('equipos', 'Equipos', tipos.length)
+    + (preciosSec.equipos ? equiposHtml : '')
     + `<p id="precios-sin-resultados" style="display:none;font-size:.85rem;color:var(--txt3);text-align:center;margin:1.2rem 0"></p>`
     + `<div id="precios-resto">` + fletesHtml + histHtml + `</div>`;
-  if(!esTaller) renderHistorialPrecios();
+  // El historial se trae de la base; si la seccion esta cerrada no hace falta pedirlo.
+  if(!esTaller && preciosSec.historial) renderHistorialPrecios();
   if(preciosBusca) filtrarPrecios();
 }
 
@@ -9376,23 +9446,37 @@ function renderCl(){
       </div>
     </div>`).join('');
 }
+// Cancelar en CUALQUIER paso aborta todo. Antes solo cortaba el primero: los demas
+// hacian prompt(...)||'' y, como Cancelar devuelve null, el ||'' lo convertia en texto
+// vacio y la carga seguia igual. Si el nombre estaba mal escrito, cancelar no servia
+// de nada: el cliente se creaba lo mismo.
 function nuevoCl(){
-  const nombre=prompt('Nombre / Razón social:');if(!nombre)return;
-  const ciudad=prompt('Ciudad:','')||'';
-  const tel=prompt('Teléfono:','')||'';
-  const cuit=prompt('CUIT:','')||'';
-  const email=prompt('Email:','')||'';
+  const nombre=prompt('Nombre / Razón social:');
+  if(nombre===null) return;
+  if(!nombre.trim()){ alert('Hace falta el nombre para crear el cliente.'); return; }
+  const ciudad=prompt('Ciudad:',''); if(ciudad===null) return;
+  const tel=prompt('Teléfono:',''); if(tel===null) return;
+  const cuit=prompt('CUIT:',''); if(cuit===null) return;
+  const email=prompt('Email:',''); if(email===null) return;
   const id=Date.now();
-  CLIENTES.unshift({id,nombre,dir:'',ciudad,cuit,tel,email});
+  CLIENTES.unshift({id,nombre:nombre.trim(),dir:'',ciudad:ciudad.trim(),cuit:cuit.trim(),tel:tel.trim(),email:email.trim()});
+  marcarAccionUndo(`Crear cliente "${nombre.trim()}"`, 'clientes');
   guardar();renderCl();
 }
+// Igual que arriba, y ademas: antes cancelar en Ciudad/Teléfono/CUIT/Email BORRABA el
+// dato que ya tenia el cliente (quedaba ''). Ahora no se toca nada hasta que estan los
+// cinco pasos: o se guardan todos los cambios, o no se guarda ninguno.
 function editCl(id){
   const c=CLIENTES.find(x=>x.id===id);if(!c)return;
-  c.nombre=prompt('Nombre:',c.nombre)||c.nombre;
-  c.ciudad=prompt('Ciudad:',c.ciudad||'')||'';
-  c.tel=prompt('Teléfono:',c.tel||'')||'';
-  c.cuit=prompt('CUIT:',c.cuit||'')||'';
-  c.email=prompt('Email:',c.email||'')||'';
+  const nombre=prompt('Nombre:',c.nombre); if(nombre===null) return;
+  if(!nombre.trim()){ alert('El cliente tiene que tener nombre.'); return; }
+  const ciudad=prompt('Ciudad:',c.ciudad||''); if(ciudad===null) return;
+  const tel=prompt('Teléfono:',c.tel||''); if(tel===null) return;
+  const cuit=prompt('CUIT:',c.cuit||''); if(cuit===null) return;
+  const email=prompt('Email:',c.email||''); if(email===null) return;
+  c.nombre=nombre.trim(); c.ciudad=ciudad.trim(); c.tel=tel.trim();
+  c.cuit=cuit.trim(); c.email=email.trim();
+  marcarAccionUndo(`Editar cliente "${c.nombre}"`, 'clientes');
   guardar();renderCl();
 }
 async function elimCl(id){
