@@ -105,7 +105,7 @@ h1,h2,h3,h4{font-weight:700;}
 /* Rincon de los tres puntitos, arriba a la derecha. Aca van las acciones que se usan muy
    de vez en cuando (cambiar contrasena, bajar una copia) para que no ocupen lugar fijo en
    el menu de la izquierda, que es para lo de todos los dias. */
-#mas-caja{margin-left:auto;position:relative;}
+#mas-caja{margin-left:10px;position:relative;}
 #btn-mas{background:none;border:0;cursor:pointer;color:var(--txt2);font-size:1.3rem;line-height:1;padding:4px 10px;border-radius:8px;}
 #btn-mas:hover{background:var(--bg3);color:var(--txt);}
 #menu-mas{
@@ -694,6 +694,9 @@ if ('serviceWorker' in navigator) {
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
       <h1 id="hdr-title">Inicio</h1>
+      <!-- Semaforo de la conexion en vivo. Si deja de llegar lo de las otras
+           computadoras, tiene que verse sin abrir nada. -->
+      <div id="estado-vivo" style="display:none;align-items:center;gap:6px;margin-left:auto"></div>
       <!-- Acciones ocasionales. Lo de todos los dias va en el menu de la izquierda. -->
       <div id="mas-caja">
         <button id="btn-mas" onclick="toggleMenuMas(event)" title="M&aacute;s opciones" aria-label="M&aacute;s opciones">&#8942;</button>
@@ -3536,6 +3539,70 @@ async function cargarTodoDesdeSupabase(){
 //  Cuando otra persona cambia algo, llega solo ese registro y se actualiza
 //  en su lugar. Antes bajaba la empresa entera y se repintaba todo.
 // ═══════════════════════════════════════════════════════════════════════════
+// ── QUE LA CONEXION EN VIVO NO SE CAIGA ───────────────────────────────────
+// El token de Supabase vence cada tanto. La libreria lo renueva sola para las consultas
+// normales, pero el socket de tiempo real se quedo abierto con el token VIEJO: el
+// servidor lo deja de atender y no avisa. Por eso la app funcionaba un rato y despues
+// habia que cerrar sesion — eso reabria el socket con un token nuevo.
+// Aca se escucha la renovacion y se le pasa el token nuevo al socket, y ademas se
+// reconecta si se cayo por dormir la compu, perder wifi o cambiar de red.
+let sbCanalVivo = null;
+let sbEstadoVivo = 'conectando';   // conectando | ok | caido
+let sbReconectarTimer = null;
+
+function pintarEstadoVivo(){
+  const el = document.getElementById('estado-vivo');
+  if(!el) return;
+  const mapa = {
+    ok:        {color:'#2e9e52', txt:'En vivo',      tit:'Los cambios de las otras computadoras llegan solos.'},
+    conectando:{color:'#b3791f', txt:'Conectando…',  tit:'Reconectando con el servidor.'},
+    caido:     {color:'var(--rojo)', txt:'Sin conexión en vivo', tit:'No están llegando los cambios de otras computadoras. Se reintenta solo.'}
+  };
+  const m = mapa[sbEstadoVivo] || mapa.conectando;
+  el.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${m.color};display:inline-block"></span>`
+    + `<span style="font-size:.74rem;color:var(--txt3)">${m.txt}</span>`;
+  el.title = m.tit;
+  el.style.display = 'flex';
+}
+function marcarEstadoVivo(e){ sbEstadoVivo = e; pintarEstadoVivo(); }
+
+// Si se cayo, reintentar con esperas cada vez mas largas (5s, 10s, 20s… hasta 1 min).
+let sbIntentos = 0;
+function programarReconexionVivo(){
+  clearTimeout(sbReconectarTimer);
+  const espera = Math.min(60000, 5000 * Math.pow(2, Math.min(sbIntentos,4)));
+  sbIntentos++;
+  sbReconectarTimer = setTimeout(()=>{ escucharCambiosEnVivo(); }, espera);
+}
+
+// Se engancha una sola vez. Cada vez que la libreria renueva el token, el socket se
+// entera; si ademas la sesion cambio, se reabre el canal.
+let sbAuthEnganchado = false;
+function engancharRenovacionToken(){
+  if(sbAuthEnganchado || !sb) return;
+  sbAuthEnganchado = true;
+  sb.auth.onAuthStateChange((evento, sesion)=>{
+    if(!sesion) return;
+    sbSesion = sesion;
+    try{ sb.realtime.setAuth(sesion.access_token); }catch(e){ console.error('setAuth:', e); }
+    if(evento === 'TOKEN_REFRESHED' || evento === 'SIGNED_IN'){
+      // Si el canal no quedo unido, se reabre con el token nuevo.
+      const estado = sbCanalVivo && sbCanalVivo.state;
+      if(estado !== 'joined') escucharCambiosEnVivo();
+    }
+  });
+  // Volver de dormir la compu, cambiar de wifi o perder la red cortan el socket sin
+  // avisar. Al volver a estar visible o en linea, se comprueba y se reconecta.
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState === 'visible') verificarConexionVivo();
+  });
+  window.addEventListener('online', verificarConexionVivo);
+}
+function verificarConexionVivo(){
+  if(!sb || !sbSesion) return;
+  const estado = sbCanalVivo && sbCanalVivo.state;
+  if(estado !== 'joined'){ marcarEstadoVivo('conectando'); escucharCambiosEnVivo(); }
+}
 function escucharCambiosEnVivo(){
   if(!sb || !sbSesion) return;
 
@@ -3544,6 +3611,9 @@ function escucharCambiosEnVivo(){
   // callbacks after subscribe()" y la persona no puede entrar. Pasa si alguien
   // entra dos veces sin cerrar sesion en el medio.
   try{ sb.removeAllChannels(); }catch(e){ console.error('Al cerrar canales previos:', e); }
+  // Siempre con el token vigente: si se renovo, el socket tiene que enterarse.
+  try{ if(sbSesion && sbSesion.access_token) sb.realtime.setAuth(sbSesion.access_token); }catch(e){}
+  marcarEstadoVivo('conectando');
 
   const canal = sb.channel('rentaz-cambios');
 
@@ -3591,7 +3661,17 @@ function escucharCambiosEnVivo(){
     repintarPorCambioRemoto();
   });
 
-  canal.subscribe();
+  // Antes se llamaba subscribe() sin mirar el resultado: si fallaba, la app seguia
+  // como si nada y los cambios no llegaban nunca, sin ninguna senal.
+  sbCanalVivo = canal;
+  canal.subscribe((estado)=>{
+    if(estado === 'SUBSCRIBED'){ sbIntentos = 0; marcarEstadoVivo('ok'); }
+    else if(estado === 'CHANNEL_ERROR' || estado === 'TIMED_OUT' || estado === 'CLOSED'){
+      marcarEstadoVivo('caido');
+      programarReconexionVivo();
+    }
+  });
+  engancharRenovacionToken();
 }
 
 // ── AVISOS EN TIEMPO REAL ─────────────────────────────────────────────────
