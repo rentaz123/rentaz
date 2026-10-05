@@ -125,6 +125,9 @@ h1,h2,h3,h4{font-weight:700;}
 /* DASHBOARD CARDS */
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:1.5rem;}
 .stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:1.1rem 1.2rem;}
+/* Las del Inicio llevan a Equipos filtrado: que se note que se pueden tocar. */
+#dash-stats .stat-card{cursor:pointer;transition:transform .12s, box-shadow .12s;}
+#dash-stats .stat-card:hover{transform:translateY(-2px);box-shadow:0 4px 14px rgba(28,27,25,.12);}
 .stat-card .num{font-size:2.4rem;font-weight:700;letter-spacing:-1px;line-height:1;margin-bottom:4px;}
 .stat-card .lbl{font-size:.85rem;font-weight:600;color:var(--txt2);text-transform:uppercase;letter-spacing:.05em;}
 .stat-card.verde .num{color:var(--verde);}
@@ -865,6 +868,15 @@ if ('serviceWorker' in navigator) {
         <div class="dash-collapse-body" id="dash-vuelven-hoy-container" style="display:none"></div>
       </div>
 
+      <div class="dash-collapse" id="dc-alq-semana">
+        <button class="dash-collapse-header" id="dch-alq-semana" onclick="toggleDashCollapse('alqSemana')">
+          <span class="dc-title">Arrancan esta semana y la próxima</span>
+          <span class="dc-badge" id="dc-badge-alq-semana"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-alq-semana-container" style="display:none"></div>
+      </div>
+
       <!-- Equipos que se liberan en los próximos días (fin confirmado, no abiertos) — pantallazo
            rápido para poder ofrecerlos antes de que se liberen del todo. -->
       <div class="dash-collapse" id="dc-libera-semana" style="border-color:#00695c">
@@ -874,15 +886,6 @@ if ('serviceWorker' in navigator) {
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-libera-semana-container" style="display:none"></div>
-      </div>
-
-      <div class="dash-collapse" id="dc-alq-semana">
-        <button class="dash-collapse-header" id="dch-alq-semana" onclick="toggleDashCollapse('alqSemana')">
-          <span class="dc-title">Arrancan esta semana y la próxima</span>
-          <span class="dc-badge" id="dc-badge-alq-semana"></span>
-          <span class="dc-arrow">▾</span>
-        </button>
-        <div class="dash-collapse-body" id="dash-alq-semana-container" style="display:none"></div>
       </div>
 
       <!-- Cargado hoy -->
@@ -5251,6 +5254,14 @@ function irAParaEntregar(){
 // Se recalcula en los momentos en que puede haber cambiado, y cada 30s como respaldo
 // (por si algun camino no la actualizo).
 setInterval(actualizarFranjaTaller, 30000);
+// Los contadores de los desplegables del Inicio: cuando no hay nada muestran un guion,
+// no un cero. Antes "Arrancan hoy" ni siquiera se llenaba (quedaba vacio) y "Terminan
+// hoy" mostraba 0: dos cosas distintas para lo mismo.
+function badgeDash(id, n){
+  const el=document.getElementById(id);
+  if(el) el.textContent = n > 0 ? String(n) : '—';
+}
+
 function renderDashboard(){
   autoMarcarPendientesDeRetiro();
   actualizarFranjaTaller();
@@ -5260,11 +5271,12 @@ function renderDashboard(){
   const disp=estados.filter(x=>x.r.estado==='disponible');
   const alq=estados.filter(x=>x.r.estado==='alquilado');
   const tall=estados.filter(x=>x.r.estado==='taller');
+  // Las tarjetas llevan a Equipos ya filtrado por ese estado.
   document.getElementById('dash-stats').innerHTML=`
-    <div class="stat-card verde"><div class="num">${alq.length}</div><div class="lbl">Alquilados</div></div>
-    <div class="stat-card azul"><div class="num">${disp.length}</div><div class="lbl">Disponibles</div></div>
-    <div class="stat-card rojo"><div class="num">${tall.length}</div><div class="lbl">Fuera de servicio</div></div>
-    <div class="stat-card gris"><div class="num">${EQUIPOS.length}</div><div class="lbl">Total flota</div></div>
+    <div class="stat-card verde" onclick="irAEquipos('alquilado')" title="Ver los equipos alquilados"><div class="num">${alq.length}</div><div class="lbl">Alquilados</div></div>
+    <div class="stat-card azul" onclick="irAEquipos('disponible')" title="Ver los equipos disponibles"><div class="num">${disp.length}</div><div class="lbl">Disponibles</div></div>
+    <div class="stat-card rojo" onclick="irAEquipos('taller')" title="Ver los equipos fuera de servicio"><div class="num">${tall.length}</div><div class="lbl">Fuera de servicio</div></div>
+    <div class="stat-card gris" onclick="irAEquipos('todos')" title="Ver toda la flota"><div class="num">${EQUIPOS.length}</div><div class="lbl">Total flota</div></div>
   `;
 
   // Aviso de máquinas trabadas: alquileres que siguen "en curso" mucho después de
@@ -5449,7 +5461,7 @@ function renderDashboard(){
   // en qué orden van reingresando los equipos durante el día.
   const vuelvenHoyList=ALQUILERES.filter(a=>!a.abierto && !a.retiradoAnticipado && !a.retiroFisicoFecha && a.fechaRetiro===hoyStr2)
     .sort((a,b)=>(a.horaRetiro||'23:59').localeCompare(b.horaRetiro||'23:59'));
-  document.getElementById('dc-badge-vuelven-hoy').textContent=vuelvenHoyList.length;
+  badgeDash('dc-badge-vuelven-hoy', vuelvenHoyList.length);
   document.getElementById('dash-vuelven-hoy-container').innerHTML = vuelvenHoyList.length
     ? vuelvenHoyList.map(a=>`<div class="pago-item" style="border-color:#00897b33;background:#00897b08;cursor:pointer;margin-bottom:.5rem" onclick="verDetalleAlq(${a.id})">
         <div style="width:11px;height:11px;border-radius:50%;background:#00897b;flex-shrink:0"></div>
@@ -5561,10 +5573,11 @@ function renderDashboard(){
       dcPresupTaller.style.display='none';
     }
   }
+  badgeDash('dc-badge-alq-hoy', alqHoyList.length);
   document.getElementById('dash-alq-hoy-container').innerHTML = alqHoyList.length
     ? alqHoyList.map(a=>renderAlqItem(a,true)).join('')
     : '<p style="color:var(--txt3);font-size:.9rem;padding:.4rem 0">No arranca ningún alquiler nuevo hoy.</p>';
-  document.getElementById('dc-badge-alq-semana').textContent=alqEstaSemanaList.length+alqProximaSemanaList.length;
+  badgeDash('dc-badge-alq-semana', alqEstaSemanaList.length+alqProximaSemanaList.length);
   document.getElementById('dash-alq-semana-container').innerHTML =
     `<div style="font-size:.72rem;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Esta semana</div>` +
     (alqEstaSemanaList.length
@@ -5574,7 +5587,7 @@ function renderDashboard(){
     (alqProximaSemanaList.length
       ? alqProximaSemanaList.map(a=>renderAlqItem(a,false)).join('')
       : '<p style="color:var(--txt3);font-size:.85rem;padding:.2rem 0">No hay alquileres que arranquen la semana que viene.</p>');
-  document.getElementById('dc-badge-libera-semana').textContent=alqLiberaEstaSemanaList.length+alqLiberaProximaSemanaList.length;
+  badgeDash('dc-badge-libera-semana', alqLiberaEstaSemanaList.length+alqLiberaProximaSemanaList.length);
   document.getElementById('dash-libera-semana-container').innerHTML =
     `<div style="font-size:.72rem;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Esta semana</div>` +
     (alqLiberaEstaSemanaList.length
@@ -5597,7 +5610,7 @@ function renderDashboard(){
     ...presupHoyCargados.map(p=>({ts:p.creadoEn, tipo:'presupuesto', p}))
   ].sort((x,y)=>y.ts-x.ts);
   const contCargado=document.getElementById('dash-cargado-hoy-container');
-  document.getElementById('dc-badge-cargado-hoy').textContent=cargadoHoy.length;
+  badgeDash('dc-badge-cargado-hoy', cargadoHoy.length);
   if(!cargadoHoy.length){
     contCargado.innerHTML='<p style="color:var(--txt3);font-size:.9rem;padding:.4rem 0">Todavía no se cargó nada hoy.</p>';
   } else {
@@ -5767,8 +5780,17 @@ function applyDashCollapseState(key){
   header.classList.toggle('dc-open', open);
   body.style.display = open?'block':'none';
 }
+// Pares que no conviene ver juntos: ocupan mucho y uno tapa al otro. Al abrir uno,
+// el companero se cierra solo (acordeon).
+const PARES_ACORDEON = [['alqSemana','liberaSemana']];
 function toggleDashCollapse(key){
   dashCollapseOpen[key]=!dashCollapseOpen[key];
+  if(dashCollapseOpen[key]){
+    PARES_ACORDEON.forEach(par=>{
+      if(par[0]===key && dashCollapseOpen[par[1]]){ dashCollapseOpen[par[1]]=false; applyDashCollapseState(par[1]); }
+      if(par[1]===key && dashCollapseOpen[par[0]]){ dashCollapseOpen[par[0]]=false; applyDashCollapseState(par[0]); }
+    });
+  }
   applyDashCollapseState(key);
 }
 
@@ -7712,7 +7734,8 @@ function tablaEvolucion(filas, pct, colorPct, fmtPct){
 
   // ── Agrupado en Equipos y Fletes ────────────────────────────────────────
   // Mezclados en una sola tabla eran 49 filas donde no se encontraba nada.
-  // Separados, cada grupo se abre y se cierra por su cuenta.
+  // Separados, cada grupo se abre y se cierra por su cuenta. Arrancan CERRADOS:
+  // abiertos eran un muro de numeros apenas entrabas a Precios.
   const grupo = (clavesDelGrupo, titulo, abiertoPorDefecto)=>{
     if(!clavesDelGrupo.length) return '';
     const filasHtml = clavesDelGrupo.map(armarFila).join('');
@@ -7731,7 +7754,7 @@ function tablaEvolucion(filas, pct, colorPct, fmtPct){
       <span style="font-size:.72rem;color:var(--txt3)">${claves.length} de ${claves.length + quietos.length}</span>
     </div>
     ${claves.length
-      ? grupo(porTipo(claves,'flete'), 'Fletes', true) + grupo(porTipo(claves,'equipo'), 'Equipos', true)
+      ? grupo(porTipo(claves,'flete'), 'Fletes', false) + grupo(porTipo(claves,'equipo'), 'Equipos', false)
       : `<p style="font-size:.8rem;color:var(--txt3)">Todavía no se movió ningún precio.</p>`}
     <p style="font-size:.74rem;color:var(--txt3);margin:.4rem 0 0">
       En negrita, el mes en que ese precio se tocó. Los demás repiten el valor que
@@ -8674,6 +8697,18 @@ function renderAlm(){
   document.getElementById('cal-cont').innerHTML=h;
 }
 let filtroEq='todos';
+// Entrar a Equipos ya filtrado, desde las tarjetas del Inicio. Sin esto habia que
+// ir a Flota > Equipos y despues tocar el filtro a mano.
+function irAEquipos(filtro){
+  filtroEq = filtro || 'todos';
+  goTo('equipos');
+  const btns = document.querySelectorAll('.flt-btn');
+  btns.forEach(b=>{
+    const suyo = (b.getAttribute('onclick')||'').includes('+filtroEq+');
+    b.classList.toggle('active', suyo);
+  });
+  renderEq();
+}
 function filtEq(f,btn){filtroEq=f;document.querySelectorAll('.flt-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderEq();}
 function renderEq(){
   const listaConEstado=equiposOrdenados().map(e=>({e, r:estadoRealEq(e)}));
