@@ -593,6 +593,7 @@ if ('serviceWorker' in navigator) {
       <div class="nav-sub" id="g-alquileres">
         <button id="nav-cotizador" onclick="goTo('cotizador')">Cotizador</button>
         <button id="nav-alquileres" onclick="goTo('alquileres')">Lista de alquileres</button>
+        <button id="nav-solicitudes" onclick="goTo('solicitudes')">Solicitudes</button>
         <button id="nav-calendario" onclick="goTo('calendario')">Calendario</button>
         <button id="nav-rivadavia" onclick="goTo('rivadavia')">Planilla Rivadavia</button>
       </div>
@@ -737,7 +738,7 @@ if ('serviceWorker' in navigator) {
       <div class="stat-grid" id="dash-stats"></div>
       <!-- Solo taller: el pedido que entra por telefono cuando no hay nadie de oficina.
            Va arriba de todo porque es lo que necesitan a mano cuando suena el telefono. -->
-      <button id="btn-solicitud-taller" onclick="abrirModalSolicitudLarga()" style="display:none;width:100%;background:var(--bg2);border:1px dashed var(--border2);border-radius:var(--radio);padding:.9rem 1rem;margin-bottom:1rem;cursor:pointer;font-family:inherit;text-align:left;box-shadow:var(--sombra)">
+      <button id="btn-solicitud-taller" onclick="solLargaEditandoId=null;abrirModalSolicitudLarga()" style="display:none;width:100%;background:var(--bg2);border:1px dashed var(--border2);border-radius:var(--radio);padding:.9rem 1rem;margin-bottom:1rem;cursor:pointer;font-family:inherit;text-align:left;box-shadow:var(--sombra)">
         <div style="font-size:.9rem;font-weight:700;color:var(--txt)">+ Cargar una solicitud</div>
         <div style="font-size:.78rem;color:var(--txt2);margin-top:2px">Llam&oacute; un cliente pidiendo un equipo: anot&aacute; los datos y le llega a la oficina.</div>
       </button>
@@ -1080,7 +1081,7 @@ if ('serviceWorker' in navigator) {
            no puede cotizarlo, pero puede anotar los datos para que Mateo lo llame. -->
       <div id="cot-solicitud-larga-box" style="display:none;background:rgba(142,36,170,0.1);border:1px solid rgba(142,36,170,0.4);border-radius:10px;padding:.8rem .9rem;margin-bottom:.9rem;">
         <div style="font-size:.82rem;color:var(--txt);margin-bottom:.5rem;"><b>¿El cliente pide más de 4 días?</b> Anotá sus datos y le llega a Mateo para que lo llame.</div>
-        <button type="button" onclick="abrirModalSolicitudLarga()" style="width:100%;background:#8e24aa;border:none;color:#fff;border-radius:8px;padding:.7rem;font-size:.83rem;font-weight:700;cursor:pointer;">Anotar solicitud de alquiler largo</button>
+        <button type="button" onclick="solLargaEditandoId=null;abrirModalSolicitudLarga()" style="width:100%;background:#8e24aa;border:none;color:#fff;border-radius:8px;padding:.7rem;font-size:.83rem;font-weight:700;cursor:pointer;">Anotar solicitud de alquiler largo</button>
       </div>
 
       <!-- CLIENTE -->
@@ -1570,6 +1571,19 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
     </div>
 
     <!-- REPORTES -->
+    <div class="screen" id="screen-solicitudes">
+      <div class="sec-title">Solicitudes</div>
+      <div class="sec-sub">Pedidos que entraron por teléfono — quedan guardados aunque ya se hayan resuelto</div>
+
+      <div style="display:flex;gap:4px;margin-bottom:1rem;flex-wrap:wrap">
+        <button class="rb sel" id="sol-tab-pend"  onclick="setSolTab('pendientes')">Pendientes</button>
+        <button class="rb"     id="sol-tab-aten"  onclick="setSolTab('atendidas')">Atendidas</button>
+        <button class="rb"     id="sol-tab-todas" onclick="setSolTab('todas')">Todas</button>
+      </div>
+
+      <div id="sol-cont"></div>
+    </div>
+
     <div class="screen" id="screen-reportes">
       <div class="sec-title">Reportes</div>
       <div class="sec-sub">Ventas, fletes y ranking de clientes</div>
@@ -3879,6 +3893,22 @@ function guardarSolicitudLarga(){
   if(!clienteNombre){ alert('Ingresá el nombre del cliente'); return; }
   if(!clienteTelefono){ alert('Ingresá el teléfono del cliente'); return; }
   if(!dias || dias<1){ alert('Ingresá cuántos días pide'); return; }
+  // Si venimos de "Editar", se actualiza la que ya existe en vez de crear otra.
+  if(solLargaEditandoId){
+    const s=SOLICITUDES_LARGAS.find(x=>x.id===solLargaEditandoId);
+    if(s){
+      Object.assign(s, {clienteNombre, clienteTelefono, equipoNombre, dias, obs});
+      s.editadoPor = ROL_ACTUAL==='taller'?TALLER_RESPONSABLE:nombreUsuarioActual();
+      s.editadoEn = Date.now();
+      guardarSolicitudesLargas();
+      marcarAccionUndo(`Editar solicitud de "${clienteNombre}"`, 'solicitudes');
+    }
+    solLargaEditandoId = null;
+    document.getElementById('modal-solicitud-larga').style.display='none';
+    renderDashboard(); renderSolicitudes();
+    alert('Solicitud actualizada.');
+    return;
+  }
   SOLICITUDES_LARGAS.push({
     id:Date.now(), fecha:hoyISO(),
     clienteNombre, clienteTelefono, equipoNombre, dias, obs,
@@ -3887,14 +3917,144 @@ function guardarSolicitudLarga(){
   });
   guardarSolicitudesLargas();
   document.getElementById('modal-solicitud-larga').style.display='none';
-  alert('Anotado. Le va a llegar el aviso a Mateo para que lo llame.');
+  renderDashboard(); renderSolicitudes();
+  alert('Anotado. Le llega el aviso a la oficina.\n\nQueda guardada en "Solicitudes" por si necesitás verla o corregirla.');
+}
+// ── PANTALLA DE SOLICITUDES ───────────────────────────────────────────────
+// Antes la solicitud se cargaba y desaparecia: taller no podia verla (la lista era solo
+// para admin) ni corregir un telefono mal anotado, y oficina solo veia las PENDIENTES —
+// al marcarlas atendidas se borraban de la vista aunque el dato siguiera en la base.
+// Aca quedan las tres cosas: verlas, editarlas y consultar el historial.
+let solTab = 'pendientes';
+function setSolTab(t){
+  solTab = t;
+  ['pend','aten','todas'].forEach(k=>{
+    const el=document.getElementById('sol-tab-'+k);
+    if(el) el.classList.remove('sel');
+  });
+  const mapa={pendientes:'pend', atendidas:'aten', todas:'todas'};
+  const el=document.getElementById('sol-tab-'+mapa[t]);
+  if(el) el.classList.add('sel');
+  renderSolicitudes();
+}
+
+function renderSolicitudes(){
+  const cont=document.getElementById('sol-cont');
+  if(!cont) return;
+  const esTaller = esTallerVista();
+  const fmtFH = ts => {
+    if(!ts) return '';
+    const d=new Date(ts);
+    return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  };
+  let lista = (SOLICITUDES_LARGAS||[]).slice();
+  if(solTab==='pendientes') lista = lista.filter(s=>s.estado!=='atendida');
+  else if(solTab==='atendidas') lista = lista.filter(s=>s.estado==='atendida');
+  // Las pendientes de la mas vieja a la mas nueva (la que mas espera, primero).
+  // El historial al reves: lo ultimo arriba.
+  lista.sort((a,b)=> solTab==='pendientes' ? (a.creadoEn||0)-(b.creadoEn||0) : (b.creadoEn||0)-(a.creadoEn||0));
+
+  const pend = (SOLICITUDES_LARGAS||[]).filter(s=>s.estado!=='atendida').length;
+  let h = `<div style="font-size:.85rem;color:var(--txt2);margin-bottom:1rem">`
+    + (pend ? `<b style="color:#8e24aa">${pend}</b> sin responder` : 'No hay solicitudes sin responder')
+    + `</div>`;
+
+  if(!lista.length){
+    h += `<p style="font-size:.85rem;color:var(--txt3);text-align:center;margin:2rem 0">`
+      + (solTab==='pendientes' ? 'No hay solicitudes pendientes.' : 'No hay solicitudes para mostrar.')
+      + `</p>`;
+    cont.innerHTML = h;
+    return;
+  }
+
+  h += lista.map(s=>{
+    const atendida = s.estado==='atendida';
+    const color = atendida ? 'var(--txt3)' : '#8e24aa';
+    // Taller solo puede editar mientras siga pendiente: una vez que oficina la atendio,
+    // cambiarle los datos por atras genera mas lio que el que resuelve.
+    const puedeEditar = !esTaller || !atendida;
+    return `<div style="background:var(--bg2);border-radius:10px;padding:.85rem 1rem;margin-bottom:.6rem;box-shadow:var(--sombra);border-left:3px solid ${color}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:.95rem;font-weight:700;color:var(--txt)">${s.clienteNombre||'(sin nombre)'}</div>
+          <div style="font-size:.84rem;color:var(--txt2);margin-top:2px">${s.equipoNombre||'—'} · ${s.dias||'?'} día${s.dias!==1?'s':''}${s.clienteTelefono?' · '+s.clienteTelefono:''}</div>
+          ${s.obs?`<div class="multilinea" style="font-size:.8rem;color:var(--txt2);margin-top:4px;font-style:italic">${s.obs}</div>`:''}
+          <div style="font-size:.73rem;color:var(--txt3);margin-top:5px">
+            cargó ${s.reportadoPor||'—'} · ${fmtFH(s.creadoEn)}
+            ${atendida?` · <b style="color:var(--verde)">atendida</b>${s.atendidoPor?' por '+s.atendidoPor:''}${s.atendidoEn?' · '+fmtFH(s.atendidoEn):''}`:''}
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0">
+          ${puedeEditar?`<button onclick="editarSolicitudLarga(${s.id})" class="btn-lim" style="width:auto;margin-top:0;padding:6px 11px;font-size:.78rem">Editar</button>`:''}
+          ${(!esTaller && !atendida)?`<button onclick="cotizarDesdeSolicitud(${s.id})" class="btn-lim" style="width:auto;margin-top:0;padding:6px 11px;font-size:.78rem">Cotizar</button>`:''}
+          ${(!esTaller && !atendida)?`<button onclick="marcarSolicitudLargaAtendida(${s.id})" class="btn-nuevo" style="padding:6px 11px;font-size:.78rem">Marcar atendida</button>`:''}
+          ${(!esTaller && atendida)?`<button onclick="reabrirSolicitudLarga(${s.id})" class="btn-lim" style="width:auto;margin-top:0;padding:6px 11px;font-size:.78rem">Reabrir</button>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  cont.innerHTML = h;
+}
+// Editar una solicitud ya cargada. Reusa el mismo cuadro que la crea: si hay un id en
+// solLargaEditandoId, guardar actualiza en vez de crear una nueva.
+let solLargaEditandoId = null;
+function editarSolicitudLarga(id){
+  const s=SOLICITUDES_LARGAS.find(x=>x.id===id); if(!s) return;
+  if(esTallerVista() && s.estado==='atendida') return;
+  solLargaEditandoId = id;
+  abrirModalSolicitudLarga();
+  document.getElementById('sollarga-nombre').value    = s.clienteNombre||'';
+  document.getElementById('sollarga-telefono').value  = s.clienteTelefono||'';
+  document.getElementById('sollarga-dias').value      = s.dias||'';
+  document.getElementById('sollarga-obs').value       = s.obs||'';
+  const sel=document.getElementById('sollarga-equipo');
+  if(sel && s.equipoNombre){
+    const op=[...sel.options].find(o=>o.textContent===s.equipoNombre);
+    if(op) sel.value=op.value;
+  }
+}
+
+// Pasar de la solicitud al cotizador con los datos ya puestos, para poder mandarle el
+// presupuesto al cliente en el momento.
+function cotizarDesdeSolicitud(id){
+  if(esTallerVista()) return;
+  const s=SOLICITUDES_LARGAS.find(x=>x.id===id); if(!s) return;
+  goTo('cotizador');
+  const dias=document.getElementById('cot-dias');
+  if(dias && s.dias){ dias.value=s.dias; }
+  const eq=document.getElementById('cot-eq');
+  if(eq && s.equipoNombre){
+    const op=[...eq.options].find(o=>o.textContent===s.equipoNombre);
+    if(op) eq.value=op.value;
+  }
+  // El cliente puede no existir todavia (taller anota el nombre a mano): se deja escrito
+  // en el buscador para que se elija el existente o se cree con un clic.
+  const busc=document.getElementById('cot-cl-buscar');
+  if(busc && s.clienteNombre){ busc.value=s.clienteNombre; }
+  const obs=document.getElementById('cot-obs');
+  if(obs && s.obs){ obs.value = (obs.value?obs.value+'\n':'') + s.obs; }
+  if(typeof cotizar==='function') cotizar();
+  alert(`Cotizador cargado con el pedido de ${s.clienteNombre}.\n\nElegí el cliente de la lista (o creálo) y revisá los días antes de mandar.`);
 }
 function marcarSolicitudLargaAtendida(id){
+  if(esTallerVista()) return;   // solo oficina responde solicitudes
   const s=SOLICITUDES_LARGAS.find(x=>x.id===id); if(!s) return;
   s.estado='atendida';
   s.atendidoEn=Date.now();
+  s.atendidoPor=nombreUsuarioActual()||'';
   guardarSolicitudesLargas();
-  renderDashboard();
+  marcarAccionUndo(`Marcar solicitud de "${s.clienteNombre}" como atendida`, 'solicitudes');
+  renderDashboard(); renderSolicitudes();
+}
+
+// Si se marco atendida por error, vuelve a la cola sin perder nada.
+function reabrirSolicitudLarga(id){
+  if(esTallerVista()) return;
+  const s=SOLICITUDES_LARGAS.find(x=>x.id===id); if(!s) return;
+  s.estado='pendiente'; s.atendidoEn=null; s.atendidoPor='';
+  guardarSolicitudesLargas();
+  marcarAccionUndo(`Reabrir solicitud de "${s.clienteNombre}"`, 'solicitudes');
+  renderDashboard(); renderSolicitudes();
 }
 // ── SOLICITUDES EN ESPERA ────────────────────────────────────────
 // El cliente llama pidiendo un equipo y no hay stock disponible en el momento.
@@ -4438,7 +4598,7 @@ function entrarAlApp(){
 // fletes). No ven Calendario ni Reportes, y nada del panel financiero.
 // Taller ya no cotiza: toma el pedido como SOLICITUD y la oficina sigue. El precio
 // diario se lo pueden decir al cliente mirando Precios, que si ven.
-const PANTALLAS_TALLER = ['home','calendario','equipos','clientes','alquileres','control','precios','rivadavia'];
+const PANTALLAS_TALLER = ['home','calendario','equipos','clientes','alquileres','solicitudes','control','precios','rivadavia'];
 // Cambia la vista a la de otro usuario. Solo funciona si el que esta conectado
 // de verdad es Mateo: aunque alguien lo llame a mano desde la consola, si no es
 // el, no hace nada.
@@ -4795,7 +4955,7 @@ function logout(){
   if(btnVer){ btnVer.textContent='👁'; btnVer.title='Mostrar la contraseña'; btnVer.setAttribute('aria-label','Mostrar la contraseña'); }
   document.getElementById('auth-err').style.display='none';
 }
-const TITLES={home:'Inicio',calendario:'Calendario',cotizador:'Cotizador',equipos:'Equipos',clientes:'Clientes',alquileres:'Alquileres',control:'Control de Máquinas',reportes:'Reportes',precios:'Lista de precios',facturacion:'Facturación',pagoprov:'Pago a Proveedores',rivadavia:'Planilla Rivadavia',impuestos:'Impuestos y Servicios'};
+const TITLES={home:'Inicio',calendario:'Calendario',cotizador:'Cotizador',equipos:'Equipos',clientes:'Clientes',alquileres:'Alquileres',solicitudes:'Solicitudes',control:'Control de Máquinas',reportes:'Reportes',precios:'Lista de precios',facturacion:'Facturación',pagoprov:'Pago a Proveedores',rivadavia:'Planilla Rivadavia',impuestos:'Impuestos y Servicios'};
 let pantallaActualNombre='home';
 // Vuelve a dibujar la pantalla actual sin cerrar el sidebar ni tocar
 // la navegación; se usa cuando llegan cambios de otro dispositivo.
@@ -4839,6 +4999,7 @@ function goTo(s){
   if(s==='equipos')renderEq();
   if(s==='reportes')renderReportes();
   if(s==='precios')renderPrecios();
+  if(s==='solicitudes')renderSolicitudes();
   if(s==='facturacion')renderFacturacion();
   if(s==='pagoprov')renderPagoProv();
   if(s==='rivadavia')renderRivadavia();
@@ -5012,7 +5173,26 @@ function renderDashboard(){
   const disp=estados.filter(x=>x.r.estado==='disponible');
   const alq=estados.filter(x=>x.r.estado==='alquilado');
   const tall=estados.filter(x=>x.r.estado==='taller');
-  document.getElementById('dash-stats').innerHTML=`
+  // Taller ve OTRAS tarjetas: Alquilados/Disponibles/Total flota son datos de oficina.
+  // Ellos necesitan saber que tienen que hacer hoy, y que se vea de lejos sin desplegar
+  // nada — asi no hace falta ir hasta el galpon a avisarles que entro un alquiler.
+  const esTallerDash = esTallerVista();
+  // Para taller, "Para entregar" y "Para retirar" arrancan ABIERTAS: si quedan
+  // plegadas solo ven un numero y hay que hacer un clic para saber que hay.
+  // Una sola vez por sesion, asi despues las pueden cerrar si quieren.
+  if(esTallerDash && !window._tallerSeccionesAbiertas){
+    window._tallerSeccionesAbiertas = true;
+    dashCollapseOpen.paraEntregar = true;
+    dashCollapseOpen.paraRetirar  = true;
+  }
+  const hoyDash = hoyISO();
+  const nEntregar = ALQUILERES.filter(a=>a.activo!==false && a.entregaPendiente && a.inicio<=hoyDash && !a.pausado).length;
+  const nRetirar  = ALQUILERES.filter(a=>a.activo!==false && a.pickupPendiente).length;
+  document.getElementById('dash-stats').innerHTML = esTallerDash ? `
+    <div class="stat-card ${nEntregar?'azul':'gris'}"><div class="num">${nEntregar}</div><div class="lbl">Para entregar</div></div>
+    <div class="stat-card ${nRetirar?'rojo':'gris'}"><div class="num">${nRetirar}</div><div class="lbl">Para retirar</div></div>
+    <div class="stat-card gris"><div class="num">${tall.length}</div><div class="lbl">Fuera de servicio</div></div>
+  ` : `
     <div class="stat-card verde"><div class="num">${alq.length}</div><div class="lbl">Alquilados</div></div>
     <div class="stat-card azul"><div class="num">${disp.length}</div><div class="lbl">Disponibles</div></div>
     <div class="stat-card rojo"><div class="num">${tall.length}</div><div class="lbl">Fuera de servicio</div></div>
