@@ -1741,7 +1741,17 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
         <div id="riv-cerrar-info" style="font-size:.8rem;color:var(--txt2);margin-bottom:.9rem"></div>
         <label class="flabel">Hora de entrada</label>
         <input type="time" id="riv-cerrar-hentrada" style="margin-bottom:.5rem">
-        <div id="riv-cerrar-preview" style="font-size:.8rem;color:var(--verde);font-weight:700;margin-bottom:.9rem;min-height:1em"></div>
+        <div id="riv-cerrar-preview" style="font-size:.8rem;color:var(--verde);font-weight:700;margin-bottom:.7rem;min-height:1em"></div>
+      <!-- Para los casos que no entran en dos horarios del mismo dia: se lo llevan el
+           viernes y lo usan el fin de semana. Viene calculado y se puede subir. -->
+      <div style="background:var(--bg3);border-radius:9px;padding:.7rem .8rem;margin-bottom:.9rem">
+        <label class="flabel">Tiempo a cobrar</label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <input type="number" id="riv-cerrar-horas" min="0.5" step="0.5" oninput="previewHorasRiv()" style="width:100px">
+          <span style="font-size:.82rem;color:var(--txt2)">horas</span>
+        </div>
+        <div id="riv-cerrar-horas-det" style="font-size:.76rem;color:var(--txt3);margin-top:5px"></div>
+      </div>
         <div style="display:flex;gap:8px">
           <button onclick="confirmarEntradaRiv()" class="btn-nuevo" style="flex:1;padding:10px">OK — cerrar</button>
           <button onclick="cerrarModalRivCerrar()" class="btn-lim" style="flex:1;padding:10px">Cancelar</button>
@@ -2585,7 +2595,7 @@ async function aplicarActualizacionApp(){
   // Deja una marca para que al volver a cargar NO pida la clave de nuevo: esto es una
   // actualizacion, no alguien abriendo la app. sessionStorage se borra al cerrar la
   // pestana, asi que la regla de "siempre pide clave al entrar" sigue intacta.
-  try{ sessionStorage.setItem('rtz_recarga_actualizacion', '1'); }catch(e){}
+  // (la marca de pestana ya la dejo entrarConPerfil al entrar)
   location.reload(true);
 }
 setInterval(chequearActualizacionApp, 5*60*1000);
@@ -4237,6 +4247,10 @@ async function entrarConPerfil(perfil){
   ROL_ACTUAL = perfil.rol;
   localStorage.setItem('rtz_user', perfil.usuario);
   localStorage.setItem('rtz_rol', ROL_ACTUAL);
+  // Marca de "esta pestaña ya entró". Vive en sessionStorage: sobrevive un F5 y el
+  // botón de actualizar, pero se borra al cerrar la pestaña. Con eso, recargar NO
+  // vuelve a pedir la clave, y abrir la app de cero sí — que es la regla de siempre.
+  try{ sessionStorage.setItem('rtz_sesion_pestana', '1'); }catch(e){}
 
   // Los datos se bajan ANTES de mostrar la app. Si entrara primero y cargara
   // despues, se podria llegar a guardar algo sobre un estado a medio traer.
@@ -4259,15 +4273,14 @@ async function traerPerfil(userId){
   return {perfil};
 }
 
-// Al recargar por una ACTUALIZACION no se vuelve a pedir la clave: la sesion sigue
-// siendo valida y recargar no fue decision de la persona. Abrir la app sigue pidiendo
-// clave siempre, que es la regla de Mateo (28/08/26) — la marca vive en sessionStorage,
-// que se borra al cerrar la pestana.
-async function reentrarTrasActualizacion(){
+// Recargar (F5 o el boton de actualizar) NO vuelve a pedir la clave: la sesion sigue
+// siendo valida y recargar no es ''entrar a la app''. Abrir la app de cero SI la pide,
+// que es la regla de Mateo (28/08/26). La diferencia la hace sessionStorage, que
+// sobrevive la recarga y se borra al cerrar la pestana.
+async function reentrarSiLaPestanaYaEntro(){
   let marca = null;
-  try{ marca = sessionStorage.getItem('rtz_recarga_actualizacion'); }catch(e){}
-  if(!marca) return;
-  try{ sessionStorage.removeItem('rtz_recarga_actualizacion'); }catch(e){}
+  try{ marca = sessionStorage.getItem('rtz_sesion_pestana'); }catch(e){}
+  if(!marca) return;   // pestana nueva: se pide la clave como siempre
   if(!sb) return;
   try{
     const { data } = await sb.auth.getSession();
@@ -4577,9 +4590,8 @@ function aplicarRestriccionesRol(){
     const inpU = document.getElementById('inp-u');
     if(inpU) inpU.value = savedUser;
   }
-  // Unica excepcion a "siempre pide clave": cuando la recarga la disparo el boton de
-  // actualizar. Ahi la persona ya estaba adentro y no decidio salir.
-  reentrarTrasActualizacion();
+  // Si esta pestana ya habia entrado, una recarga no vuelve a pedir la clave.
+  reentrarSiLaPestanaYaEntro();
 })();
 // Muestra/oculta lo que se está tipeando en la contraseña. Sirve para no errarle cuando
 // uno la copia de un papel o de un WhatsApp, que es como la van a tener Walter y Alejandro.
@@ -4726,6 +4738,8 @@ function logout(){
   sbPrimeraCargaLista = false;
   document.getElementById('app').style.display='none';
   document.getElementById('auth-screen').style.display='flex';
+  // Cerrar sesion a proposito SI borra la marca: la proxima vez pide clave.
+  try{ sessionStorage.removeItem('rtz_sesion_pestana'); }catch(e){}
   document.getElementById('inp-p').value='';
   // Si quedó destapada con el ojito, volver a taparla: si no, el próximo que entre
   // escribe su clave a la vista de todos.
@@ -12943,6 +12957,10 @@ function rivMinutos(reg){
 // cuenta como bloque entero (ej: 10 min = 1 bloque; 35 min = 2 bloques). Mínimo 1 bloque
 // si hubo uso.
 function rivBloques(reg){
+  // Si se cargo el tiempo a mano, manda ese. Hace falta porque las horas de salida y
+  // entrada son del MISMO dia (ver rivMinutos, que da vuelta a las 24hs): un equipo que
+  // sale el viernes a la tarde y vuelve el lunes no se puede expresar con dos horarios.
+  if(reg.bloquesManual > 0) return reg.bloquesManual;
   const min=rivMinutos(reg);
   if(min<=0) return 0;
   return Math.ceil(min/30);
@@ -13002,7 +13020,10 @@ function registrarSalidaRiv(){
   PLANILLA_RIV.push({
     id: Date.now(),
     fecha, lugar, horaSalida:hs, horaEntrada:null, responsable:resp,
-    creadoEn: Date.now(), mesFacturado:null, facturadoEn:null
+    creadoEn: Date.now(), mesFacturado:null, facturadoEn:null,
+    // Quien lo cargo EN LA APP. Es distinto de "responsable", que es quien se lleva
+    // el equipo: taller comparte un solo usuario y sin esto no se sabe quien toco que.
+    cargadoPor: nombreUsuarioActual() || ''
   });
   guardarPlanillaRiv();
   // Limpiamos lugar y responsable; la fecha y la hora de salida se vuelven a autocargar
@@ -13021,6 +13042,8 @@ function editarSalidaRiv(id){
   if(nueva===null) return;
   if(!/^\d{1,2}:\d{2}$/.test(nueva.trim())){ alert('Formato inválido. Usá HH:MM, ej: 13:05'); return; }
   reg.horaSalida=nueva.trim();
+  reg.editadoPor = nombreUsuarioActual() || '';
+  reg.editadoEn = Date.now();
   guardarPlanillaRiv();
   renderRivadavia();
 }
@@ -13056,9 +13079,24 @@ function previewCerrarRiv(){
   const horas=mediasHoras/2;
   const horasTxt=Number.isInteger(horas)?horas:String(horas).replace('.',',');
   const nota = he!==heCrudo ? ` (→ ${he})` : '';
+  // La hora de entrada manda el tiempo sugerido; despues se puede subir a mano.
+  const inpH=document.getElementById('riv-cerrar-horas');
+  if(inpH){ inpH.value = String(mediasHoras/2); previewHorasRiv(); }
   el.style.color='var(--verde)';
   el.textContent=`${rivFmtDuracion(min)}${nota} → ${mediasHoras} media${mediasHoras!==1?'s':''} hora${mediasHoras!==1?'s':''} (${horasTxt} h) = ${fmt(mediasHoras*(rivPrecioHora()/2))}`;
 }
+// Muestra a cuanto equivale el tiempo cargado a mano, en medias horas y en plata.
+function previewHorasRiv(){
+  const inp=document.getElementById('riv-cerrar-horas');
+  const det=document.getElementById('riv-cerrar-horas-det');
+  if(!inp||!det) return;
+  const horas=parseFloat(String(inp.value).replace(',','.'))||0;
+  if(horas<=0){ det.textContent='Poné cuántas horas se cobran.'; det.style.color='var(--rojo)'; return; }
+  const medias=Math.ceil(horas*2);
+  det.style.color='var(--txt3)';
+  det.innerHTML = `${medias} media${medias!==1?'s':''} hora${medias!==1?'s':''} · <b style="color:var(--verde)">${fmt(medias*(rivPrecioHora()/2))}</b>`;
+}
+
 function confirmarEntradaRiv(){
   const reg=PLANILLA_RIV.find(r=>r.id===rivCerrandoId);
   if(!reg) return;
@@ -13067,6 +13105,13 @@ function confirmarEntradaRiv(){
   const min=rivMinutos({horaSalida:reg.horaSalida, horaEntrada:he});
   if(min<=0){ alert('La hora de entrada tiene que ser posterior a la de salida ('+reg.horaSalida+')'); return; }
   reg.horaEntrada=he;
+  // Solo se guarda el tiempo manual si NO coincide con el que sale de los horarios.
+  // Asi el caso normal sigue calculandose solo y editable despues.
+  const horasManual=parseFloat(String((document.getElementById('riv-cerrar-horas')||{}).value||'').replace(',','.'))||0;
+  const mediasAuto=Math.ceil(min/30);
+  const mediasManual=Math.ceil(horasManual*2);
+  reg.bloquesManual = (mediasManual>0 && mediasManual!==mediasAuto) ? mediasManual : null;
+  reg.cerradoPor = nombreUsuarioActual() || '';
   guardarPlanillaRiv();
   cerrarModalRivCerrar();
   renderRivadavia();
@@ -13077,6 +13122,9 @@ function cerrarModalRivCerrar(){
 }
 
 async function borrarRegistroRiv(id){
+  // Taller no borra registros de la planilla: puede editar la hora si se equivoco,
+  // pero un borrado le saca plata a la facturacion del mes sin dejar rastro.
+  if(esTallerVista()) return;
   const reg=PLANILLA_RIV.find(r=>r.id===id);
   if(!reg) return;
   if(reg.mesFacturado){ alert('Este registro ya está facturado. Primero desmarcá el mes como facturado si querés borrarlo.'); return; }
@@ -13113,6 +13161,23 @@ async function desfacturarMesRiv(ym){
   renderRivadavia();
 }
 
+// Version corta para la columna de la tabla de cerrados.
+function quienRivCorto(r){
+  const p=[];
+  if(r.cargadoPor) p.push(r.cargadoPor);
+  if(r.cerradoPor && r.cerradoPor!==r.cargadoPor) p.push('→ '+r.cerradoPor);
+  return p.length ? p.join(' ') : '—';
+}
+function quienRiv(r){
+  if(esTallerVista()) return '';
+  const p=[];
+  if(r.cargadoPor)  p.push('cargó '+r.cargadoPor);
+  if(r.editadoPor)  p.push('editó '+r.editadoPor);
+  if(r.cerradoPor)  p.push('cerró '+r.cerradoPor);
+  if(!p.length) return '';
+  return `<div style="font-size:.7rem;color:var(--txt3);margin-top:2px">${p.join(' · ')}</div>`;
+}
+
 function renderRivadavia(){
   const cont=document.getElementById('riv-cont');
   if(!cont) return;
@@ -13142,11 +13207,12 @@ function renderRivadavia(){
         ha+=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--bg2);border-radius:8px;padding:.6rem .7rem;margin-bottom:.5rem;flex-wrap:wrap">
           <div style="font-size:.8rem;color:var(--txt)">
             <b>${fmtD(r.fecha)} · salió ${r.horaSalida}</b>${r.lugar?` · ${r.lugar}`:''}${r.responsable?` · ${r.responsable}`:''}
+            ${quienRiv(r)}
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
             <button onclick="editarSalidaRiv(${r.id})" class="btn-lim" style="padding:5px 9px;font-size:.72rem">Salida</button>
             <button onclick="abrirCerrarRiv(${r.id})" class="btn-nuevo" style="padding:5px 10px;font-size:.75rem">Volvió</button>
-            <button onclick="borrarRegistroRiv(${r.id})" class="btn-lim" style="padding:5px 9px;font-size:.72rem;color:var(--rojo)">✕</button>
+            ${esTallerVista()?'':`<button onclick="borrarRegistroRiv(${r.id})" class="btn-lim" style="padding:5px 9px;font-size:.72rem;color:var(--rojo)">✕</button>`}
           </div>
         </div>`;
       });
@@ -13199,6 +13265,7 @@ function renderRivadavia(){
         <th style="padding:4px 6px;font-weight:700">Salida</th>
         <th style="padding:4px 6px;font-weight:700">Entrada</th>
         <th style="padding:4px 6px;font-weight:700">Responsable</th>
+        ${esTallerVista()?'':'<th style="padding:4px 6px;font-weight:700">Cargó</th>'}
         <th style="padding:4px 6px;font-weight:700;text-align:right">Med. hs</th>
         <th style="padding:4px 6px;font-weight:700;text-align:right">$</th>
         <th style="padding:4px 6px"></th>
@@ -13211,9 +13278,10 @@ function renderRivadavia(){
         <td style="padding:5px 6px;white-space:nowrap">${r.horaSalida||'—'}</td>
         <td style="padding:5px 6px;white-space:nowrap">${r.horaEntrada||'—'}</td>
         <td style="padding:5px 6px">${r.responsable||'—'}</td>
-        <td style="padding:5px 6px;text-align:right;white-space:nowrap;color:var(--txt2)">${mh}</td>
+        ${esTallerVista()?'':`<td style="padding:5px 6px;color:var(--txt3);white-space:nowrap">${quienRivCorto(r)}</td>`}
+        <td style="padding:5px 6px;text-align:right;white-space:nowrap;color:var(--txt2)">${mh}${r.bloquesManual?'<span title="Tiempo cargado a mano, no sale de los horarios" style="color:#b3791f"> ✎</span>':''}</td>
         <td style="padding:5px 6px;text-align:right;white-space:nowrap;font-weight:700;color:var(--verde)">${fmt(rivMontoReg(r))}</td>
-        <td style="padding:5px 6px;text-align:right">${r.mesFacturado?'':`<button onclick="borrarRegistroRiv(${r.id})" class="btn-lim" style="padding:2px 7px;font-size:.72rem;color:var(--rojo)">✕</button>`}</td>
+        <td style="padding:5px 6px;text-align:right">${(r.mesFacturado || esTallerVista())?'':`<button onclick="borrarRegistroRiv(${r.id})" class="btn-lim" style="padding:2px 7px;font-size:.72rem;color:var(--rojo)">✕</button>`}</td>
       </tr>`;
     });
     h+=`</tbody></table></div>`;
