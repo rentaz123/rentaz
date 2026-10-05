@@ -729,6 +729,17 @@ if ('serviceWorker' in navigator) {
       </div>
     </div>
 
+    <!-- Franja de equipos sin entregar. Solo taller. No se puede cerrar: desaparece sola
+         cuando marcan la última salida. Es un ESTADO, no un aviso — el banner de antes
+         aparecía solo en el momento en que entraba el alquiler, y si nadie estaba mirando
+         la pantalla (o recargaban) se perdía para siempre. En el galpón hay ruido, así que
+         el beep tampoco alcanza. -->
+    <div id="franja-taller" onclick="irAParaEntregar()" style="display:none;align-items:center;gap:10px;padding:.65rem 1.5rem;cursor:pointer;font-size:.88rem;font-weight:700;color:#fff">
+      <span id="franja-taller-txt"></span>
+      <span style="flex:1"></span>
+      <span style="font-size:.8rem;opacity:.9">Ver &rarr;</span>
+    </div>
+
     <!-- HOME / DASHBOARD -->
     <div class="screen active" id="screen-home">
       <div class="sec-title" style="margin-top:0;padding-top:0;">Buen día </div>
@@ -2686,6 +2697,7 @@ function descargarBackup(){
     setTimeout(()=>URL.revokeObjectURL(url), 4000);
     localStorage.setItem('rtz_ultimo_backup', stamp);
     actualizarBotonBackup();
+  actualizarFranjaTaller();
     const cuantos = (estado.ALQUILERES||[]).length;
     alert(`Copia guardada: rentaz-backup-${stamp}.json\n\nIncluye ${cuantos} alquileres, más clientes, equipos, contratos, pagos y precios.\n\n(El respaldo automático de las 23hs sigue corriendo igual y queda en Drive — esta es una copia extra del momento.)`);
   }catch(e){
@@ -2903,6 +2915,8 @@ function avisarAlquileresNuevos(previos, actuales){
     ? `Nuevo alquiler: ${nuevos[0].equipoNombre} para ${nuevos[0].cliente} — armá el checklist y el contrato`
     : `${nuevos.length} alquileres nuevos para preparar (checklist + contrato)`;
   mostrarBannerAvisoAlq(txt);
+  actualizarFranjaTaller();
+  parpadearFranjaTaller();
   if('Notification' in window && Notification.permission==='granted'){
     nuevos.forEach(a=>{
       try{ new Notification('Nuevo alquiler para preparar', { body: `${a.equipoNombre} · ${a.cliente}` }); }catch(e){}
@@ -3812,6 +3826,7 @@ function repintarPorCambioRemoto(){
       else if(id==='clientes' && typeof renderCl==='function') renderCl();
       else if(id==='alquileres' && typeof renderAlq==='function') renderAlq();
       else if(id==='calendario' && typeof renderCal==='function') renderCal();
+      actualizarFranjaTaller();
     }catch(e){ console.error('No se pudo repintar:', e); }
     // Terminada la rafaga, se compara contra la foto y se avisa lo que corresponda.
     const previo = sbFotoAvisos; sbFotoAvisos = null;
@@ -4590,6 +4605,7 @@ function entrarAlApp(){
   // migraciones pueden correr directo: no hay riesgo de pisar nada remoto.
   correrMigracionesQueGuardan();
   actualizarBotonBackup();
+  actualizarFranjaTaller();
   renderEq();renderCl();initCal();renderDashboard();poblarLocalidadesDatalist();poblarSelectsFlete();
   if(ROL_ACTUAL==='admin' || ROL_ACTUAL==='facturacion' || ROL_ACTUAL==='taller') pedirPermisoNotificaciones();
 }
@@ -4830,6 +4846,7 @@ function toggleMenuMas(e){
     const b = document.getElementById('btn-backup');
     if(b) b.style.display = esMateo() ? '' : 'none';
     actualizarBotonBackup();
+  actualizarFranjaTaller();
   }
 }
 function cerrarMenuMas(){
@@ -5000,6 +5017,7 @@ function goTo(s){
   if(s==='reportes')renderReportes();
   if(s==='precios')renderPrecios();
   if(s==='solicitudes')renderSolicitudes();
+  actualizarFranjaTaller();
   if(s==='facturacion')renderFacturacion();
   if(s==='pagoprov')renderPagoProv();
   if(s==='rivadavia')renderRivadavia();
@@ -5165,34 +5183,84 @@ function guardarPagos(){
   }
 }
 
+// ── FRANJA DE EQUIPOS SIN ENTREGAR (solo taller) ──────────────────────────
+// A partir del 2do dia sin marcar pasa de azul a rojo: lo viejo tiene que molestar mas
+// que lo nuevo, o la franja se vuelve parte del paisaje y dejan de verla.
+const DIAS_ENTREGA_VIEJA = 2;
+
+function pendientesDeEntrega(){
+  const hoy = hoyISO();
+  return (ALQUILERES||[]).filter(a =>
+    a.activo!==false && a.entregaPendiente && !a.pausado && a.inicio && a.inicio<=hoy);
+}
+
+function actualizarFranjaTaller(){
+  const fr = document.getElementById('franja-taller');
+  if(!fr) return;
+  // Solo taller. Para oficina esta info ya esta en el panel y no hace falta la franja.
+  if(!esTallerVista()){
+    fr.style.display='none';
+    document.title = 'Rentaz S.A.';
+    return;
+  }
+  const pend = pendientesDeEntrega();
+  const n = pend.length;
+  if(!n){
+    fr.style.display='none';
+    fr.classList.remove('banner-blink');
+    document.title = 'Rentaz S.A.';
+    return;
+  }
+  // Dias del mas viejo sin marcar.
+  const hoyD = new Date(hoyISO()+'T00:00:00');
+  const diasMax = Math.max(...pend.map(a=>{
+    const d = new Date(a.inicio+'T00:00:00');
+    return Math.round((hoyD - d)/86400000);
+  }));
+  const viejo = diasMax >= DIAS_ENTREGA_VIEJA;
+  fr.style.background = viejo ? 'var(--rojo)' : 'var(--azul)';
+  fr.style.display = 'flex';
+  const equipos = `${n} equipo${n!==1?'s':''}`;
+  document.getElementById('franja-taller-txt').innerHTML = viejo
+    ? `&#9888; ${equipos} sin entregar &mdash; el m&aacute;s viejo hace ${diasMax} d&iacute;as`
+    : `${equipos} para entregar`;
+  // El numero tambien en el titulo: se ve con la app minimizada o en otra pestana.
+  document.title = `(${n}) Rentaz S.A.`;
+}
+
+// Parpadea un momento cuando entra uno nuevo, y despues queda fija.
+function parpadearFranjaTaller(){
+  const fr = document.getElementById('franja-taller');
+  if(!fr || fr.style.display==='none') return;
+  fr.classList.remove('banner-blink');
+  void fr.offsetWidth;
+  fr.classList.add('banner-blink');
+  setTimeout(()=>fr.classList.remove('banner-blink'), 6000);
+}
+
+function irAParaEntregar(){
+  goTo('home');
+  dashCollapseOpen.paraEntregar = true;
+  renderDashboard();
+  setTimeout(()=>{
+    const el = document.getElementById('dc-para-entregar');
+    if(el) el.scrollIntoView({block:'center', behavior:'smooth'});
+  }, 80);
+}
+
+// Se recalcula en los momentos en que puede haber cambiado, y cada 30s como respaldo
+// (por si algun camino no la actualizo).
+setInterval(actualizarFranjaTaller, 30000);
 function renderDashboard(){
   autoMarcarPendientesDeRetiro();
+  actualizarFranjaTaller();
   const admExtraVenc=document.getElementById('dash-admin-extra-venc');
   if(admExtraVenc) admExtraVenc.style.display = ROL_ACTUAL==='taller' ? 'none' : '';
   const estados=EQUIPOS.map(e=>({e, r:estadoRealEq(e)}));
   const disp=estados.filter(x=>x.r.estado==='disponible');
   const alq=estados.filter(x=>x.r.estado==='alquilado');
   const tall=estados.filter(x=>x.r.estado==='taller');
-  // Taller ve OTRAS tarjetas: Alquilados/Disponibles/Total flota son datos de oficina.
-  // Ellos necesitan saber que tienen que hacer hoy, y que se vea de lejos sin desplegar
-  // nada — asi no hace falta ir hasta el galpon a avisarles que entro un alquiler.
-  const esTallerDash = esTallerVista();
-  // Para taller, "Para entregar" y "Para retirar" arrancan ABIERTAS: si quedan
-  // plegadas solo ven un numero y hay que hacer un clic para saber que hay.
-  // Una sola vez por sesion, asi despues las pueden cerrar si quieren.
-  if(esTallerDash && !window._tallerSeccionesAbiertas){
-    window._tallerSeccionesAbiertas = true;
-    dashCollapseOpen.paraEntregar = true;
-    dashCollapseOpen.paraRetirar  = true;
-  }
-  const hoyDash = hoyISO();
-  const nEntregar = ALQUILERES.filter(a=>a.activo!==false && a.entregaPendiente && a.inicio<=hoyDash && !a.pausado).length;
-  const nRetirar  = ALQUILERES.filter(a=>a.activo!==false && a.pickupPendiente).length;
-  document.getElementById('dash-stats').innerHTML = esTallerDash ? `
-    <div class="stat-card ${nEntregar?'azul':'gris'}"><div class="num">${nEntregar}</div><div class="lbl">Para entregar</div></div>
-    <div class="stat-card ${nRetirar?'rojo':'gris'}"><div class="num">${nRetirar}</div><div class="lbl">Para retirar</div></div>
-    <div class="stat-card gris"><div class="num">${tall.length}</div><div class="lbl">Fuera de servicio</div></div>
-  ` : `
+  document.getElementById('dash-stats').innerHTML=`
     <div class="stat-card verde"><div class="num">${alq.length}</div><div class="lbl">Alquilados</div></div>
     <div class="stat-card azul"><div class="num">${disp.length}</div><div class="lbl">Disponibles</div></div>
     <div class="stat-card rojo"><div class="num">${tall.length}</div><div class="lbl">Fuera de servicio</div></div>
