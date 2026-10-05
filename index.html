@@ -153,6 +153,9 @@ h1,h2,h3,h4{font-weight:700;}
 .dash-collapse-header{display:flex;align-items:center;gap:8px;cursor:pointer;padding:.75rem .9rem;user-select:none;background:none;border:none;width:100%;text-align:left;font-family:inherit;}
 .dash-collapse-header .dc-title{font-size:.88rem;font-weight:700;color:var(--txt);}
 .dash-collapse-header .dc-badge{background:var(--bg3);color:var(--txt2);font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:10px;}
+/* Sin nada que hacer, la pastilla no se pinta: el color es la señal de que HAY algo.
+   Antes un guión salía con el fondo verde y llamaba la atención para nada. */
+.dash-collapse-header .dc-badge.vacio{background:none !important;color:var(--txt3) !important;font-weight:400;padding:2px 4px;}
 .dash-collapse-header .dc-badge.dc-badge-alert{background:rgba(229,57,53,.12);color:var(--rojo);}
 .dash-collapse-header .dc-arrow{margin-left:auto;font-size:.75rem;color:var(--txt3);transition:transform .15s;}
 .dash-collapse-header.dc-open .dc-arrow{transform:rotate(180deg);}
@@ -5259,7 +5262,10 @@ setInterval(actualizarFranjaTaller, 30000);
 // hoy" mostraba 0: dos cosas distintas para lo mismo.
 function badgeDash(id, n){
   const el=document.getElementById(id);
-  if(el) el.textContent = n > 0 ? String(n) : '—';
+  if(!el) return;
+  el.textContent = n > 0 ? String(n) : '—';
+  // El color solo cuando hay algo: con cero, la pastilla se apaga.
+  el.classList.toggle('vacio', !(n > 0));
 }
 
 function renderDashboard(){
