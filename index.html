@@ -4934,6 +4934,9 @@ function toggleMenuMas(e){
     if(b) b.style.display = esMateo() ? '' : 'none';
     actualizarBotonBackup();
   actualizarFranjaTaller();
+    // El de Face ID se recalcula cada vez que se abre el menú, no una sola vez al
+    // entrar: así no depende de en qué momento quedó listo el perfil.
+    try{ refrescarFaceIdUI(); }catch(e){}
   }
 }
 function cerrarMenuMas(){
@@ -16085,10 +16088,12 @@ async function refrescarFaceIdUI(){
 
   const btnMenu = document.getElementById('btn-faceid-menu');
   if(!btnMenu) return;
-  // Solo para Mateo, y solo si el aparato tiene cara o huella configurada.
+  // Solo para Mateo. OJO: NO se esconde cuando el aparato dice que no tiene Face ID.
+  // Antes si, y el resultado era peor que el problema: el boton simplemente no
+  // aparecia y no habia forma de saber por que. Ahora se ve siempre y, si el aparato
+  // no puede, lo explica al tocarlo (ver activarFaceId).
   const esElDuenho = (typeof esMateo==='function') ? esMateo() : false;
-  const hay = await faceIdDisponibleEnElAparato();
-  if(!esElDuenho || !hay){ btnMenu.style.display='none'; return; }
+  if(!esElDuenho){ btnMenu.style.display='none'; return; }
   btnMenu.style.display = 'block';
   btnMenu.textContent = guardado
     ? 'Desactivar el Face ID de este aparato'
@@ -16105,8 +16110,23 @@ async function activarFaceId(){
     alert('Primero entrá con tu usuario y contraseña, y después activá el Face ID.');
     return;
   }
+  // Si el aparato dice que no puede, hay que decir CUAL de los motivos es. "No se
+  // puede" a secas deja a cualquiera adivinando.
+  if(!window.isSecureContext){
+    alert('El Face ID solo funciona en la direccion de internet de la app '
+        + '(rentaz123.github.io), no abriendo el archivo a mano.');
+    return;
+  }
+  if(!window.PublicKeyCredential || !navigator.credentials){
+    alert('Este navegador no sabe usar Face ID.\n\n'
+        + 'En el iPhone, abri la app con Safari (o agregala a la pantalla de inicio desde Safari) '
+        + 'y proba de nuevo.');
+    return;
+  }
   if(!(await faceIdDisponibleEnElAparato())){
-    alert('Este aparato no tiene Face ID o huella disponible para la app.');
+    alert('Este aparato dice que no tiene Face ID, Touch ID ni codigo de desbloqueo disponible '
+        + 'para las apps.\n\n'
+        + 'Revisa en Ajustes que el Face ID este activado, y que no estes en una ventana privada.');
     return;
   }
   if(!confirm('Activar el Face ID en ESTE aparato.\n\n'
