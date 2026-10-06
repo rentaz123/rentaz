@@ -3275,6 +3275,13 @@ function marcarSeguimientoPresupHecho(id){
 const DIAS_RECORDAR_COTIZ = 5;
 const UN_DIA_MS = 86400000;
 
+// Arranque limpio. Sin esto, el dia que se encendio el seguimiento aparecieron de
+// golpe 59 cotizaciones, algunas de hace tres meses: ruido puro, nadie va a llamar
+// por una cotizacion de hace 94 dias. Solo entran las pasadas de esta fecha en
+// adelante — unos 15 dias antes de que esto existiera. Todo lo anterior sigue
+// guardado y se ve en el historial de presupuestos, pero no pide seguimiento.
+const SEG_COTIZ_DESDE = new Date('2026-09-21T00:00:00').getTime();
+
 // Desde cuando se cuenta: el ultimo contacto si hubo, si no la fecha en que se
 // paso la cotizacion.
 function cotizDesdeCuando(p){
@@ -3285,12 +3292,21 @@ function cotizDiasSinTocar(p){
   if(!desde) return 0;
   return Math.floor((Date.now() - desde) / UN_DIA_MS);
 }
-// Abierta = ni ganada (convertida en alquiler) ni dada por perdida.
+// Abierta = todavia no se convirtio en alquiler y no se saco a mano de la lista.
+// No hay un "la perdimos": mientras el cliente lo este evaluando la cotizacion sigue
+// ahi, y el dia que entra se convierte en alquiler y sale sola (lo marca
+// convertirEnAlquiler). Para las que ya no van a ningun lado esta "sacar del
+// seguimiento", que NO borra nada: la cotizacion sigue entera en el historial.
 function cotizAbierta(p){
-  return p.estadoConv !== 'convertido' && p.segEstado !== 'perdido';
+  return p.estadoConv !== 'convertido' && !p.segArchivada;
+}
+// El corte va por la fecha en que se PASO la cotizacion, no por la del ultimo
+// llamado: si no, tocar una vieja la resucitaria en la lista para siempre.
+function cotizCreadaEn(p){
+  return p.creadoEn || (p.fecha ? new Date(p.fecha).getTime() : 0);
 }
 function cotizacionesParaSeguir(){
-  return (PRESUPUESTOS||[]).filter(cotizAbierta);
+  return (PRESUPUESTOS||[]).filter(p => cotizAbierta(p) && cotizCreadaEn(p) >= SEG_COTIZ_DESDE);
 }
 // Las tres pilas: hay que llamar / ya llame y espero / recien pasada.
 function cotizacionesAgrupadas(){
@@ -3316,30 +3332,67 @@ async function cotizRegistrarContacto(id){
   guardarSeguimientoCotiz(`Contacto con ${p.clienteNombre||'cliente'}`);
 }
 
-// "No va": se cierra con el motivo, para despues poder mirar por que se pierden.
-async function cotizMarcarPerdida(id){
-  const p=(PRESUPUESTOS||[]).find(x=>x.id===id); if(!p) return;
-  if(!(await confirmSiNo(`¿Dar por perdida la cotización de ${p.clienteNombre||'(sin cliente)'}?\n\nDeja de aparecer en el seguimiento.`,{si:'Sí, la perdimos',no:'Cancelar'}))) return;
-  const motivo = prompt('¿Por qué se perdió? (precio, plazo, se la dieron a otro, no contesta...)\n\nPodés dejarlo vacío.');
-  if(motivo === null) return;                    // cancelo en el motivo: no se toca nada
-  p.segEstado = 'perdido';
-  p.segMotivo = (motivo||'').trim();
-  p.segCerradaEn = Date.now();
-  guardarSeguimientoCotiz(`Dar por perdida la cotización de ${p.clienteNombre||'(sin cliente)'}`);
-}
-
-// Volver a abrir una que se habia cerrado por error.
-function cotizReabrir(id){
-  const p=(PRESUPUESTOS||[]).find(x=>x.id===id); if(!p) return;
-  p.segEstado = null; p.segMotivo = ''; p.segCerradaEn = null;
-  guardarSeguimientoCotiz(`Reabrir la cotización de ${p.clienteNombre||'(sin cliente)'}`);
-}
-
 function guardarSeguimientoCotiz(queSeHizo){
   marcarAccionUndo(queSeHizo, 'home');
   localStorage.setItem('rtz_presup', JSON.stringify(PRESUPUESTOS));
   sincronizarFirebase();
   renderDashboard();
+}
+
+// ── Sacar varias de la lista de una vez ───────────────────────────────────
+// Vive solo en memoria: es la seleccion de este momento, no un dato que haya que
+// guardar. Se vacia sola cuando la accion termina o cuando se cierra el desplegable.
+const cotizTildadas = new Set();
+
+function cotizTildar(id, tildado){
+  if(tildado) cotizTildadas.add(id); else cotizTildadas.delete(id);
+  actualizarBarraCotizTildadas();
+}
+function cotizTildarTodas(){
+  // El boton hace las dos cosas segun como este: si ya estan todas, las destilda.
+  const abiertas = cotizacionesParaSeguir().map(p=>p.id);
+  const faltan = abiertas.filter(id=>!cotizTildadas.has(id));
+  if(faltan.length) faltan.forEach(id=>cotizTildadas.add(id));
+  else cotizTildadas.clear();
+  document.querySelectorAll('.cotiz-tilde').forEach(ch=>{ ch.checked = cotizTildadas.has(Number(ch.dataset.id)); });
+  actualizarBarraCotizTildadas();
+}
+function actualizarBarraCotizTildadas(){
+  const barra = document.getElementById('cotiz-barra-tildadas');
+  if(!barra) return;
+  const n = cotizTildadas.size;
+  barra.style.display = n ? 'flex' : 'none';
+  const txt = document.getElementById('cotiz-tildadas-texto');
+  if(txt) txt.textContent = `${n} marcada${n!==1?'s':''}`;
+}
+
+async function cotizSacarTildadas(){
+  const ids = [...cotizTildadas];
+  if(!ids.length) return;
+  const nombres = ids.map(id=>{
+    const p=(PRESUPUESTOS||[]).find(x=>x.id===id);
+    return p ? (p.clienteNombre||'(sin cliente)') : '';
+  }).filter(Boolean);
+  const lista = nombres.slice(0,8).join('\n• ');
+  const resto = nombres.length>8 ? `\n…y ${nombres.length-8} más` : '';
+  // "cotización" pierde la tilde en plural: cotizaciones, no "cotizaciónes".
+  const cuantas = ids.length===1 ? '1 cotización' : `${ids.length} cotizaciones`;
+  if(!(await confirmSiNo(
+    `¿Sacar ${cuantas} de la lista de seguimiento?\n\n• ${lista}${resto}\n\nNo se borra nada: las seguís viendo en el historial de presupuestos, y desde ahí las podés volver a traer.`,
+    {si:`Sacar ${ids.length} de la lista`, no:'Cancelar'}))) return;
+  ids.forEach(id=>{
+    const p=(PRESUPUESTOS||[]).find(x=>x.id===id);
+    if(p){ p.segArchivada = true; p.segArchivadaEn = Date.now(); }
+  });
+  cotizTildadas.clear();
+  guardarSeguimientoCotiz(`Sacar ${cuantas} del seguimiento`);
+}
+
+// Devolverla a la lista desde el historial de presupuestos.
+function cotizVolverASeguir(id){
+  const p=(PRESUPUESTOS||[]).find(x=>x.id===id); if(!p) return;
+  p.segArchivada = false; p.segArchivadaEn = null;
+  guardarSeguimientoCotiz(`Volver a seguir la cotización de ${p.clienteNombre||'(sin cliente)'}`);
 }
 
 // ── Lo que se ve en Inicio ────────────────────────────────────────────────
@@ -3352,7 +3405,11 @@ function cotizTarjeta(p, urgente){
     : (dias===0 ? 'cotizada hoy'    : `cotizada hace ${dias} día${dias!==1?'s':''}`);
   const vueltas = p.segContactos ? ` · ${p.segContactos} llamada${p.segContactos!==1?'s':''}` : '';
   const borde = urgente ? '#c62828' : '#00695c';
+  const tildada = cotizTildadas.has(p.id);
   return `<div class="pago-item" style="border-color:${borde}33;background:${borde}08;margin-bottom:.5rem;flex-wrap:wrap">
+    <input type="checkbox" class="cotiz-tilde" data-id="${p.id}" ${tildada?'checked':''}
+           onchange="cotizTildar(${p.id}, this.checked)" title="Marcar para sacar de la lista"
+           style="width:17px;height:17px;flex-shrink:0;margin-right:10px;cursor:pointer;accent-color:#00695c">
     <div class="pago-info">
       <div class="pago-concepto" style="font-size:1rem">${p.clienteNombre||'(sin cliente)'}</div>
       <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${p.equipo||''} · ${p.dias} día${p.dias!==1?'s':''} · ${fmt(p.total)}</div>
@@ -3361,8 +3418,6 @@ function cotizTarjeta(p, urgente){
     <div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:6px">
       ${tel?`<a href="tel:${tel}" class="btn-lim" style="padding:6px 10px;font-size:.75rem;text-decoration:none;flex:1;text-align:center;min-width:100px">${p.clienteTelefono}</a>`:''}
       <button onclick="cotizRegistrarContacto(${p.id})" class="btn-nuevo" style="padding:6px 10px;font-size:.75rem;flex:1;min-width:120px">Lo llamé, sigue viéndolo</button>
-      ${p.cot?`<button onclick="convertirEnAlquiler(PRESUPUESTOS.find(x=>x.id===${p.id}).cot, ${p.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem;flex:1;min-width:100px">La ganamos</button>`:''}
-      <button onclick="cotizMarcarPerdida(${p.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem;flex:1;min-width:90px;color:var(--rojo)">La perdimos</button>
     </div>
   </div>`;
 }
@@ -3382,8 +3437,19 @@ function renderSeguimientoCotiz(){
   caja.style.display = hayAlgo ? 'block' : 'none';
   if(!hayAlgo) return;
 
+  // Las marcas que quedaron de antes se olvidan si esa cotización ya no está en la
+  // lista (se convirtió en alquiler, o la sacó otro desde otra computadora).
+  const idsVivos = new Set([...vencidas, ...esperando, ...recientes].map(p=>p.id));
+  [...cotizTildadas].forEach(id=>{ if(!idsVivos.has(id)) cotizTildadas.delete(id); });
+
   const titulo = (txt, n, color) => `<div style="font-size:.72rem;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.04em;margin:.9rem 0 6px">${txt} (${n})</div>`;
-  let h = '';
+  let h = `<div id="cotiz-barra-tildadas" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;background:var(--bg3);border:1px solid var(--border2);border-radius:9px;padding:.5rem .7rem;margin-bottom:.7rem;position:sticky;top:0;z-index:3">
+      <span id="cotiz-tildadas-texto" style="font-size:.82rem;font-weight:700;color:var(--txt)"></span>
+      <span style="flex:1"></span>
+      <button onclick="cotizTildarTodas()" class="btn-lim" style="padding:5px 10px;font-size:.75rem">Marcar todas</button>
+      <button onclick="cotizSacarTildadas()" class="btn-lim" style="padding:5px 10px;font-size:.75rem;color:var(--rojo);border-color:var(--rojo)">Sacar de la lista</button>
+    </div>
+    <div style="font-size:.74rem;color:var(--txt3);margin-bottom:.6rem">Tildá las que ya no vas a seguir y sacalas de la lista. No se borran: quedan en el historial de presupuestos.</div>`;
 
   if(vencidas.length){
     h += titulo(`Hay que llamar — pasaron ${DIAS_RECORDAR_COTIZ} días o más`, vencidas.length, '#c62828').replace('margin:.9rem','margin:.1rem');
@@ -3401,6 +3467,9 @@ function renderSeguimientoCotiz(){
     h = `<p style="color:var(--txt3);font-size:.85rem;padding:.2rem 0 .4rem">Ninguna para llamar hoy. Las de abajo vuelven a aparecer a los ${DIAS_RECORDAR_COTIZ} días.</p>` + h;
   }
   document.getElementById('dash-segcotiz-container').innerHTML = h;
+  // La barra se dibuja escondida: recién aparece cuando hay algo tildado. Y como el
+  // innerHTML de arriba la rehace de cero, hay que volver a poner el contador.
+  actualizarBarraCotizTildadas();
 }
 
 // ── DESHACER (undo) ──────────────────────────────────────────────
@@ -10718,16 +10787,15 @@ function renderHistorialPresupuestos(filtro){
     const f = new Date(p.fecha);
     const fechaStr = f.toLocaleDateString('es-AR') + ' ' + f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
     const convertido = p.estadoConv==='convertido';
-    const perdida = p.segEstado==='perdido';
-    // Tres estados posibles, no dos: una cotización dada por perdida no es lo mismo
-    // que una pendiente, y si no se distingue parece que todavía hay algo que hacer.
     const badge = convertido
       ? `<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--txt3);background:var(--bg);padding:2px 7px;border-radius:8px;margin-left:6px">Ya convertido</span>`
-      : perdida
-      ? `<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--rojo);background:rgba(201,106,94,.12);padding:2px 7px;border-radius:8px;margin-left:6px">Perdida</span>`
       : `<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--azul);background:var(--azul)18;padding:2px 7px;border-radius:8px;margin-left:6px">Pendiente</span>`;
-    const lineaSeg = perdida
-      ? `<div style="font-size:.74rem;color:var(--rojo);margin-top:3px">Perdida${p.segMotivo?': '+p.segMotivo:''}</div>`
+    // Si se le hizo seguimiento, se ve acá también: evita volver a llamar al mismo
+    // cliente dos veces en la semana sin querer. Y si se sacó de la lista, se avisa
+    // — si no, parecería que sigue en seguimiento y nunca va a sonar.
+    const fuera = !convertido && p.segArchivada;
+    const lineaSeg = fuera
+      ? `<div style="font-size:.74rem;color:var(--txt3);margin-top:3px">Fuera de la lista de seguimiento</div>`
       : (!convertido && p.segUltimoContacto)
       ? `<div style="font-size:.74rem;color:var(--txt3);margin-top:3px">Último llamado hace ${cotizDiasSinTocar(p)} día${cotizDiasSinTocar(p)!==1?'s':''}${p.segContactos?' · '+p.segContactos+' llamada'+(p.segContactos!==1?'s':''):''}</div>`
       : '';
@@ -10745,8 +10813,8 @@ function renderHistorialPresupuestos(filtro){
       </div>
       <div style="display:flex;gap:6px;margin-top:.55rem">
         ${p.cot?`<button onclick="event.stopPropagation();editarPresupuesto(${p.id})" style="flex:1;background:none;border:1px solid var(--border2);border-radius:7px;padding:.45rem;font-size:.8rem;font-weight:700;color:var(--txt);cursor:pointer;">Editar</button>`:''}
-        ${!convertido && !perdida?`<button onclick="event.stopPropagation();convertirEnAlquiler(PRESUPUESTOS.find(x=>x.id===${p.id}).cot, ${p.id})" style="flex:1;background:var(--azul);border:none;border-radius:7px;padding:.45rem;font-size:.8rem;font-weight:700;color:#fff;cursor:pointer;">Convertir en alquiler</button>`:''}
-        ${perdida?`<button onclick="event.stopPropagation();cotizReabrir(${p.id});filtrarHistorialPresup()" style="flex:1;background:none;border:1px solid var(--border2);border-radius:7px;padding:.45rem;font-size:.8rem;font-weight:700;color:var(--txt);cursor:pointer;">Volver a seguirla</button>`:''}
+        ${!convertido?`<button onclick="event.stopPropagation();convertirEnAlquiler(PRESUPUESTOS.find(x=>x.id===${p.id}).cot, ${p.id})" style="flex:1;background:var(--azul);border:none;border-radius:7px;padding:.45rem;font-size:.8rem;font-weight:700;color:#fff;cursor:pointer;">Convertir en alquiler</button>`:''}
+        ${fuera?`<button onclick="event.stopPropagation();cotizVolverASeguir(${p.id});filtrarHistorialPresup()" style="flex:1;background:none;border:1px solid var(--border2);border-radius:7px;padding:.45rem;font-size:.8rem;font-weight:700;color:var(--txt);cursor:pointer;">Volver a seguirla</button>`:''}
       </div>
     </div>`;
   }).join('');
