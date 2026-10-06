@@ -347,11 +347,17 @@ body{background:var(--bg);}
    deja el lugar del botón para que el texto no le pase por abajo. */
 .campo-clave{position:relative;}
 .campo-clave input{padding-right:42px !important;}
+/* El ojito de "ver la contraseña". Antes eran emojis, y en Windows el de "ocultar"
+   salia dibujado como un monito tapandose los ojos: infantil al lado del resto.
+   Ahora es un dibujo de linea, del mismo gris que las etiquetas, que toma el color
+   del texto al pasarle por encima. */
 .ver-clave{
   position:absolute;right:4px;top:50%;transform:translateY(-50%);
-  background:none;border:0;cursor:pointer;padding:6px 8px;line-height:1;
-  font-size:1rem;color:var(--txt3);border-radius:6px;
+  background:none;border:0;cursor:pointer;padding:6px 8px;line-height:0;
+  color:var(--txt3);border-radius:6px;display:flex;align-items:center;
 }
+.ver-clave svg{width:18px;height:18px;display:block;stroke:currentColor;fill:none;
+  stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;}
 .ver-clave:hover{color:var(--txt);background:rgba(0,0,0,.05);}
 .btn-p{background:#1c1b19;border-radius:9px;font-weight:600;font-size:.9rem;padding:12px;}
 .btn-p:hover{background:#38352f;}
@@ -525,35 +531,16 @@ textarea{width:100%;resize:vertical;padding:.5rem .6rem;font-family:inherit;
 }
 @keyframes apareceOk{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 
-/* ── HORA EN 24 h ─────────────────────────────────────────────────────────
-   Los <input type="time"> los dibuja el sistema operativo, no la app: el iPhone
-   los muestra "8:00 a. m." y la PC "08:00". No hay forma de forzar el formato
-   desde el HTML, asi que el input real queda escondido (sigue siendo el valor
-   que lee todo el codigo) y arriba se ven dos listas nuestras, iguales en
-   cualquier aparato. Ver prepararHoras24() mas abajo. */
-input[type=time].h24-oculto{
-  position:absolute;opacity:0;width:1px;height:1px;padding:0;border:0;
-  pointer-events:none;
-}
-/* Se dibuja como el campo de hora de siempre en la PC: un solo recuadro chico
-   con "08:00". Las dos listas van adentro, sin borde ni flecha propia, para que
-   se lea como un unico campo y no como dos selectores. */
-.h24{
-  display:inline-flex;align-items:center;gap:1px;
-  border:1px solid var(--border2);background:var(--bg2);border-radius:9px;
-  padding:7px 8px;line-height:1;
-}
-.h24 select{
-  width:auto;min-width:0;border:0;background:none;border-radius:0;
-  padding:0;margin:0;font-size:.95rem;font-family:inherit;color:var(--txt);
-  font-variant-numeric:tabular-nums;text-align:center;cursor:pointer;
-  -webkit-appearance:none;-moz-appearance:none;appearance:none;
-}
-.h24 select:focus{outline:none}
-.h24 .h24-sep{font-size:.95rem;color:var(--txt);font-variant-numeric:tabular-nums}
-/* Pistita de que se despliega, ahora que los selectores no traen flecha propia. */
-.h24 .h24-flecha{font-size:.6rem;color:var(--txt3);margin-left:6px;pointer-events:none}
-.h24:focus-within{border-color:var(--txt2)}
+/* ── HORA ─────────────────────────────────────────────────────────────────
+   Los campos de hora son los del navegador, a proposito. Se probo reemplazarlos
+   por dos listas propias (hora y minutos) para que el iPhone no mostrara
+   "8:00 a. m." mientras la PC mostraba "08:00". Unificaba el formato, si, pero
+   para poner una hora puntual habia que buscarla en una lista larga en vez de
+   escribirla: peor el remedio que la enfermedad, sobre todo en la planilla de
+   Rivadavia, donde se carga la hora exacta a cada rato.
+   El formato lo decide cada aparato y desde la web no se puede forzar. Quien
+   quiera verlo en 24 h en el iPhone: Ajustes > General > Fecha y hora >
+   "Reloj de 24 horas". */
 </style>
 
 <link rel="manifest" href="manifest.json">
@@ -604,23 +591,13 @@ if ('serviceWorker' in navigator) {
            por encima del centro del recuadro. -->
       <div class="campo-clave">
         <input type="password" id="inp-p" placeholder="contraseña">
-        <button type="button" class="ver-clave" id="btn-ver-clave" onclick="toggleVerClave()" title="Mostrar la contraseña" aria-label="Mostrar la contraseña">👁</button>
+        <button type="button" class="ver-clave" id="btn-ver-clave" onclick="toggleVerClave()" title="Mostrar la contraseña" aria-label="Mostrar la contraseña"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg></button>
       </div>
     </div>
     <button class="btn-p" id="btn-entrar" onclick="login()">Entrar</button>
     <div id="auth-err">Usuario o contraseña incorrectos</div>
-    <!-- Solo aparece en el aparato donde se dejó activado el Face ID (ver más abajo,
-         bloque FACE ID). En cualquier otra computadora o celular no existe. -->
-    <div id="faceid-login-caja" style="display:none;margin-top:.9rem">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:.7rem">
-        <div style="flex:1;height:1px;background:#d9d6d0"></div>
-        <span style="font-size:.72rem;color:#8a857d">o</span>
-        <div style="flex:1;height:1px;background:#d9d6d0"></div>
-      </div>
-      <button class="btn-p" id="btn-faceid-login" onclick="entrarConFaceId()"
-              style="background:#f0efec;color:#1c1b19;border:1px solid #d9d6d0">Entrar con Face ID</button>
-      <div id="faceid-login-err" style="display:none;font-size:.78rem;color:#c96a5e;margin-top:.5rem;line-height:1.5"></div>
-    </div>
+    <!-- En el aparato con la entrada directa activada no se llega ni a ver esta
+         pantalla: la app entra sola. Ver reentrarSiLaPestanaYaEntro. -->
   </div>
 </div>
 
@@ -887,6 +864,19 @@ if ('serviceWorker' in navigator) {
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-solicitudes-container" style="display:none"></div>
+      </div>
+
+      <!-- SEGUIMIENTO DE COTIZACIONES. Todas las cotizaciones pasadas que todavía no se
+           ganaron ni se dieron por perdidas, agrupadas por qué hay que hacer con cada una.
+           El número de la pastilla cuenta SOLO las que hay que llamar hoy; las que están
+           al día se ven al abrir pero no gritan. Ver renderSeguimientoCotiz. -->
+      <div class="dash-collapse" id="dc-segcotiz" style="border-color:#00695c;display:none">
+        <button class="dash-collapse-header" id="dch-segcotiz" onclick="toggleDashCollapse('segcotiz')" style="color:#00695c">
+          <span class="dc-title">Cotizaciones para seguir</span>
+          <span class="dc-badge" id="dc-badge-segcotiz" style="background:#00695c;color:#fff"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-segcotiz-container" style="display:none"></div>
       </div>
 
       <!-- Cotizaciones pasadas por taller, todavía sin convertir en alquiler ni marcadas
@@ -2550,7 +2540,7 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
         <div class="campo-clave">
           <input type="password" id="cc-nueva" placeholder="la nueva" autocomplete="new-password"
                  style="width:100%;box-sizing:border-box;border:1px solid var(--border2);border-radius:9px;background:#fff;color:#1a1a1a;font-size:.92rem;padding:11px 42px 11px 13px;outline:none">
-          <button type="button" class="ver-clave" id="cc-ojo" onclick="toggleVerClaveCambio()" title="Mostrar la contraseña">👁</button>
+          <button type="button" class="ver-clave" id="cc-ojo" onclick="toggleVerClaveCambio()" title="Mostrar la contraseña"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg></button>
         </div>
       </div>
 
@@ -3265,6 +3255,152 @@ function marcarSeguimientoPresupHecho(id){
   localStorage.setItem('rtz_presup', JSON.stringify(PRESUPUESTOS));
   sincronizarFirebase();
   renderDashboard();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   SEGUIMIENTO DE COTIZACIONES
+
+   Una cotizacion pasada y nunca mas tocada es plata que se va sin que nadie se
+   entere. Esto las junta y avisa cuando toca llamar.
+
+   El reloj. A los 5 dias de pasada la cotizacion, hay que llamar. Si al llamar
+   el cliente dice que todavia lo esta viendo, se marca el contacto y el reloj
+   vuelve a cero: otros 5 dias. Y asi hasta que la cotizacion se gane (se
+   convierte en alquiler) o se de por perdida.
+
+   Nada caduca solo. Una cotizacion sin cerrar sigue apareciendo para siempre:
+   justamente la gracia es que no se olvide ninguna.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+const DIAS_RECORDAR_COTIZ = 5;
+const UN_DIA_MS = 86400000;
+
+// Desde cuando se cuenta: el ultimo contacto si hubo, si no la fecha en que se
+// paso la cotizacion.
+function cotizDesdeCuando(p){
+  return p.segUltimoContacto || p.creadoEn || (p.fecha ? new Date(p.fecha).getTime() : 0);
+}
+function cotizDiasSinTocar(p){
+  const desde = cotizDesdeCuando(p);
+  if(!desde) return 0;
+  return Math.floor((Date.now() - desde) / UN_DIA_MS);
+}
+// Abierta = ni ganada (convertida en alquiler) ni dada por perdida.
+function cotizAbierta(p){
+  return p.estadoConv !== 'convertido' && p.segEstado !== 'perdido';
+}
+function cotizacionesParaSeguir(){
+  return (PRESUPUESTOS||[]).filter(cotizAbierta);
+}
+// Las tres pilas: hay que llamar / ya llame y espero / recien pasada.
+function cotizacionesAgrupadas(){
+  const abiertas = cotizacionesParaSeguir();
+  const vencidas = [], esperando = [], recientes = [];
+  abiertas.forEach(p=>{
+    if(cotizDiasSinTocar(p) >= DIAS_RECORDAR_COTIZ) vencidas.push(p);
+    else if(p.segUltimoContacto) esperando.push(p);
+    else recientes.push(p);
+  });
+  // Las mas abandonadas arriba; las otras, la que vence antes primero.
+  vencidas.sort((a,b)=>cotizDesdeCuando(a)-cotizDesdeCuando(b));
+  esperando.sort((a,b)=>cotizDesdeCuando(a)-cotizDesdeCuando(b));
+  recientes.sort((a,b)=>cotizDesdeCuando(b)-cotizDesdeCuando(a));
+  return {vencidas, esperando, recientes};
+}
+
+// "Lo llame y sigue viendolo": el reloj vuelve a cero y en 5 dias aparece otra vez.
+async function cotizRegistrarContacto(id){
+  const p=(PRESUPUESTOS||[]).find(x=>x.id===id); if(!p) return;
+  p.segUltimoContacto = Date.now();
+  p.segContactos = (p.segContactos||0) + 1;
+  guardarSeguimientoCotiz(`Contacto con ${p.clienteNombre||'cliente'}`);
+}
+
+// "No va": se cierra con el motivo, para despues poder mirar por que se pierden.
+async function cotizMarcarPerdida(id){
+  const p=(PRESUPUESTOS||[]).find(x=>x.id===id); if(!p) return;
+  if(!(await confirmSiNo(`¿Dar por perdida la cotización de ${p.clienteNombre||'(sin cliente)'}?\n\nDeja de aparecer en el seguimiento.`,{si:'Sí, la perdimos',no:'Cancelar'}))) return;
+  const motivo = prompt('¿Por qué se perdió? (precio, plazo, se la dieron a otro, no contesta...)\n\nPodés dejarlo vacío.');
+  if(motivo === null) return;                    // cancelo en el motivo: no se toca nada
+  p.segEstado = 'perdido';
+  p.segMotivo = (motivo||'').trim();
+  p.segCerradaEn = Date.now();
+  guardarSeguimientoCotiz(`Dar por perdida la cotización de ${p.clienteNombre||'(sin cliente)'}`);
+}
+
+// Volver a abrir una que se habia cerrado por error.
+function cotizReabrir(id){
+  const p=(PRESUPUESTOS||[]).find(x=>x.id===id); if(!p) return;
+  p.segEstado = null; p.segMotivo = ''; p.segCerradaEn = null;
+  guardarSeguimientoCotiz(`Reabrir la cotización de ${p.clienteNombre||'(sin cliente)'}`);
+}
+
+function guardarSeguimientoCotiz(queSeHizo){
+  marcarAccionUndo(queSeHizo, 'home');
+  localStorage.setItem('rtz_presup', JSON.stringify(PRESUPUESTOS));
+  sincronizarFirebase();
+  renderDashboard();
+}
+
+// ── Lo que se ve en Inicio ────────────────────────────────────────────────
+function cotizTarjeta(p, urgente){
+  const dias = cotizDiasSinTocar(p);
+  const tel = (p.clienteTelefono||'').replace(/[^\d+]/g,'');
+  // "hace 7 días" se lee de un vistazo; una fecha hay que calcularla mentalmente.
+  const cuando = p.segUltimoContacto
+    ? (dias===0 ? 'lo llamaste hoy' : `lo llamaste hace ${dias} día${dias!==1?'s':''}`)
+    : (dias===0 ? 'cotizada hoy'    : `cotizada hace ${dias} día${dias!==1?'s':''}`);
+  const vueltas = p.segContactos ? ` · ${p.segContactos} llamada${p.segContactos!==1?'s':''}` : '';
+  const borde = urgente ? '#c62828' : '#00695c';
+  return `<div class="pago-item" style="border-color:${borde}33;background:${borde}08;margin-bottom:.5rem;flex-wrap:wrap">
+    <div class="pago-info">
+      <div class="pago-concepto" style="font-size:1rem">${p.clienteNombre||'(sin cliente)'}</div>
+      <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${p.equipo||''} · ${p.dias} día${p.dias!==1?'s':''} · ${fmt(p.total)}</div>
+      <div class="pago-meta" style="font-size:.8rem;margin-top:2px;color:${urgente?'#c62828':'var(--txt3)'};font-weight:${urgente?'700':'400'}">${cuando}${vueltas}${p.creadoPor?' · cotizó '+p.creadoPor:''}</div>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:6px">
+      ${tel?`<a href="tel:${tel}" class="btn-lim" style="padding:6px 10px;font-size:.75rem;text-decoration:none;flex:1;text-align:center;min-width:100px">${p.clienteTelefono}</a>`:''}
+      <button onclick="cotizRegistrarContacto(${p.id})" class="btn-nuevo" style="padding:6px 10px;font-size:.75rem;flex:1;min-width:120px">Lo llamé, sigue viéndolo</button>
+      ${p.cot?`<button onclick="convertirEnAlquiler(PRESUPUESTOS.find(x=>x.id===${p.id}).cot, ${p.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem;flex:1;min-width:100px">La ganamos</button>`:''}
+      <button onclick="cotizMarcarPerdida(${p.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem;flex:1;min-width:90px;color:var(--rojo)">La perdimos</button>
+    </div>
+  </div>`;
+}
+
+function renderSeguimientoCotiz(){
+  const caja = document.getElementById('dc-segcotiz');
+  if(!caja) return;
+  // Quién cotizó a quién y por cuánto es información de la oficina, igual que el
+  // resto de los presupuestos en Inicio: taller no la ve.
+  if(!esMateo()){ caja.style.display='none'; return; }
+
+  const {vencidas, esperando, recientes} = cotizacionesAgrupadas();
+  // La pastilla cuenta solo lo que hay que hacer HOY. Si no hay nada atrasado pero
+  // sí cotizaciones en curso, el desplegable sigue a la vista con la pastilla apagada.
+  badgeDash('dc-badge-segcotiz', vencidas.length);
+  const hayAlgo = vencidas.length + esperando.length + recientes.length;
+  caja.style.display = hayAlgo ? 'block' : 'none';
+  if(!hayAlgo) return;
+
+  const titulo = (txt, n, color) => `<div style="font-size:.72rem;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.04em;margin:.9rem 0 6px">${txt} (${n})</div>`;
+  let h = '';
+
+  if(vencidas.length){
+    h += titulo(`Hay que llamar — pasaron ${DIAS_RECORDAR_COTIZ} días o más`, vencidas.length, '#c62828').replace('margin:.9rem','margin:.1rem');
+    h += vencidas.map(p=>cotizTarjeta(p, true)).join('');
+  }
+  if(esperando.length){
+    h += titulo('Ya los llamaste, lo están viendo', esperando.length, 'var(--txt2)');
+    h += esperando.map(p=>cotizTarjeta(p, false)).join('');
+  }
+  if(recientes.length){
+    h += titulo('Recién cotizadas', recientes.length, 'var(--txt2)');
+    h += recientes.map(p=>cotizTarjeta(p, false)).join('');
+  }
+  if(!vencidas.length){
+    h = `<p style="color:var(--txt3);font-size:.85rem;padding:.2rem 0 .4rem">Ninguna para llamar hoy. Las de abajo vuelven a aparecer a los ${DIAS_RECORDAR_COTIZ} días.</p>` + h;
+  }
+  document.getElementById('dash-segcotiz-container').innerHTML = h;
 }
 
 // ── DESHACER (undo) ──────────────────────────────────────────────
@@ -4571,7 +4707,15 @@ async function traerPerfil(userId){
 async function reentrarSiLaPestanaYaEntro(){
   let marca = null;
   try{ marca = sessionStorage.getItem('rtz_sesion_pestana'); }catch(e){}
-  if(!marca) return;                       // pestaña nueva: se pide la clave como siempre
+
+  // Excepcion: en el aparato donde se activo "no pedirme la clave" se entra igual,
+  // aunque sea la primera vez que se abre en el dia. Ese aparato se desbloquea con
+  // la cara del dueno, asi que el candado ya lo puso el telefono.
+  const directo = (typeof entradaDirectaGuardada==='function') ? entradaDirectaGuardada() : null;
+  if(!marca && !directo) return;           // pestaña nueva: se pide la clave como siempre
+  // Sin la marca de pestaña, la pantalla NO está tapada todavía: se tapa ahora, para
+  // que no se vea el login un segundo antes de entrar solo.
+  if(!marca) document.documentElement.classList.add('reentrando');
   // De acá en adelante la pantalla está tapada con "Entrando...". Cualquier camino que
   // NO termine entrando tiene que destaparla y dejar el login a la vista, o la persona
   // se queda mirando un spinner para siempre.
@@ -4579,6 +4723,12 @@ async function reentrarSiLaPestanaYaEntro(){
   try{
     const { data } = await sb.auth.getSession();
     if(!data || !data.session){ destaparPantalla(true); return; }
+    // La entrada directa es de UN usuario. Si en este aparato quedo abierta la sesion
+    // de otro, se pide la clave igual: el permiso lo dio Mateo para su usuario, no
+    // para cualquiera que pase por su celular.
+    if(!marca && directo && data.session.user.id !== directo.userId){
+      destaparPantalla(true); return;
+    }
     sbSesion = data.session;
     const r = await traerPerfil(data.session.user.id);
     if(r.error){
@@ -4907,13 +5057,19 @@ function aplicarRestriccionesRol(){
 // uno la copia de un papel o de un WhatsApp, que es como la van a tener Walter y Alejandro.
 // OJO: esto NO muestra ninguna contraseña guardada — no existe tal cosa, en Supabase están
 // con hash y no se pueden leer. Solo revela el texto que la persona acaba de escribir.
+// Los dos dibujos del ojito. Van como SVG y no como emoji: el emoji lo dibuja cada
+// sistema a su manera (en Windows el "ver" era un monito tapándose los ojos) y no
+// se le puede dar el color ni el grosor del resto de la app.
+const ICONO_OJO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>';
+const ICONO_OJO_TACHADO = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/><line x1="4" y1="20" x2="20" y2="4"/></svg>';
+
 function toggleVerClave(){
   const inp = document.getElementById('inp-p');
   const btn = document.getElementById('btn-ver-clave');
   if(!inp || !btn) return;
   const mostrando = inp.type === 'text';
   inp.type = mostrando ? 'password' : 'text';
-  btn.textContent = mostrando ? '👁' : '🙈';
+  btn.innerHTML = mostrando ? ICONO_OJO : ICONO_OJO_TACHADO;
   const txt = mostrando ? 'Mostrar la contraseña' : 'Ocultar la contraseña';
   btn.title = txt; btn.setAttribute('aria-label', txt);
   inp.focus();
@@ -4976,7 +5132,7 @@ function abrirCambiarClave(){
   document.getElementById('cc-nueva').value='';
   document.getElementById('cc-repetir').value='';
   document.getElementById('cc-nueva').type='password';
-  document.getElementById('cc-ojo').textContent='👁';
+  document.getElementById('cc-ojo').innerHTML=ICONO_OJO;
   mostrarMsgClave('', null);
   document.getElementById('cc-guardar').disabled=false;
   document.getElementById('modal-cambiar-clave').style.display='flex';
@@ -4991,7 +5147,7 @@ function toggleVerClaveCambio(){
   const inp=document.getElementById('cc-nueva'), btn=document.getElementById('cc-ojo');
   const mostrando = inp.type==='text';
   inp.type = mostrando ? 'password' : 'text';
-  btn.textContent = mostrando ? '👁' : '🙈';
+  btn.innerHTML = mostrando ? ICONO_OJO : ICONO_OJO_TACHADO;
   btn.title = mostrando ? 'Mostrar la contraseña' : 'Ocultar la contraseña';
   inp.focus();
 }
@@ -5054,12 +5210,16 @@ function logout(){
   document.getElementById('auth-screen').style.display='flex';
   // Cerrar sesion a proposito SI borra la marca: la proxima vez pide clave.
   try{ sessionStorage.removeItem('rtz_sesion_pestana'); }catch(e){}
+  // Y tambien da de baja la entrada directa de este aparato: tocar "Cerrar sesion"
+  // es justamente pedir que la proxima vez te pregunten quien sos.
+  try{ localStorage.removeItem(DIRECTO_LS); }catch(e){}
+  try{ refrescarFaceIdUI(); }catch(e){}
   document.getElementById('inp-p').value='';
   // Si quedó destapada con el ojito, volver a taparla: si no, el próximo que entre
   // escribe su clave a la vista de todos.
   document.getElementById('inp-p').type='password';
   const btnVer=document.getElementById('btn-ver-clave');
-  if(btnVer){ btnVer.textContent='👁'; btnVer.title='Mostrar la contraseña'; btnVer.setAttribute('aria-label','Mostrar la contraseña'); }
+  if(btnVer){ btnVer.innerHTML=ICONO_OJO; btnVer.title='Mostrar la contraseña'; btnVer.setAttribute('aria-label','Mostrar la contraseña'); }
   document.getElementById('auth-err').style.display='none';
 }
 const TITLES={home:'Inicio',calendario:'Calendario',cotizador:'Cotizador',equipos:'Equipos',clientes:'Clientes',alquileres:'Alquileres',solicitudes:'Solicitudes',control:'Control de Máquinas',reportes:'Reportes',precios:'Lista de precios',facturacion:'Facturación',pagoprov:'Pago a Proveedores',rivadavia:'Planilla Rivadavia',impuestos:'Impuestos y Servicios'};
@@ -5638,6 +5798,8 @@ function renderDashboard(){
     }
   }
 
+  renderSeguimientoCotiz();
+
   // Cotizaciones pasadas por taller: mientras no se conviertan en alquiler (estadoConv
   // sigue 'pendiente') y Mateo no las marque como seguidas, quedan en esta lista para
   // que pueda llamar al cliente y ver si terminó alquilando o no.
@@ -5857,10 +6019,10 @@ function renderDashboard(){
 }
 
 // ── Ventanas rebatibles del dashboard ──────────────────────────
-const dashCollapseIds={paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
+const dashCollapseIds={paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
 // Todas arrancan CERRADAS, salvo "Vencidos y vence hoy" en Impuestos y Servicios, que
 // arranca ABIERTA a propósito para que un impuesto vencido nunca pase desapercibido.
-let dashCollapseOpen={paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
+let dashCollapseOpen={paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
 function applyDashCollapseState(key){
   const id=dashCollapseIds[key];
   const header=document.getElementById('dch-'+id);
@@ -10556,15 +10718,26 @@ function renderHistorialPresupuestos(filtro){
     const f = new Date(p.fecha);
     const fechaStr = f.toLocaleDateString('es-AR') + ' ' + f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
     const convertido = p.estadoConv==='convertido';
+    const perdida = p.segEstado==='perdido';
+    // Tres estados posibles, no dos: una cotización dada por perdida no es lo mismo
+    // que una pendiente, y si no se distingue parece que todavía hay algo que hacer.
     const badge = convertido
       ? `<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--txt3);background:var(--bg);padding:2px 7px;border-radius:8px;margin-left:6px">Ya convertido</span>`
+      : perdida
+      ? `<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--rojo);background:rgba(201,106,94,.12);padding:2px 7px;border-radius:8px;margin-left:6px">Perdida</span>`
       : `<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--azul);background:var(--azul)18;padding:2px 7px;border-radius:8px;margin-left:6px">Pendiente</span>`;
+    const lineaSeg = perdida
+      ? `<div style="font-size:.74rem;color:var(--rojo);margin-top:3px">Perdida${p.segMotivo?': '+p.segMotivo:''}</div>`
+      : (!convertido && p.segUltimoContacto)
+      ? `<div style="font-size:.74rem;color:var(--txt3);margin-top:3px">Último llamado hace ${cotizDiasSinTocar(p)} día${cotizDiasSinTocar(p)!==1?'s':''}${p.segContactos?' · '+p.segContactos+' llamada'+(p.segContactos!==1?'s':''):''}</div>`
+      : '';
     return `<div style="border:1px solid var(--border);border-radius:8px;padding:.7rem .9rem;margin-bottom:.6rem;cursor:pointer;" onclick="verDetallePresup(${p.id})">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;">
         <div>
           <div style="font-weight:700;font-size:.92rem">${p.clienteNombre}${badge}</div>
           <div style="font-size:.78rem;color:var(--txt2);margin-top:2px">${p.equipo} · ${p.dias} día${p.dias!==1?'s':''}${p.rangoFecha?' · '+p.rangoFecha:''}</div>
           <div style="font-size:.74rem;color:var(--txt3);margin-top:2px">${fechaStr}${p.clienteCuit?' · CUIT '+p.clienteCuit:''}</div>
+          ${lineaSeg}
         </div>
         <div style="text-align:right;flex-shrink:0;margin-left:.6rem">
           <div style="font-weight:700;color:var(--verde);font-size:.95rem">$ ${Math.round(p.total).toLocaleString('es-AR')}</div>
@@ -10572,7 +10745,8 @@ function renderHistorialPresupuestos(filtro){
       </div>
       <div style="display:flex;gap:6px;margin-top:.55rem">
         ${p.cot?`<button onclick="event.stopPropagation();editarPresupuesto(${p.id})" style="flex:1;background:none;border:1px solid var(--border2);border-radius:7px;padding:.45rem;font-size:.8rem;font-weight:700;color:var(--txt);cursor:pointer;">Editar</button>`:''}
-        ${!convertido?`<button onclick="event.stopPropagation();convertirEnAlquiler(PRESUPUESTOS.find(x=>x.id===${p.id}).cot, ${p.id})" style="flex:1;background:var(--azul);border:none;border-radius:7px;padding:.45rem;font-size:.8rem;font-weight:700;color:#fff;cursor:pointer;">Convertir en alquiler</button>`:''}
+        ${!convertido && !perdida?`<button onclick="event.stopPropagation();convertirEnAlquiler(PRESUPUESTOS.find(x=>x.id===${p.id}).cot, ${p.id})" style="flex:1;background:var(--azul);border:none;border-radius:7px;padding:.45rem;font-size:.8rem;font-weight:700;color:#fff;cursor:pointer;">Convertir en alquiler</button>`:''}
+        ${perdida?`<button onclick="event.stopPropagation();cotizReabrir(${p.id});filtrarHistorialPresup()" style="flex:1;background:none;border:1px solid var(--border2);border-radius:7px;padding:.45rem;font-size:.8rem;font-weight:700;color:var(--txt);cursor:pointer;">Volver a seguirla</button>`:''}
       </div>
     </div>`;
   }).join('');
@@ -15923,309 +16097,87 @@ function renderRepPerdidas(){
 }
 
 
-/* ══════════════════════════════════════════════════════════════════════════
-   HORA EN 24 h — IGUAL EN LA PC Y EN EL CELULAR
 
-   El reloj de un <input type="time"> no lo dibuja la app: lo dibuja el aparato,
-   con la configuracion regional de cada uno. Por eso en la PC se veia "08:00" y
-   en el iPhone "8:00 a. m.". No hay manera de forzarlo desde el HTML.
-
-   La solucion: el input original se queda (escondido) y sigue siendo el valor
-   que lee TODO el codigo que ya estaba — nada de eso cambia. Encima se dibujan
-   dos listas nuestras, hora y minutos, que se ven igual en cualquier pantalla.
-
-   Para que los setValue del codigo viejo (ej: hora-entrega = '08:00' al abrir
-   "Nuevo alquiler") se reflejen en las listas, se intercepta la propiedad
-   .value del input. Asi no hay que tocar ni una linea de lo ya escrito.
-   ══════════════════════════════════════════════════════════════════════════ */
-
-const H24_PASO_MIN = 5; // los minutos van de 5 en 5; si llega otro valor, se agrega solo
-const descValorInput = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-
-function h24Opciones(desde, hasta, paso){
-  let o='';
-  for(let i=desde;i<=hasta;i+=paso) o+=`<option value="${String(i).padStart(2,'0')}">${String(i).padStart(2,'0')}</option>`;
-  return o;
-}
-
-// Mete el valor del input en las dos listas. Si el minuto no cae en la grilla
-// (ej: 7:17 en la planilla de Rivadavia, que toma la hora actual) se agrega esa
-// opcion puntual, para no redondear un dato real sin avisar.
-function h24Pintar(inp){
-  const caja = inp._h24; if(!caja) return;
-  const [hh='', mm=''] = String(inp.value||'').split(':');
-  const selH = caja.querySelector('.h24-h'), selM = caja.querySelector('.h24-m');
-  if(hh==='' || mm===''){ selH.value=''; selM.value=''; return; }
-  if(!Array.from(selM.options).some(o=>o.value===mm)){
-    const op=document.createElement('option'); op.value=mm; op.textContent=mm;
-    const antes=Array.from(selM.options).find(o=>o.value>mm);
-    selM.insertBefore(op, antes||null);
-  }
-  selH.value=hh; selM.value=mm;
-}
-
-function prepararHoras24(raiz){
-  const inputs = (raiz||document).querySelectorAll('input[type=time]:not(.h24-oculto)');
-  inputs.forEach(inp=>{
-    inp.classList.add('h24-oculto');
-
-    const caja=document.createElement('div');
-    caja.className='h24';
-    const vacio = inp.hasAttribute('value') && inp.getAttribute('value')!=='' ? '' : '<option value="">--</option>';
-    caja.innerHTML =
-      `<select class="h24-h">${vacio}${h24Opciones(0,23,1)}</select>`+
-      `<span class="h24-sep">:</span>`+
-      `<select class="h24-m">${vacio}${h24Opciones(0,55,H24_PASO_MIN)}</select>`+
-      `<span class="h24-flecha">▼</span>`;
-    inp.insertAdjacentElement('afterend', caja);
-    inp._h24 = caja;
-
-    // Cuando el usuario toca las listas, se escribe en el input real y se avisa
-    // con los mismos eventos de siempre (input y change), que son los que tienen
-    // colgados los onchange="calcDiasAlq()" y companhia.
-    const alCambiar = ()=>{
-      const h=caja.querySelector('.h24-h').value, m=caja.querySelector('.h24-m').value;
-      const nuevo = (h==='' || m==='') ? '' : `${h}:${m}`;
-      descValorInput.set.call(inp, nuevo);           // sin pasar por el setter de abajo
-      inp.dispatchEvent(new Event('input', {bubbles:true}));
-      inp.dispatchEvent(new Event('change', {bubbles:true}));
-    };
-    caja.querySelector('.h24-h').addEventListener('change', alCambiar);
-    caja.querySelector('.h24-m').addEventListener('change', alCambiar);
-
-    // El codigo viejo hace input.value='08:00'. Con esto, las listas acompanhan.
-    Object.defineProperty(inp, 'value', {
-      configurable:true,
-      get(){ return descValorInput.get.call(this); },
-      set(v){ descValorInput.set.call(this, v); h24Pintar(this); }
-    });
-
-    h24Pintar(inp);
-  });
-}
-
-// Varios campos de hora se dibujan despues (fichas de control, cerrar un viaje de
-// Rivadavia). En vez de ir funcion por funcion, se vigila el documento y se
-// preparan los que vayan apareciendo.
-function vigilarHoras24(){
-  prepararHoras24(document);
-  new MutationObserver(muts=>{
-    for(const m of muts){
-      for(const n of m.addedNodes){
-        if(n.nodeType!==1) continue;
-        if(n.matches && n.matches('input[type=time]')) prepararHoras24(n.parentNode||document);
-        else if(n.querySelector && n.querySelector('input[type=time]')) prepararHoras24(n);
-      }
-    }
-  }).observe(document.body, {childList:true, subtree:true});
-}
-if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', vigilarHoras24);
-else vigilarHoras24();
 
 
 /* ══════════════════════════════════════════════════════════════════════════
-   FACE ID — SOLO EN EL APARATO DONDE SE DEJA ACTIVADO
+   ENTRAR SIN CLAVE EN UN APARATO
 
-   Qué hace. En el celular de Mateo, abrir la app y entrar con la cara en vez
-   de escribir la contraseña.
+   Para que: el celular de Mateo. Abrir la app y estar adentro, sin escribir
+   la contrasena cada vez.
 
-   Cómo funciona, sin vueltas. La sesión de Supabase ya quedaba guardada en el
-   aparato (es lo que hace que apretar F5 no te eche). Lo que faltaba era una
-   puerta para volver a usarla sin tipear la clave. Esa puerta es el Face ID:
-   el celular confirma que sos vos y recién ahí la app levanta la sesión que
-   ya tenía guardada.
+   Por que no es Face ID. Se intento con Face ID de verdad (WebAuthn) y el
+   iPhone no lo dejo: en iOS 26.2 Apple rompio la consulta que avisa si hay
+   Face ID disponible y encima le cambio el significado. Antes de seguir
+   peleando con eso, la salida simple: el telefono YA esta protegido por el
+   Face ID del propio iPhone. Si alguien tiene el telefono desbloqueado, ya
+   tiene adentro el mail, el WhatsApp y el home banking — la app de alquileres
+   no es el eslabon debil. Asi que el candado lo pone iOS y la app no vuelve a
+   preguntar.
 
-   Lo que NO es. No reemplaza la contraseña ni la guarda en ningún lado — la
-   contraseña sigue viviendo solo en Supabase, cifrada. Y la comprobación la
-   hace el celular, no un servidor nuestro: es un candado para que nadie que
-   agarre el teléfono desbloqueado entre a la app, no una barrera contra
-   alguien con conocimientos técnicos y el teléfono en la mano. Como la sesión
-   ya estaba guardada ahí de antes, esto no expone nada nuevo.
+   Como funciona. La sesion de Supabase ya quedaba guardada en el aparato (es
+   lo que hace que apretar F5 no te eche). Lo unico que la app hacia era pedir
+   la clave igual al abrir de cero, por la regla de siempre. Con esto activado,
+   en ESE aparato y para ESE usuario, no la pide: levanta la sesion guardada.
+   La contrasena no se guarda en ningun lado — sigue cifrada en Supabase.
 
-   Límites:
+   Limites:
    - Es por aparato. Activarlo en el celular no lo activa en la computadora.
-   - Es de un solo usuario: queda atado al que lo activó.
-   - Si la sesión guardada caduca (pasa cada tanto), pide la clave una vez y
-     el Face ID vuelve a funcionar solo.
+   - Es de un solo usuario: el que lo activo.
+   - Si la sesion guardada caduca (pasa cada tanto), pide la clave una vez y
+     despues vuelve a entrar solo.
+   - Si cerras sesion a proposito, la proxima te pide la clave: cerrar sesion
+     es justamente decir "pedimela".
    ══════════════════════════════════════════════════════════════════════════ */
 
-const FACEID_LS = 'rtz_faceid';
+const DIRECTO_LS = 'rtz_entrada_directa';
 
-function faceIdGuardado(){
-  try{ return JSON.parse(localStorage.getItem(FACEID_LS) || 'null'); }catch(e){ return null; }
+function entradaDirectaGuardada(){
+  try{ return JSON.parse(localStorage.getItem(DIRECTO_LS) || 'null'); }catch(e){ return null; }
 }
 
-// WebAuthn habla en bytes crudos y el localStorage guarda texto: estas dos
-// convierten de una forma a la otra.
-function faceIdABytes(s){
-  s = String(s).replace(/-/g,'+').replace(/_/g,'/');
-  const bin = atob(s + '='.repeat((4 - s.length % 4) % 4));
-  const a = new Uint8Array(bin.length);
-  for(let i=0;i<bin.length;i++) a[i] = bin.charCodeAt(i);
-  return a;
-}
-function faceIdATexto(buf){
-  const a = new Uint8Array(buf); let s='';
-  for(let i=0;i<a.length;i++) s += String.fromCharCode(a[i]);
-  return btoa(s).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-}
-
-async function faceIdDisponibleEnElAparato(){
-  try{
-    if(!window.isSecureContext) return false;          // sin https no existe
-    if(!window.PublicKeyCredential || !navigator.credentials) return false;
-    return await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
-  }catch(e){ return false; }
-}
-
-// Muestra u oculta las dos puertas de entrada: el botón del menú (para
-// activar/desactivar) y el botón de la pantalla de login (para usarlo).
-async function refrescarFaceIdUI(){
-  const guardado = faceIdGuardado();
-
-  const cajaLogin = document.getElementById('faceid-login-caja');
-  if(cajaLogin) cajaLogin.style.display = guardado ? 'block' : 'none';
-
-  const btnMenu = document.getElementById('btn-faceid-menu');
-  if(!btnMenu) return;
-  // Solo para Mateo. OJO: NO se esconde cuando el aparato dice que no tiene Face ID.
-  // Antes si, y el resultado era peor que el problema: el boton simplemente no
-  // aparecia y no habia forma de saber por que. Ahora se ve siempre y, si el aparato
-  // no puede, lo explica al tocarlo (ver activarFaceId).
+// Muestra el boton del menu solo para Mateo, y con el texto segun como este.
+function refrescarFaceIdUI(){
+  const btn = document.getElementById('btn-faceid-menu');
+  if(!btn) return;
   const esElDuenho = (typeof esMateo==='function') ? esMateo() : false;
-  if(!esElDuenho){ btnMenu.style.display='none'; return; }
-  btnMenu.style.display = 'block';
-  btnMenu.textContent = guardado
-    ? 'Desactivar el Face ID de este aparato'
-    : 'Entrar con Face ID en este aparato';
+  if(!esElDuenho){ btn.style.display='none'; return; }
+  btn.style.display = 'block';
+  btn.textContent = entradaDirectaGuardada()
+    ? 'Volver a pedirme la clave en este aparato'
+    : 'No pedirme la clave en este aparato';
 }
 
 function alternarFaceId(){
-  if(faceIdGuardado()) desactivarFaceId();
-  else activarFaceId();
+  if(entradaDirectaGuardada()) desactivarEntradaDirecta();
+  else activarEntradaDirecta();
 }
 
-async function activarFaceId(){
+function activarEntradaDirecta(){
   if(!sbSesion || !sbSesion.user || !sbPerfil){
-    alert('Primero entrá con tu usuario y contraseña, y después activá el Face ID.');
+    alert('Primero entra con tu usuario y contrasena.');
     return;
   }
-  // Si el aparato dice que no puede, hay que decir CUAL de los motivos es. "No se
-  // puede" a secas deja a cualquiera adivinando.
-  if(!window.isSecureContext){
-    alert('El Face ID solo funciona en la direccion de internet de la app '
-        + '(rentaz123.github.io), no abriendo el archivo a mano.');
-    return;
-  }
-  if(!window.PublicKeyCredential || !navigator.credentials){
-    alert('Este navegador no sabe usar Face ID.\n\n'
-        + 'En el iPhone, abri la app con Safari (o agregala a la pantalla de inicio desde Safari) '
-        + 'y proba de nuevo.');
-    return;
-  }
-  if(!(await faceIdDisponibleEnElAparato())){
-    alert('Este aparato dice que no tiene Face ID, Touch ID ni codigo de desbloqueo disponible '
-        + 'para las apps.\n\n'
-        + 'Revisa en Ajustes que el Face ID este activado, y que no estes en una ventana privada.');
-    return;
-  }
-  if(!confirm('Activar el Face ID en ESTE aparato.\n\n'
-    + 'Después de esto vas a poder entrar con la cara, sin escribir la contraseña.\n\n'
-    + 'Hacelo solo en tu celular — nunca en la computadora del taller.')) return;
+  if(!confirm('En ESTE aparato la app no te va a pedir mas la contrasena: abris y ya estas adentro.\n\n'
+    + 'Hacelo solo en tu celular, que se desbloquea con tu cara. Nunca en la computadora del taller.\n\n'
+    + 'Lo podes dar de baja cuando quieras desde este mismo menu.')) return;
 
-  try{
-    const cred = await navigator.credentials.create({ publicKey: {
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
-      rp: { name: 'Rentaz S.A.' },
-      user: {
-        id: new TextEncoder().encode(sbSesion.user.id),
-        name: sbPerfil.usuario,
-        displayName: sbPerfil.nombre || sbPerfil.usuario
-      },
-      pubKeyCredParams: [ {type:'public-key', alg:-7}, {type:'public-key', alg:-257} ],
-      authenticatorSelection: {
-        authenticatorAttachment: 'platform',   // la cara/huella de ESTE aparato, no una llave usb
-        userVerification: 'required',          // que pida la cara si o si, no alcanza con desbloquear
-        residentKey: 'preferred'
-      },
-      timeout: 60000,
-      attestation: 'none'
-    }});
-    if(!cred) return;
-
-    localStorage.setItem(FACEID_LS, JSON.stringify({
-      credId:  faceIdATexto(cred.rawId),
-      userId:  sbSesion.user.id,
-      usuario: sbPerfil.usuario,
-      creado:  new Date().toISOString()
-    }));
-    await refrescarFaceIdUI();
-    alert('Listo. En este aparato ya podés entrar con Face ID.\n\n'
-        + 'Si alguna vez te pide la contraseña, ponela una vez y después vuelve a andar solo.');
-  }catch(e){
-    if(e && (e.name==='NotAllowedError' || e.name==='AbortError')) return;  // lo cancelo el usuario
-    console.error('No se pudo activar el Face ID:', e);
-    alert('No se pudo activar el Face ID: ' + (e && e.message ? e.message : e));
-  }
+  localStorage.setItem(DIRECTO_LS, JSON.stringify({
+    userId:  sbSesion.user.id,
+    usuario: sbPerfil.usuario,
+    creado:  new Date().toISOString()
+  }));
+  refrescarFaceIdUI();
+  alert('Listo. En este aparato entras directo.');
 }
 
-async function desactivarFaceId(){
-  if(!confirm('Sacar el Face ID de este aparato.\n\nVas a volver a entrar con usuario y contraseña. ¿Seguro?')) return;
-  localStorage.removeItem(FACEID_LS);
-  await refrescarFaceIdUI();
-  alert('Listo, el Face ID quedó desactivado en este aparato.');
+function desactivarEntradaDirecta(){
+  if(!confirm('En este aparato va a volver a pedirte la contrasena al abrir la app. Seguro?')) return;
+  localStorage.removeItem(DIRECTO_LS);
+  refrescarFaceIdUI();
+  alert('Listo, en este aparato se vuelve a pedir la clave.');
 }
 
-async function entrarConFaceId(){
-  const guardado = faceIdGuardado();
-  const err = document.getElementById('faceid-login-err');
-  const avisar = t => { if(err){ err.textContent = t; err.style.display='block'; } };
-  if(err) err.style.display='none';
-  if(!guardado) return;
-  if(!sb){ avisar('No hay conexión con la base de datos.'); return; }
-
-  const btn = document.getElementById('btn-faceid-login');
-  if(btn){ btn.disabled = true; btn.textContent = 'Entrando…'; }
-
-  try{
-    const r = await navigator.credentials.get({ publicKey: {
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
-      allowCredentials: [{ type:'public-key', id: faceIdABytes(guardado.credId) }],
-      userVerification: 'required',
-      timeout: 60000
-    }});
-    if(!r) return;
-
-    // La cara dio bien. Ahora hay que tener todavia una sesion valida guardada:
-    // getSession la renueva sola si le queda vida. Si caduco, no hay vuelta que
-    // darle — la contrasena la sabe Mateo, no el aparato.
-    const { data } = await sb.auth.getSession();
-    if(!data || !data.session){
-      avisar('Pasó mucho tiempo desde la última vez. Entrá una vez con tu contraseña y el Face ID vuelve a funcionar.');
-      return;
-    }
-    if(data.session.user.id !== guardado.userId){
-      avisar('La sesión guardada en este aparato es de otro usuario. Entrá con tu contraseña.');
-      return;
-    }
-    sbSesion = data.session;
-
-    const p = await traerPerfil(data.session.user.id);
-    if(p.error){ avisar(p.error); return; }
-    await entrarConPerfil(p.perfil);
-  }catch(e){
-    if(e && (e.name==='NotAllowedError' || e.name==='AbortError')) return;  // cancelado o no reconocio
-    console.error('No se pudo entrar con Face ID:', e);
-    avisar('No se pudo entrar con Face ID. Probá con tu contraseña.');
-  }finally{
-    if(btn){ btn.disabled = false; btn.textContent = 'Entrar con Face ID'; }
-  }
-}
-
-// Al abrir la app: si este aparato tiene Face ID activado, que el botón ya esté
-// a la vista junto al login, sin tener que buscarlo.
-if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', ()=>refrescarFaceIdUI());
-else refrescarFaceIdUI();
 
 </script>
 </body>
