@@ -871,6 +871,18 @@ if ('serviceWorker' in navigator) {
         <div class="dash-collapse-body" id="dash-solicitudes-container" style="display:none"></div>
       </div>
 
+      <!-- Alquileres guardados con una fecha imposible (el caso del año 22026). Van
+           arriba de todo y en rojo: mientras estén así, los días y el precio de ese
+           alquiler son basura y contaminan reportes y facturación. -->
+      <div class="dash-collapse" id="dc-fechasrotas" style="border-color:var(--rojo);display:none">
+        <button class="dash-collapse-header" id="dch-fechasrotas" onclick="toggleDashCollapse('fechasrotas')" style="color:var(--rojo)">
+          <span class="dc-title">Alquileres con la fecha mal cargada</span>
+          <span class="dc-badge" id="dc-badge-fechasrotas" style="background:var(--rojo);color:#fff"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-fechasrotas-container" style="display:none"></div>
+      </div>
+
       <!-- SEGUIMIENTO DE COTIZACIONES. Todas las cotizaciones pasadas que todavía no se
            ganaron ni se dieron por perdidas, agrupadas por qué hay que hacer con cada una.
            El número de la pastilla cuenta SOLO las que hay que llamar hoy; las que están
@@ -1929,8 +1941,12 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
             <button type="button" class="rb" id="alq-per-horas" onclick="setAlqPerModo('horas')">Por hora</button>
           </div>
           <div id="alq-per-fechas-bloque" class="row2" style="margin-bottom:.4rem">
-            <div><label class="flabel">Fecha desde</label><input type="date" id="alq-desde" onchange="calcDiasAlq()"></div>
-            <div><label class="flabel">Fecha hasta</label><input type="date" id="alq-hasta" onchange="calcDiasAlq()"></div>
+            <!-- min/max: el campo de fecha del navegador acepta años de hasta 6 cifras.
+                 Con el tope puesto, el propio navegador marca en rojo un "22026" en vez
+                 de dejarlo pasar. Igual se valida en el código (ver fechaValidaApp),
+                 porque esto solo no alcanza para frenar el guardado. -->
+            <div><label class="flabel">Fecha desde</label><input type="date" id="alq-desde" min="2020-01-01" max="2100-12-31" onchange="calcDiasAlq()"></div>
+            <div><label class="flabel">Fecha hasta</label><input type="date" id="alq-hasta" min="2020-01-01" max="2100-12-31" onchange="calcDiasAlq()"></div>
           </div>
           <div id="alq-hora-salida-bloque" class="row2" style="margin-bottom:.4rem">
             <div><label class="flabel">Hora de salida</label><input type="time" id="alq-hora-entrega" value="08:00" onchange="calcDiasAlq()"></div>
@@ -1938,12 +1954,12 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
           </div>
           <div id="alq-per-dias-bloque" class="row2" style="margin-bottom:.4rem;display:none">
             <div><label class="flabel">Cantidad de días</label><input type="number" min="1" id="alq-dias-cant" placeholder="Ej: 5" oninput="calcDiasAlqManual()"></div>
-            <div><label class="flabel">Empieza el</label><input type="date" id="alq-dias-inicio" onchange="calcDiasAlqManual()"></div>
+            <div><label class="flabel">Empieza el</label><input type="date" id="alq-dias-inicio" min="2020-01-01" max="2100-12-31" onchange="calcDiasAlqManual()"></div>
           </div>
           <div id="alq-per-horas-bloque" style="margin-bottom:.4rem;display:none">
             <div style="font-size:.76rem;color:var(--txt2);margin-bottom:.5rem">Para uso corto y puntual (ej: Expreso Rivadavia). Ingresá las horas usadas (podés poner medias horas, ej: 3,5). Se factura en bloques de 30 minutos: cualquier fracción de un bloque cuenta como el bloque completo.</div>
             <div class="row2">
-              <div><label class="flabel">Fecha</label><input type="date" id="alq-horas-fecha" onchange="calcHorasAlq()"></div>
+              <div><label class="flabel">Fecha</label><input type="date" id="alq-horas-fecha" min="2020-01-01" max="2100-12-31" onchange="calcHorasAlq()"></div>
               <div><label class="flabel">Horas utilizadas</label><input type="number" min="0.5" step="0.5" id="alq-horas-cant" placeholder="Ej: 3 o 3,5" oninput="calcHorasAlq()"></div>
             </div>
           </div>
@@ -3419,6 +3435,36 @@ function cotizVolverASeguir(id){
   const p=(PRESUPUESTOS||[]).find(x=>x.id===id); if(!p) return;
   p.segArchivada = false; p.segArchivadaEn = null;
   guardarSeguimientoCotiz(`Volver a seguir la cotización de ${p.clienteNombre||'(sin cliente)'}`);
+}
+
+// ── Alquileres con la fecha mal cargada ───────────────────────────────────
+// No se arreglan solos a propósito: no hay forma de adivinar si "22026" quería ser
+// 2026 o si además el mes y el día están cambiados. Se muestran para que alguien
+// los abra y ponga la fecha correcta.
+function renderAvisoFechasRotas(){
+  const caja = document.getElementById('dc-fechasrotas');
+  if(!caja) return;
+  const rotos = alquileresConFechaRota();
+  badgeDash('dc-badge-fechasrotas', rotos.length);
+  caja.style.display = rotos.length ? 'block' : 'none';
+  if(!rotos.length) return;
+  document.getElementById('dash-fechasrotas-container').innerHTML =
+    `<p style="font-size:.8rem;color:var(--txt2);margin:0 0 .6rem;line-height:1.5">
+       Estos alquileres tienen una fecha que no existe, así que sus días y su precio no se
+       pueden calcular (se ven como "NaN" o "null"). Abrilos, corregí la fecha y guardá.
+     </p>` +
+    rotos.map(a=>{
+      const cual = !fechaValidaApp(a.inicio) ? 'desde' : 'hasta';
+      const valor = !fechaValidaApp(a.inicio) ? a.inicio : a.fin;
+      return `<div style="display:flex;gap:9px;align-items:flex-start;padding:.55rem .7rem;border:1px solid var(--rojo)33;border-left:3px solid var(--rojo);border-radius:8px;margin-bottom:.35rem;background:var(--bg2)">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:.88rem">${a.equipoNombre||''}</div>
+          <div style="font-size:.78rem;color:var(--txt2)">${a.cliente||''}</div>
+          <div style="font-size:.76rem;color:var(--rojo);font-weight:700;margin-top:2px">La fecha "${cual}" dice ${valor} — ${porQueLaFechaEstaMal(valor)}</div>
+        </div>
+        <button onclick="editarAlq(${a.id})" class="btn-nuevo" style="padding:5px 11px;font-size:.74rem;flex-shrink:0">Corregir</button>
+      </div>`;
+    }).join('');
 }
 
 // ── Lo que se ve en Inicio ────────────────────────────────────────────────
@@ -5960,6 +6006,7 @@ function renderDashboard(){
     }
   }
 
+  renderAvisoFechasRotas();
   renderSeguimientoCotiz();
 
   // Cotizaciones pasadas por taller: mientras no se conviertan en alquiler (estadoConv
@@ -6181,10 +6228,10 @@ function renderDashboard(){
 }
 
 // ── Ventanas rebatibles del dashboard ──────────────────────────
-const dashCollapseIds={paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
+const dashCollapseIds={paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
 // Todas arrancan CERRADAS, salvo "Vencidos y vence hoy" en Impuestos y Servicios, que
 // arranca ABIERTA a propósito para que un impuesto vencido nunca pase desapercibido.
-let dashCollapseOpen={paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
+let dashCollapseOpen={paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
 function applyDashCollapseState(key){
   const id=dashCollapseIds[key];
   const header=document.getElementById('dch-'+id);
@@ -6200,7 +6247,7 @@ function applyDashCollapseState(key){
 // OJO: solo los del Inicio. Los de Impuestos y Pago a Proveedores viven en otras
 // pantallas y ahi conviene poder tener varios abiertos a la vez (por eso "impVencHoy"
 // arranca abierto a proposito).
-const ACORDEON_INICIO = ['paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
+const ACORDEON_INICIO = ['fechasrotas','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
   'solEspera','solicitudes','segcotiz','presuptaller','contratosListos','alqHoy','alqSemana','cargadoHoy'];
 function toggleDashCollapse(key){
   dashCollapseOpen[key]=!dashCollapseOpen[key];
@@ -11271,7 +11318,15 @@ function quitarEquipoAlq(idx){
 function finBloqueoAlq(a){
   if(!a) return null;
   if(a.pickupPendiente) return a.pickupPendienteDesde || a.fechaRetiro || a.fin;
-  const menosUnDia = f => { const d=new Date(f+'T00:00:00'); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10); };
+  // OJO: con una fecha imposible guardada (el caso del año de 5 cifras), toISOString()
+  // no devuelve "algo raro": LANZA un error y corta la ejecución de todo lo que venía
+  // llamando. Eso es lo que rompía el desplegable de equipos al abrir un alquiler —
+  // se quedaba a medio dibujar. Si la fecha no sirve, se devuelve tal cual y que cada
+  // quien decida; lo que no puede es tirar abajo la pantalla.
+  const menosUnDia = f => {
+    if(!fechaValidaApp(f)) return f;
+    const d=new Date(f+'T00:00:00'); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10);
+  };
   if(a.retiradoAnticipado){
     // Regla del mediodía (ver diasAlquilerPorFecha / finFacturableAlq): si el retiro real
     // fue antes de las 12:00, ese día queda libre para arrancar OTRO alquiler ese mismo día
@@ -11436,7 +11491,9 @@ function actualizarDisponibilidadAlq(excludeAlqId){
             // era "fin + 1 día" calculado acá aparte, y con la regla del mediodía dejó de
             // coincidir: el cartel mandaba a cargar un día más tarde de lo necesario.
             let desdeCuandoLibre='', notaMediodia='';
-            if(!conflicto.abierto && conflicto.fin){
+            // fechaValidaApp: si el alquiler que choca tiene la fecha mal cargada, esta
+            // cuenta lanzaba y se llevaba puesto el aviso entero.
+            if(!conflicto.abierto && conflicto.fin && fechaValidaApp(finBloqueoAlq(conflicto))){
               const fb = finBloqueoAlq(conflicto);
               const d=new Date(fb+'T00:00:00'); d.setDate(d.getDate()+1);
               desdeCuandoLibre=fmtD(d.toISOString().slice(0,10));
@@ -11780,7 +11837,8 @@ async function onAlqEqChange(idx, selEl){
     if(desde&&hasta&&hasta>=desde){
       const horaRetiro=document.getElementById('alq-hora-retiro').value||'08:00';
       const dias=diasAlquilerPorFecha(desde, hasta, horaRetiro);
-      calcPrecioAlq(dias, idx);
+      // Con una fecha imposible esto daba NaN y el precio quedaba en "$NaN".
+      if(dias!==null) calcPrecioAlq(dias, idx);
     }
   }
   actualizarDisponibilidadAlq();
@@ -12182,7 +12240,58 @@ function calcPrecioAlqHoras(bloques, idx){
 // (lunes, martes, miércoles). Si volviera miércoles antes de las 12:00 → 2 días.
 // Esta es la ÚNICA función que debe calcular días a partir de fecha+hora — todos
 // los lugares que antes hacían la cuenta a mano (ms de diferencia) llaman a esta.
+/* ═══════════════════════════════════════════════════════════════════════════
+   FECHAS IMPOSIBLES
+
+   Un campo de fecha del navegador acepta años de hasta SEIS cifras. Si al tipear
+   el año se te va un dígito —"22026" en vez de "2026"— el campo lo toma como
+   válido y no dice nada. Pero para el navegador "22026-08-06" NO es una fecha
+   real: cualquier cuenta con ella da NaN.
+
+   Eso fue exactamente lo que pasó: un alquiler quedó guardado con fin en el año
+   22026, la cantidad de días dio "NaN", el precio dio "$NaN", y en la lista se
+   leía "null días". Y nada lo frenó al guardar.
+
+   Estas dos funciones son la barrera. Hay que usarlas ANTES de calcular nada con
+   una fecha que vino de un campo de pantalla.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const FECHA_MIN_APP = '2020-01-01';
+const FECHA_MAX_APP = '2100-12-31';
+
+function fechaValidaApp(str){
+  // La regex es lo que ataja el caso del año de cinco cifras: exige 4 y nada más.
+  if(!str || typeof str!=='string' || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+  const d = new Date(str+'T00:00:00');
+  if(isNaN(d.getTime())) return false;                 // ej: 2026-02-31
+  if(d.toISOString().slice(0,10) !== str) return false; // el 31/02 "rebalsa" a marzo
+  return str >= FECHA_MIN_APP && str <= FECHA_MAX_APP;
+}
+// Para los carteles: explica qué tiene de malo, no solo que está mal.
+function porQueLaFechaEstaMal(str){
+  if(!str) return 'está vacía';
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(str)){
+    const anio = String(str).split('-')[0];
+    if(anio && anio.length>4) return `el año quedó en ${anio} (de más de 4 cifras)`;
+    return 'no tiene el formato de una fecha';
+  }
+  if(str < FECHA_MIN_APP) return `el año ${str.slice(0,4)} es demasiado viejo`;
+  if(str > FECHA_MAX_APP) return `el año ${str.slice(0,4)} está demasiado lejos`;
+  return 'no existe en el calendario';
+}
+
+// Los alquileres que YA quedaron guardados con una fecha imposible. Se avisan en
+// Inicio para que no sigan ahí dando números rotos (ver renderAvisoFechasRotas).
+function alquileresConFechaRota(){
+  return (ALQUILERES||[]).filter(a=>
+    a.activo!==false && !a.modoHoras &&
+    ((a.inicio && !fechaValidaApp(a.inicio)) || (a.fin && !fechaValidaApp(a.fin)))
+  );
+}
+
 function diasAlquilerPorFecha(desde, hasta, horaRetiro){
+  // Sin esto, una fecha imposible devuelve NaN y el NaN se propaga a los días, al
+  // precio y al total — que es como terminó guardándose un alquiler roto.
+  if(!fechaValidaApp(desde) || !fechaValidaApp(hasta)) return null;
   const d1=new Date(desde+'T00:00:00').getTime();
   const d2=new Date(hasta+'T00:00:00').getTime();
   const diffDiasCalendario=Math.round((d2-d1)/86400000);
@@ -12203,6 +12312,10 @@ function diasAlquilerPorFecha(desde, hasta, horaRetiro){
 function finFacturableAlq(a){
   if(!a.fin || !a.inicio) return a.fin;
   if(a.fin===a.inicio) return a.fin;
+  // Con una fecha imposible guardada, el toISOString de abajo LANZA y se lleva puesta
+  // la pantalla que lo haya llamado (el detalle del alquiler, la facturación). Se
+  // devuelve la fecha tal cual: que se vea el disparate, pero que no rompa nada.
+  if(!fechaValidaApp(a.fin)) return a.fin;
   const cuentaUltimoDia=(a.horaRetiro||'00:00')>'12:00';
   if(cuentaUltimoDia) return a.fin;
   const d=new Date(a.fin+'T00:00:00'); d.setDate(d.getDate()-1);
@@ -12217,6 +12330,23 @@ function calcDiasAlq(){
   const abierto=document.getElementById('alq-abierto').checked;
   const horaEntrega=document.getElementById('alq-hora-entrega').value||'08:00';
   const horaRetiro=document.getElementById('alq-hora-retiro').value||'08:00';
+  // Antes de cualquier cuenta: que las dos fechas sean fechas de verdad. Si no, se
+  // avisa en el mismo renglón donde iría la cantidad de días, en rojo, y no se calcula
+  // nada — así no aparece un "NaN días" ni un precio inventado.
+  const malDesde = desde && !fechaValidaApp(desde);
+  const malHasta = hasta && !fechaValidaApp(hasta);
+  if(malDesde || malHasta){
+    const cual = malDesde && malHasta ? 'Las fechas están' : (malDesde ? 'La fecha "desde" está' : 'La fecha "hasta" está');
+    const motivo = porQueLaFechaEstaMal(malDesde ? desde : hasta);
+    res.innerHTML = `<span style="color:var(--rojo)">⚠ ${cual} mal: ${motivo}. Corregila para poder guardar.</span>`;
+    res.style.display='block';
+    document.getElementById('alq-precio-box').style.display='none';
+    alqEquiposState.forEach(r=>{ r.precio=0; r.precioDetalle=''; });
+    renderEquiposAlqRows();
+    retiroRes.textContent='';
+    calcTotalAlq();
+    return;
+  }
   if(desde&&hasta&&hasta>=desde){
     // Días por fecha calendario + regla del mediodía (ver diasAlquilerPorFecha):
     // el día de salida siempre cuenta completo, el de retiro solo si es después
@@ -12342,6 +12472,17 @@ async function guardarAlq(){
   if(!alqClienteElegido){alert('Seleccioná un cliente');return;}
   if(!filas.length){alert('Seleccioná al menos un equipo');return;}
   if(!desde||!hasta){alert('Ingresá las fechas');return;}
+  // LA BARRERA. Sin esto se guardó un alquiler con fin en el año 22026, y de ahí en
+  // adelante los días y el precio quedaron en NaN para siempre. Un campo de fecha del
+  // navegador acepta años de más de 4 cifras sin chistar — ver fechaValidaApp.
+  if(!fechaValidaApp(desde)){
+    alert(`La fecha "desde" (${desde}) no es una fecha válida: ${porQueLaFechaEstaMal(desde)}.\n\nCorregila y volvé a guardar.`);
+    document.getElementById('alq-desde').focus(); return;
+  }
+  if(!fechaValidaApp(hasta)){
+    alert(`La fecha "hasta" (${hasta}) no es una fecha válida: ${porQueLaFechaEstaMal(hasta)}.\n\nCorregila y volvé a guardar.`);
+    document.getElementById('alq-hasta').focus(); return;
+  }
   if(hasta<desde){alert('La fecha hasta debe ser posterior al inicio');return;}
   if(alqFleteMode===null){alert('Seleccioná una opción de flete');return;}
   const localidad=document.getElementById('alq-localidad').value.trim();
@@ -12697,9 +12838,21 @@ function editarAlq(id){
     calcHorasAlq();
   } else {
     setAlqPerModo('fechas');
-    document.getElementById('alq-desde').value = a.inicio;
-    document.getElementById('alq-hasta').value = a.fin;
+    // Si la fecha guardada es imposible (el caso del año de 5 cifras), el campo se deja
+    // VACÍO en vez de volver a cargar el disparate: así se elige del calendario en vez
+    // de tener que borrar a mano un "22026". El foco va directo al campo que falta.
+    const desdeOk = fechaValidaApp(a.inicio), hastaOk = fechaValidaApp(a.fin);
+    document.getElementById('alq-desde').value = desdeOk ? a.inicio : '';
+    document.getElementById('alq-hasta').value = hastaOk ? a.fin : '';
     calcDiasAlq();
+    if(!desdeOk || !hastaOk){
+      const campo = document.getElementById(!desdeOk ? 'alq-desde' : 'alq-hasta');
+      setTimeout(()=>{ campo.focus(); try{ campo.showPicker(); }catch(e){} }, 250);
+      const cual = !desdeOk ? 'desde' : 'hasta';
+      const valorViejo = !desdeOk ? a.inicio : a.fin;
+      setTimeout(()=>alert(`La fecha "${cual}" de este alquiler estaba mal cargada (decía ${valorViejo}).\n\n`
+        + `La dejé vacía para que elijas la correcta del calendario. Al guardar se recalculan los días y el precio.`), 60);
+    }
   }
   document.getElementById('alq-tarifa-clasica').checked = !!a.tarifaClasica;
   document.getElementById('alq-sin-factura').checked = !!a.sinFactura;
@@ -14866,7 +15019,8 @@ function abrirPeriodoFactura(id){
   // Sugerencia: desde el día siguiente al último facturado (o el inicio, si es la
   // primera) hasta hoy. Es lo más habitual; si la factura dice otra cosa, se cambia.
   let sugDesde;
-  if(esPrimera){ sugDesde = a.inicio; }
+  // fechaValidaApp: con la fecha de fin rota esto lanzaba y no se abría la facturación.
+  if(esPrimera || !fechaValidaApp(a.fin)){ sugDesde = fechaValidaApp(a.inicio) ? a.inicio : ''; }
   else { const d=new Date(a.fin+'T00:00:00'); d.setDate(d.getDate()+1); sugDesde=d.toISOString().slice(0,10); }
   const hoy=hoyISO();
   document.getElementById('perfact-desde').value = sugDesde;
