@@ -1948,6 +1948,25 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
             </div>
           </div>
           <div id="alq-dias-resumen" style="font-size:.75rem;color:var(--verde);font-weight:700;margin-bottom:.3rem;display:none;"></div>
+
+          <!-- SALE ANTES DEL DEPÓSITO. Caso típico: el alquiler arranca mañana 8 de la
+               mañana, pero el camión de Rosso pasa a cargar la máquina hoy a las 17.
+               Sin esto, taller veía el alquiler en "Para entregar" recién mañana y nadie
+               le avisaba de cargarlo hoy. Lo que se cobra NO cambia: se sigue facturando
+               desde la fecha de inicio del alquiler. Ver fechaAvisoEntrega(). -->
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:.4rem">
+            <input type="checkbox" id="alq-salida-antes-check" onchange="toggleSalidaAntesAlq()" style="margin-top:2px">
+            <span><span style="font-size:.83rem;font-weight:700;color:var(--txt)">El equipo sale antes del depósito</span>
+            <span style="display:block;font-size:.74rem;color:var(--txt2);margin-top:1px">Cuando el camión lo carga el día anterior. Taller recibe el aviso ese día.</span></span>
+          </label>
+          <div id="alq-salida-antes-box" style="display:none;margin-bottom:.6rem;background:var(--bg3);border-radius:8px;padding:.6rem .7rem">
+            <div class="row2">
+              <div><label class="flabel">Sale del depósito el</label><input type="date" id="alq-salida-fecha" onchange="avisoSalidaAntes()"></div>
+              <div><label class="flabel">A las</label><input type="time" id="alq-salida-hora" value="17:00" onchange="avisoSalidaAntes()"></div>
+            </div>
+            <div id="alq-salida-aviso" style="font-size:.76rem;color:var(--txt2);margin-top:.45rem;line-height:1.5"></div>
+          </div>
+
           <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:.6rem">
             <input type="checkbox" id="alq-tarifa-clasica" onchange="calcDiasAlq()" style="margin-top:2px">
             <span><span style="font-size:.83rem;font-weight:700;color:var(--txt)">Tarifa clásica</span>
@@ -3411,22 +3430,39 @@ function cotizTarjeta(p, urgente){
     ? (dias===0 ? 'lo llamaste hoy' : `lo llamaste hace ${dias} día${dias!==1?'s':''}`)
     : (dias===0 ? 'cotizada hoy'    : `cotizada hace ${dias} día${dias!==1?'s':''}`);
   const vueltas = p.segContactos ? ` · ${p.segContactos} llamada${p.segContactos!==1?'s':''}` : '';
-  const borde = urgente ? '#c62828' : '#00695c';
   const tildada = cotizTildadas.has(p.id);
-  return `<div class="pago-item" style="border-color:${borde}33;background:${borde}08;margin-bottom:.5rem;flex-wrap:wrap">
+  // Renglón compacto, no una tarjeta con botones del ancho de la pantalla: son varias
+  // y la idea es barrerlas de un vistazo. El monto va a la derecha, alineado, para
+  // poder comparar de arriba a abajo sin leer.
+  const colorFecha = urgente ? '#c62828' : 'var(--txt3)';
+  const btn = 'padding:4px 10px;font-size:.73rem;font-weight:700;border-radius:7px;cursor:pointer;white-space:nowrap';
+  return `<div style="display:flex;gap:9px;align-items:flex-start;padding:.55rem .7rem;border:1px solid var(--border);border-left:3px solid ${urgente?'#c62828':'var(--border2)'};border-radius:8px;margin-bottom:.35rem;background:var(--bg2)">
     <input type="checkbox" class="cotiz-tilde" data-id="${p.id}" ${tildada?'checked':''}
            onchange="cotizTildar(${p.id}, this.checked)" title="Marcar para sacar de la lista"
-           style="width:17px;height:17px;flex-shrink:0;margin-right:10px;cursor:pointer;accent-color:#00695c">
-    <div class="pago-info">
-      <div class="pago-concepto" style="font-size:1rem">${p.clienteNombre||'(sin cliente)'}</div>
-      <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${p.equipo||''} · ${p.dias} día${p.dias!==1?'s':''} · ${fmt(p.total)}</div>
-      <div class="pago-meta" style="font-size:.8rem;margin-top:2px;color:${urgente?'#c62828':'var(--txt3)'};font-weight:${urgente?'700':'400'}">${cuando}${vueltas}${p.creadoPor?' · cotizó '+p.creadoPor:''}</div>
-    </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:6px">
-      ${tel?`<a href="tel:${tel}" class="btn-lim" style="padding:6px 10px;font-size:.75rem;text-decoration:none;flex:1;text-align:center;min-width:100px">${p.clienteTelefono}</a>`:''}
-      <button onclick="cotizRegistrarContacto(${p.id})" class="btn-nuevo" style="padding:6px 10px;font-size:.75rem;flex:1;min-width:120px">Lo llamé, sigue viéndolo</button>
+           style="width:16px;height:16px;flex-shrink:0;margin-top:2px;cursor:pointer;accent-color:#00695c">
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+        <span style="font-weight:700;font-size:.88rem;color:var(--txt);overflow-wrap:anywhere">${p.clienteNombre||'(sin cliente)'}</span>
+        <span style="font-weight:700;font-size:.84rem;color:var(--txt);white-space:nowrap">${fmt(p.total)}</span>
+      </div>
+      <div style="font-size:.78rem;color:var(--txt2);margin-top:1px">${p.equipo||''} · ${p.dias} día${p.dias!==1?'s':''}</div>
+      <div style="font-size:.74rem;color:${colorFecha};font-weight:${urgente?'700':'400'};margin-top:1px">${cuando}${vueltas}${p.creadoPor?' · '+p.creadoPor:''}</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:.45rem">
+        ${tel?`<a href="tel:${tel}" style="${btn};background:none;border:1px solid var(--border2);color:var(--txt2);text-decoration:none">${p.clienteTelefono}</a>`:''}
+        <button onclick="cotizRegistrarContacto(${p.id})" style="${btn};background:none;border:1px solid var(--border2);color:var(--txt)">Lo llamé</button>
+        ${p.cot?`<button onclick="cotizConfirmada(${p.id})" style="${btn};background:var(--verde);border:1px solid var(--verde);color:#fff">Lo confirmó</button>`:''}
+      </div>
     </div>
   </div>`;
+}
+
+// El cliente dijo que sí. No hay un estado "ganada" aparte: la cotización se convierte
+// en alquiler, y es eso lo que la saca de la lista (estadoConv pasa a 'convertido' al
+// guardar el alquiler — ver guardarAlq). Así no quedan dos verdades sobre lo mismo.
+function cotizConfirmada(id){
+  const p=(PRESUPUESTOS||[]).find(x=>x.id===id);
+  if(!p || !p.cot){ alert('Esta cotización es vieja y no guarda los datos para pasarla a alquiler. Cargalo a mano.'); return; }
+  convertirEnAlquiler(p.cot, p.id);
 }
 
 function renderSeguimientoCotiz(){
@@ -3449,30 +3485,30 @@ function renderSeguimientoCotiz(){
   const idsVivos = new Set([...vencidas, ...esperando, ...recientes].map(p=>p.id));
   [...cotizTildadas].forEach(id=>{ if(!idsVivos.has(id)) cotizTildadas.delete(id); });
 
-  const titulo = (txt, n, color) => `<div style="font-size:.72rem;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.04em;margin:.9rem 0 6px">${txt} (${n})</div>`;
-  let h = `<div id="cotiz-barra-tildadas" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;background:var(--bg3);border:1px solid var(--border2);border-radius:9px;padding:.5rem .7rem;margin-bottom:.7rem;position:sticky;top:0;z-index:3">
-      <span id="cotiz-tildadas-texto" style="font-size:.82rem;font-weight:700;color:var(--txt)"></span>
+  const titulo = (txt, n, color, primero) => `<div style="font-size:.68rem;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.05em;margin:${primero?'.2rem':'1rem'} 0 .4rem">${txt} · ${n}</div>`;
+  let h = `<div id="cotiz-barra-tildadas" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:.45rem .6rem;margin-bottom:.5rem;position:sticky;top:0;z-index:3">
+      <span id="cotiz-tildadas-texto" style="font-size:.8rem;font-weight:700;color:var(--txt)"></span>
       <span style="flex:1"></span>
-      <button onclick="cotizTildarTodas()" class="btn-lim" style="padding:5px 10px;font-size:.75rem">Marcar todas</button>
-      <button onclick="cotizSacarTildadas()" class="btn-lim" style="padding:5px 10px;font-size:.75rem;color:var(--rojo);border-color:var(--rojo)">Sacar de la lista</button>
-    </div>
-    <div style="font-size:.74rem;color:var(--txt3);margin-bottom:.6rem">Tildá las que ya no vas a seguir y sacalas de la lista. No se borran: quedan en el historial de presupuestos.</div>`;
+      <button onclick="cotizTildarTodas()" class="btn-lim" style="padding:4px 9px;font-size:.73rem">Marcar todas</button>
+      <button onclick="cotizSacarTildadas()" class="btn-lim" style="padding:4px 9px;font-size:.73rem;color:var(--rojo);border-color:var(--rojo)">Sacar de la lista</button>
+    </div>`;
 
   if(vencidas.length){
-    h += titulo(`Hay que llamar — pasaron ${DIAS_RECORDAR_COTIZ} días o más`, vencidas.length, '#c62828').replace('margin:.9rem','margin:.1rem');
+    h += titulo(`Hay que llamar — ${DIAS_RECORDAR_COTIZ} días o más`, vencidas.length, '#c62828', true);
     h += vencidas.map(p=>cotizTarjeta(p, true)).join('');
   }
   if(esperando.length){
-    h += titulo('Ya los llamaste, lo están viendo', esperando.length, 'var(--txt2)');
+    h += titulo('Ya los llamaste', esperando.length, 'var(--txt3)', !vencidas.length);
     h += esperando.map(p=>cotizTarjeta(p, false)).join('');
   }
   if(recientes.length){
-    h += titulo('Recién cotizadas', recientes.length, 'var(--txt2)');
+    h += titulo('Recién cotizadas', recientes.length, 'var(--txt3)', !vencidas.length && !esperando.length);
     h += recientes.map(p=>cotizTarjeta(p, false)).join('');
   }
   if(!vencidas.length){
-    h = `<p style="color:var(--txt3);font-size:.85rem;padding:.2rem 0 .4rem">Ninguna para llamar hoy. Las de abajo vuelven a aparecer a los ${DIAS_RECORDAR_COTIZ} días.</p>` + h;
+    h = `<p style="color:var(--txt3);font-size:.8rem;margin:0 0 .5rem">Ninguna para llamar hoy. Vuelven a aparecer a los ${DIAS_RECORDAR_COTIZ} días.</p>` + h;
   }
+  h += `<div style="font-size:.72rem;color:var(--txt3);margin-top:.7rem;line-height:1.5">Tildá y "Sacar de la lista" las que ya no vas a seguir — no se borran, quedan en el historial. "Lo confirmó" la pasa a alquiler.</div>`;
   document.getElementById('dash-segcotiz-container').innerHTML = h;
   // La barra se dibuja escondida: recién aparece cuando hay algo tildado. Y como el
   // innerHTML de arriba la rehace de cero, hay que volver a poner el contador.
@@ -5530,10 +5566,30 @@ function guardarPagos(){
 // que lo nuevo, o la franja se vuelve parte del paisaje y dejan de verla.
 const DIAS_ENTREGA_VIEJA = 2;
 
+/* ¿Qué día tiene que enterarse taller?
+
+   Normalmente, el día que arranca el alquiler. Pero hay un caso muy común que
+   antes se perdía: el alquiler empieza mañana a las 8 y el camión de Rosso pasa
+   a cargar la máquina HOY a las 17. Taller veía el aviso recién mañana — tarde.
+
+   Si el alquiler tiene puesto "sale antes del depósito", manda esa fecha. Lo que
+   se factura no cambia: eso sigue saliendo de a.inicio. */
+function fechaAvisoEntrega(a){
+  return a.salidaDeposito || a.inicio;
+}
+// La hora que le importa a taller: la de cargar si sale antes, si no la de entrega.
+function horaAvisoEntrega(a){
+  return a.salidaDeposito ? (a.horaSalidaDeposito||'') : (a.horaEntrega||'');
+}
+// ¿Este alquiler sale del depósito antes de arrancar, y todavía no arrancó?
+function saleAntesYNoArranco(a, hoy){
+  return !!a.salidaDeposito && a.inicio > (hoy || hoyISO());
+}
+
 function pendientesDeEntrega(){
   const hoy = hoyISO();
   return (ALQUILERES||[]).filter(a =>
-    a.activo!==false && a.entregaPendiente && !a.pausado && a.inicio && a.inicio<=hoy);
+    a.activo!==false && a.entregaPendiente && !a.pausado && a.inicio && fechaAvisoEntrega(a)<=hoy);
 }
 
 function actualizarFranjaTaller(){
@@ -5675,8 +5731,12 @@ function renderDashboard(){
   const alqHoyList=ALQUILERES.filter(a=>a.inicio===hoyStr2 && a.activo!==false && !a.modoHoras && !a.pausado).sort(porFechaYHora('inicio','horaEntrega'));
   // Separada en dos: lo que arranca el resto de ESTA semana (se va actualizando día a día,
   // achicándose a medida que pasan los días) y lo que arranca la semana QUE VIENE completa.
-  const alqEstaSemanaList=ALQUILERES.filter(a=>a.inicio>hoyStr2&&a.inicio<=finSemanaActualStr).sort(porFechaYHora('inicio','horaEntrega'));
-  const alqProximaSemanaList=ALQUILERES.filter(a=>a.inicio>finSemanaActualStr&&a.inicio<=finSemStr).sort(porFechaYHora('inicio','horaEntrega'));
+  // Mismos descartes que "Arrancan hoy", que los tenía y estas dos no: un alquiler
+  // pausado (o dado de baja, o por hora) no ocupa el equipo, así que no tiene por qué
+  // seguir anunciándose como algo que arranca. Si se reanuda, vuelve a aparecer solo.
+  const arrancaDeVerdad = a => a.activo!==false && !a.modoHoras && !a.pausado;
+  const alqEstaSemanaList=ALQUILERES.filter(a=>arrancaDeVerdad(a)&&a.inicio>hoyStr2&&a.inicio<=finSemanaActualStr).sort(porFechaYHora('inicio','horaEntrega'));
+  const alqProximaSemanaList=ALQUILERES.filter(a=>arrancaDeVerdad(a)&&a.inicio>finSemanaActualStr&&a.inicio<=finSemStr).sort(porFechaYHora('inicio','horaEntrega'));
   // Equipos que se liberan en los próximos días: alquileres con fecha de retorno YA
   // CONFIRMADA (no "abiertos", que no tienen fecha definida) cuyo "fin" cae en lo que
   // resta de esta semana o en la semana que viene — para poder ofrecerle ese equipo a
@@ -5720,15 +5780,24 @@ function renderDashboard(){
   };
   // Para entregar: alquileres ya cargados (inicio hoy o ya pasado) cuyo equipo todavía no salió
   // físicamente del depósito. Mientras esto sea true, el equipo sigue contando como disponible.
-  const paraEntregarList=ALQUILERES.filter(a=>a.entregaPendiente && a.inicio<=hoyStr2 && !a.pausado).sort((a,b)=>a.inicio.localeCompare(b.inicio)||(a.horaEntrega||'').localeCompare(b.horaEntrega||''));
+  const paraEntregarList=ALQUILERES.filter(a=>a.entregaPendiente && fechaAvisoEntrega(a)<=hoyStr2 && !a.pausado)
+    .sort((a,b)=>fechaAvisoEntrega(a).localeCompare(fechaAvisoEntrega(b))||horaAvisoEntrega(a).localeCompare(horaAvisoEntrega(b)));
   document.getElementById('dc-badge-para-entregar').textContent=paraEntregarList.length;
   document.getElementById('dc-para-entregar').style.display = paraEntregarList.length ? 'block' : 'none';
   document.getElementById('dash-para-entregar-container').innerHTML = paraEntregarList.length
-    ? paraEntregarList.map(a=>`<div class="pago-item" style="border-color:var(--azul)33;background:var(--azul)08;cursor:pointer;margin-bottom:.5rem" onclick="verDetalleAlq(${a.id})">
+    ? paraEntregarList.map(a=>{
+      // Si sale antes del depósito, lo que taller tiene que hacer hoy es CARGARLO, no
+      // entregarlo: el alquiler arranca otro día. Decirle "Entrega 7/10" cuando el
+      // camión pasa hoy es justamente el aviso que se perdía.
+      const cargaAnticipada = saleAntesYNoArranco(a, hoyStr2);
+      const linea = cargaAnticipada
+        ? `${a.cliente} · <b style="color:var(--azul)">Cargar ${fmtD2(a.salidaDeposito)} ${a.horaSalidaDeposito||''}</b> · el alquiler arranca ${fmtD2(a.inicio)} ${a.horaEntrega||''}`
+        : `${a.cliente} · Entrega ${fmtD2(a.inicio)} ${a.horaEntrega||''}`;
+      return `<div class="pago-item" style="border-color:var(--azul)33;background:var(--azul)08;cursor:pointer;margin-bottom:.5rem" onclick="verDetalleAlq(${a.id})">
         <div style="width:11px;height:11px;border-radius:50%;background:var(--azul);flex-shrink:0"></div>
         <div class="pago-info">
           <div class="pago-concepto" style="font-size:1rem">${a.equipoNombre}</div>
-          <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${a.cliente} · Entrega ${fmtD2(a.inicio)} ${a.horaEntrega||''}</div>
+          <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${linea}</div>
         </div>
         ${/* Sin checklist, taller va al checklist. Oficina (Mateo/Walter) antes veía
               "Esperando a taller" y nada más: si taller se olvidaba o no estaba, el equipo
@@ -5736,15 +5805,16 @@ function renderDashboard(){
               Ahora puede marcar la salida igual — el checklist queda pendiente y anotado
               (ver marcarEquipoEntregado). */''}
         ${checklistSalidaListo(a.id)
-          ? `<button id="btn-salida-${a.id}" onclick="event.stopPropagation();marcarEquipoEntregado(${a.id})" class="btn-nuevo" style="padding:6px 10px;font-size:.75rem">Marcar salida</button>`
+          ? `<button id="btn-salida-${a.id}" onclick="event.stopPropagation();marcarEquipoEntregado(${a.id})" class="btn-nuevo" style="padding:6px 10px;font-size:.75rem">${cargaAnticipada?'Lo cargué':'Marcar salida'}</button>`
           : ROL_ACTUAL==='taller'
             ? `<button onclick="event.stopPropagation();abrirContrato(${a.id});setContratoTab('salida')" class="btn-lim" style="padding:6px 10px;font-size:.75rem;border-color:var(--azul);color:var(--azul)">Checklist de salida</button>`
             : `<span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
                  <span style="font-size:.7rem;color:var(--txt3);white-space:nowrap">sin checklist</span>
-                 <button id="btn-salida-${a.id}" onclick="event.stopPropagation();marcarEquipoEntregado(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem;white-space:nowrap">Marcar salida</button>
+                 <button id="btn-salida-${a.id}" onclick="event.stopPropagation();marcarEquipoEntregado(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem;white-space:nowrap">${cargaAnticipada?'Lo cargué':'Marcar salida'}</button>
                </span>`
         }
-      </div>`).join('')
+      </div>`;
+    }).join('')
     : '';
 
   // Contratos listos para enviar: el equipo ya salió y el checklist de salida (con fotos)
@@ -6124,15 +6194,22 @@ function applyDashCollapseState(key){
   header.classList.toggle('dc-open', open);
   body.style.display = open?'block':'none';
 }
-// Pares que no conviene ver juntos: ocupan mucho y uno tapa al otro. Al abrir uno,
-// el companero se cierra solo (acordeon).
-const PARES_ACORDEON = [['alqSemana','liberaSemana']];
+// Los desplegables del Inicio funcionan como acordeon: al abrir uno se cierra el que
+// estaba abierto. Son muchos y largos — con dos o tres abiertos hay que scrollear un
+// monton para encontrar lo que se busca.
+// OJO: solo los del Inicio. Los de Impuestos y Pago a Proveedores viven en otras
+// pantallas y ahi conviene poder tener varios abiertos a la vez (por eso "impVencHoy"
+// arranca abierto a proposito).
+const ACORDEON_INICIO = ['paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
+  'solEspera','solicitudes','segcotiz','presuptaller','contratosListos','alqHoy','alqSemana','cargadoHoy'];
 function toggleDashCollapse(key){
   dashCollapseOpen[key]=!dashCollapseOpen[key];
-  if(dashCollapseOpen[key]){
-    PARES_ACORDEON.forEach(par=>{
-      if(par[0]===key && dashCollapseOpen[par[1]]){ dashCollapseOpen[par[1]]=false; applyDashCollapseState(par[1]); }
-      if(par[1]===key && dashCollapseOpen[par[0]]){ dashCollapseOpen[par[0]]=false; applyDashCollapseState(par[0]); }
+  if(dashCollapseOpen[key] && ACORDEON_INICIO.includes(key)){
+    ACORDEON_INICIO.forEach(otro=>{
+      if(otro!==key && dashCollapseOpen[otro]){
+        dashCollapseOpen[otro]=false;
+        applyDashCollapseState(otro);
+      }
     });
   }
   applyDashCollapseState(key);
@@ -8846,6 +8923,13 @@ function estadoRealEq(eq, alquileresArr){
   // que se reanude el alquiler.
   const activo=alquileresArr.find(a=>a.equipoId===eq.id && !a.modoHoras && !a.entregaPendiente && !a.pausado && alqEstaActivoHoy(a,hoy));
   if(activo) return {estado:'alquilado', cliente:activo.cliente, alquiler:activo};
+  // Ya salió del depósito pero el alquiler todavía no arrancó: es el equipo que el
+  // camión cargó ayer a la tarde para un alquiler que empieza hoy a la mañana. La
+  // máquina NO está, así que no se puede prometer a otro cliente — aunque el alquiler
+  // recién empiece a contar (y a facturarse) su día de inicio.
+  const yaCargado=alquileresArr.find(a=>a.equipoId===eq.id && !a.modoHoras && !a.pausado
+    && a.activo!==false && !a.entregaPendiente && a.entregaFisicaFecha && a.inicio>hoy);
+  if(yaCargado) return {estado:'alquilado', cliente:yaCargado.cliente, alquiler:yaCargado, cargadoEsperandoInicio:true};
   return {estado:'disponible', cliente:''};
 }
 
@@ -8991,6 +9075,11 @@ function alqFinPintado(a, hoy){
 function getAlqDia(f){
   const hoy=new Date(); hoy.setHours(0,0,0,0);
   return ALQUILERES.filter(a=>{
+    // Un alquiler pausado no ocupa el equipo: mientras esté pausado la máquina está
+    // disponible para otro cliente (ver estadoRealEq, que ya lo trataba así). Si el
+    // calendario lo sigue pintando, muestra ocupado algo que en realidad está libre.
+    // Los dados de baja tampoco. Al reanudar vuelven a pintarse solos.
+    if(a.pausado || a.activo===false) return false;
     const i=new Date(a.inicio+'T00:00:00');
     const n=alqFinPintado(a,hoy);
     return f>=i && f<=n;
@@ -9008,7 +9097,9 @@ function getEquipoColor(eqId){
 
 function getRetirosDia(f){
   const fStr=f.toISOString().slice(0,10);
-  return ALQUILERES.filter(a=>!a.abierto && !a.retiradoAnticipado && a.fechaRetiro===fStr);
+  // Mismo criterio que getAlqDia: si está pausado o dado de baja, tampoco hay un retiro
+  // que anunciar en el calendario.
+  return ALQUILERES.filter(a=>!a.pausado && a.activo!==false && !a.abierto && !a.retiradoAnticipado && a.fechaRetiro===fStr);
 }
 function renderAlm(){
   const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -10783,10 +10874,17 @@ function cerrarDetallePresup(){
 
 function abrirHistorialPresupuestos(){
   document.getElementById('modal-historial-presup').style.display='flex';
+  // La lupita arrancaba con lo buscado la vez anterior, así que al abrir se veía una
+  // lista filtrada que parecía "todo lo que hay". Se limpia al abrir Y al cerrar: al
+  // abrir por si quedó algo de una sesión anterior, al cerrar para no dejarlo cargado.
+  const buscar = document.getElementById('hist-presup-buscar');
+  if(buscar) buscar.value='';
   renderHistorialPresupuestos('');
 }
 function cerrarHistorialPresupuestos(){
   document.getElementById('modal-historial-presup').style.display='none';
+  const buscar = document.getElementById('hist-presup-buscar');
+  if(buscar) buscar.value='';
 }
 function filtrarHistorialPresup(){
   renderHistorialPresupuestos(document.getElementById('hist-presup-buscar').value);
@@ -10794,7 +10892,14 @@ function filtrarHistorialPresup(){
 function renderHistorialPresupuestos(filtro){
   const cont = document.getElementById('hist-presup-lista');
   const f = (filtro||'').toLowerCase().trim();
-  let lista = PRESUPUESTOS;
+  // Ordenado siempre: lo último cargado arriba. Antes salía en el orden en que estaba
+  // el array, que viene de la base y no respeta ninguna fecha — así que el historial
+  // se veía desordenado y había que buscar a ojo el presupuesto de hace un rato.
+  let lista = [...PRESUPUESTOS].sort((a,b)=>{
+    const fa = a.creadoEn || (a.fecha ? new Date(a.fecha).getTime() : 0);
+    const fb = b.creadoEn || (b.fecha ? new Date(b.fecha).getTime() : 0);
+    return fb - fa;
+  });
   if(f){
     lista = lista.filter(p =>
       (p.clienteNombre||'').toLowerCase().includes(f) ||
@@ -11446,6 +11551,49 @@ function toggleUsdAlq(){
   document.getElementById('alq-usd-box').style.display = document.getElementById('alq-usd-check').checked ? 'block' : 'none';
 }
 
+// ── EL EQUIPO SALE ANTES DEL DEPÓSITO ─────────────────────────────────────
+// Propia y global: los fmtD2 que hay repartidos por el archivo son locales de cada
+// función y desde acá no se ven.
+function fechaCortaSalida(str){
+  if(!str) return '';
+  const [y,m,d] = str.split('-');
+  return `${d}/${m}`;
+}
+function toggleSalidaAntesAlq(){
+  const on = document.getElementById('alq-salida-antes-check').checked;
+  document.getElementById('alq-salida-antes-box').style.display = on ? 'block' : 'none';
+  if(on){
+    // Se propone el día anterior al inicio, que es el caso de siempre. Si no hay fecha
+    // de inicio todavía, se deja vacío y el aviso de abajo lo pide.
+    const campo = document.getElementById('alq-salida-fecha');
+    const desde = document.getElementById('alq-desde').value;
+    if(!campo.value && desde){
+      const d = new Date(desde + 'T12:00:00');
+      d.setDate(d.getDate() - 1);
+      campo.value = d.toISOString().slice(0,10);
+    }
+  }
+  avisoSalidaAntes();
+}
+
+// Dice en castellano qué va a pasar, para no tener que deducirlo de dos fechas sueltas.
+function avisoSalidaAntes(){
+  const el = document.getElementById('alq-salida-aviso');
+  if(!el) return;
+  if(!document.getElementById('alq-salida-antes-check').checked){ el.textContent=''; return; }
+  const f = document.getElementById('alq-salida-fecha').value;
+  const h = document.getElementById('alq-salida-hora').value || '17:00';
+  const desde = document.getElementById('alq-desde').value;
+  if(!desde){ el.innerHTML = '<span style="color:var(--rojo)">Poné primero la fecha desde cuándo es el alquiler.</span>'; return; }
+  if(!f){ el.innerHTML = '<span style="color:var(--rojo)">Elegí el día que el camión pasa a cargar.</span>'; return; }
+  if(f >= desde){
+    el.innerHTML = '<span style="color:var(--rojo)">Ese día tiene que ser <b>anterior</b> al inicio del alquiler. Si el equipo sale el mismo día, destildá la casilla.</span>';
+    return;
+  }
+  el.innerHTML = `Taller lo va a ver en <b>Para entregar</b> el ${fechaCortaSalida(f)} a las ${h}. `
+    + `El alquiler igual arranca el ${fechaCortaSalida(desde)} y se factura desde esa fecha.`;
+}
+
 function abrirModalAlq(){
   alqEditandoIds = [];
   window._origenSolicitudEsperaId = null; // se resetea acá; cargarAlquilerDesdeSolicitudEspera lo vuelve a setear DESPUÉS de llamar a esta función
@@ -11509,6 +11657,11 @@ function abrirModalAlq(){
   document.getElementById('alq-hora-entrega').value='08:00';
   document.getElementById('alq-hora-retiro').value='08:00';
   document.getElementById('alq-abierto').checked=false;
+  document.getElementById('alq-salida-antes-check').checked=false;
+  document.getElementById('alq-salida-antes-box').style.display='none';
+  document.getElementById('alq-salida-fecha').value='';
+  document.getElementById('alq-salida-hora').value='17:00';
+  document.getElementById('alq-salida-aviso').textContent='';
   document.getElementById('alq-tarifa-clasica').checked=false;
   document.getElementById('alq-sin-factura').checked=false;
   document.getElementById('alq-retiro-resumen').textContent='';
@@ -12315,6 +12468,18 @@ async function guardarAlq(){
   const grupoId = filas.length>1 ? Date.now() : null;
   const hoy=hoyISO();
   const modoHoras = alqPerModo==='horas';
+
+  // "El equipo sale antes del depósito": solo tiene sentido si la fecha es ANTERIOR al
+  // inicio. Si alguien pone una fecha igual o posterior, se ignora en vez de guardar un
+  // dato que después haría aparecer el aviso en el día equivocado.
+  let salidaDeposito = null, horaSalidaDeposito = null;
+  if(document.getElementById('alq-salida-antes-check').checked){
+    const f = document.getElementById('alq-salida-fecha').value;
+    if(f && desde && f < desde){
+      salidaDeposito = f;
+      horaSalidaDeposito = document.getElementById('alq-salida-hora').value || '17:00';
+    }
+  }
   const horasInput = modoHoras ? (parseFloat((document.getElementById('alq-horas-cant').value||'').replace(',','.'))||0) : 0;
   const bloques30 = modoHoras ? Math.ceil(horasInput/0.5) : 0;
   const horasFacturadas = bloques30*0.5;
@@ -12424,6 +12589,10 @@ async function guardarAlq(){
       // se conserva tal cual — solo un equipo genuinamente NUEVO arranca pendiente.
       entregaPendiente: modoHoras ? false : (orig ? (orig.entregaPendiente||false) : true),
       entregaPendienteDesde: modoHoras ? null : (orig && orig.entregaPendienteDesde ? orig.entregaPendienteDesde : hoy),
+      // El camión pasa a cargar antes de que arranque el alquiler (ver fechaAvisoEntrega).
+      // No cambia nada de lo que se cobra: solo adelanta el aviso a taller.
+      salidaDeposito: modoHoras ? null : salidaDeposito,
+      horaSalidaDeposito: modoHoras ? null : horaSalidaDeposito,
       grupoId, grupoCant: filas.length,
       modoHoras, minutosUso, bloques30, horasFacturadas,
       creadoEn, cargadoPor
@@ -12537,6 +12706,15 @@ function editarAlq(id){
   document.getElementById('alq-abierto').checked = !!a.abierto;
   document.getElementById('alq-hora-entrega').value = a.horaEntrega||'08:00';
   document.getElementById('alq-hora-retiro').value = a.horaRetiro||'08:00';
+  // Si el equipo salía antes del depósito, que al editar se siga viendo — y no se
+  // pierda sin querer al guardar de nuevo.
+  if(a.salidaDeposito){
+    document.getElementById('alq-salida-antes-check').checked = true;
+    document.getElementById('alq-salida-antes-box').style.display = 'block';
+    document.getElementById('alq-salida-fecha').value = a.salidaDeposito;
+    document.getElementById('alq-salida-hora').value = a.horaSalidaDeposito || '17:00';
+    avisoSalidaAntes();
+  }
 
   // Localidad y extras (van en el primer registro del grupo)
   document.getElementById('alq-localidad').value = primero.localidad||'';
@@ -12681,6 +12859,15 @@ function resumenAlquilerHTML(a){
   else if(a.retiradoAnticipado){
     if(a.pickupPendiente){ estadoLbl='Retiro anticipado — pendiente que taller lo confirme'; estadoColor='var(--rojo)'; }
     else { estadoLbl='Retirado anticipadamente'; estadoColor='var(--azul)'; }
+  }
+  // El camión pasa a cargar antes de que arranque: hay algo que hacer HOY aunque el
+  // alquiler sea de mañana. Va antes que los demás casos para que no lo tape un
+  // "Próximo" que no dice nada de la carga.
+  else if(a.entregaPendiente && saleAntesYNoArranco(a,hoy) && a.salidaDeposito<=hoy){
+    estadoLbl=`Para cargar — el camión pasa ${a.horaSalidaDeposito||''} (el alquiler arranca ${a.inicio.split('-').reverse().join('/')})`; estadoColor='var(--azul)';
+  }
+  else if(!a.entregaPendiente && a.entregaFisicaFecha && a.inicio>hoy){
+    estadoLbl='Cargado — sale el '+a.inicio.split('-').reverse().join('/'); estadoColor='var(--azul)';
   }
   else if(a.entregaPendiente && a.inicio<=hoy){ estadoLbl='Para entregar — pendiente que taller lo entregue'; estadoColor='var(--azul)'; }
   // El equipo ya volvió al depósito: el alquiler terminó, no importa que la fecha de fin
@@ -16223,8 +16410,15 @@ function renderRepPerdidas(){
 
 const DIRECTO_LS = 'rtz_entrada_directa';
 
+// OJO con el nombre del cajón: acá va escrito a mano y NO la constante de arriba.
+// Esta función se llama durante el arranque de la app (reentrarSiLaPestanaYaEntro,
+// mucho antes en el archivo), y en ese momento el "const" de arriba todavía no
+// existe: pedirlo tira un error que este try se tragaba en silencio. El resultado
+// era que la app contestaba "no hay entrada directa configurada" SIEMPRE, y seguía
+// pidiendo la clave aunque estuviera activada. Con el texto puesto acá no depende
+// de en qué orden se lea el archivo.
 function entradaDirectaGuardada(){
-  try{ return JSON.parse(localStorage.getItem(DIRECTO_LS) || 'null'); }catch(e){ return null; }
+  try{ return JSON.parse(localStorage.getItem('rtz_entrada_directa') || 'null'); }catch(e){ return null; }
 }
 
 // Muestra el boton del menu solo para Mateo, y con el texto segun como este.
