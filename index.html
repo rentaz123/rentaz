@@ -729,9 +729,11 @@ if ('serviceWorker' in navigator) {
       <span id="banner-aviso-pagoprov-txt"></span>
       <span style="opacity:.85;font-size:.75rem">Tocar para cerrar ✕</span>
     </div>
-    <div id="banner-aviso-alq" onclick="cerrarBannerAvisoAlq()" style="display:none;align-items:center;justify-content:space-between;gap:10px;background:#2e7d32;color:#fff;padding:.6rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;">
+    <!-- Al tocarlo se marca como visto y recién ahí se va. Antes solo se cerraba, y al
+         recargar la página el aviso se perdía del todo (ver refrescarBannerAlqNuevos). -->
+    <div id="banner-aviso-alq" onclick="marcarAlquileresVistos()" style="display:none;align-items:center;justify-content:space-between;gap:10px;background:#2e7d32;color:#fff;padding:.6rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;">
       <span id="banner-aviso-alq-txt"></span>
-      <span style="opacity:.85;font-size:.75rem">Tocar para cerrar ✕</span>
+      <span style="opacity:.85;font-size:.75rem">Tocar cuando lo vieron ✓</span>
     </div>
     <div id="banner-aviso-contrato" onclick="cerrarBannerAvisoContrato()" style="display:none;align-items:center;justify-content:space-between;gap:10px;background:#2e7d32;color:#fff;padding:.6rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;">
       <span id="banner-aviso-contrato-txt"></span>
@@ -3024,15 +3026,68 @@ function cerrarBannerAvisoPagoProv(){
 // Cuando oficina (admin o Walter) carga un alquiler nuevo, taller recibe el aviso de
 // que tiene un equipo para preparar: completar el checklist de salida (con fotos) y
 // generar el contrato antes de subirlo al camión.
+/* El aviso de alquiler nuevo era un cartel del momento: aparecía al detectar el
+   alquiler y, si recargabas la página, se perdía — en el taller actualizan seguido y
+   el aviso se evaporaba sin que nadie lo hubiera atendido.
+
+   Ahora es un ESTADO, como la franja roja: el cartel se vuelve a dibujar solo cada vez
+   que se abre la app y se queda hasta que alguien lo toca. Lo visto se anota en ESTA
+   computadora (no en la base): así cada puesto del taller marca lo suyo, y marcar en
+   una no le apaga el aviso al otro antes de que lo haya visto.
+
+   El corte de días es para que la primera vez no aparezca un cartel con todo lo viejo
+   que nunca se marcó: solo entran los cargados en los últimos días. */
+const ALQ_VISTOS_LS = 'rtz_alq_vistos';
+const DIAS_AVISO_ALQ_NUEVO = 3;
+
+function alqVistosIds(){
+  try{ return new Set(JSON.parse(localStorage.getItem('rtz_alq_vistos') || '[]')); }
+  catch(e){ return new Set(); }
+}
+function alquileresNuevosSinVer(){
+  const vistos = alqVistosIds();
+  const corte = Date.now() - DIAS_AVISO_ALQ_NUEVO*86400000;
+  return (ALQUILERES||[]).filter(a =>
+    a.entregaPendiente && a.activo!==false && !a.pausado &&
+    (a.creadoEn||0) > corte && !vistos.has(a.id));
+}
+// Tocar el cartel = "ya lo vimos". Se guardan los ids, no un simple "cerrado": si
+// mañana entra otro alquiler, el cartel vuelve a aparecer solo por ese.
+function marcarAlquileresVistos(){
+  const vistos = alqVistosIds();
+  (ALQUILERES||[]).forEach(a=>{ if(a.entregaPendiente) vistos.add(a.id); });
+  // Se recorta para que la lista no crezca sin fin.
+  const arr = [...vistos].slice(-300);
+  try{ localStorage.setItem('rtz_alq_vistos', JSON.stringify(arr)); }catch(e){}
+  cerrarBannerAvisoAlq();
+}
+
+// Vuelve a dibujar el cartel a partir de lo que hay sin ver. Se llama al entrar y cada
+// vez que cambian los datos, así sobrevive a recargar la página.
+function refrescarBannerAlqNuevos(){
+  if(ROL_ACTUAL!=='taller'){ cerrarBannerAvisoAlq(); return; }
+  const sinVer = alquileresNuevosSinVer();
+  if(!sinVer.length){ cerrarBannerAvisoAlq(); return; }
+  mostrarBannerAvisoAlq(textoAlquileresNuevos(sinVer), {parpadear:false});
+}
+
+function textoAlquileresNuevos(lista){
+  return lista.length===1
+    ? `Nuevo alquiler: ${lista[0].equipoNombre} para ${lista[0].cliente} — armá el checklist y el contrato`
+    : `${lista.length} alquileres nuevos para preparar (checklist + contrato)`;
+}
+
 function avisarAlquileresNuevos(previos, actuales){
   const idsPrevios = new Set((previos||[]).map(a=>a.id));
   const nuevos = (actuales||[]).filter(a=>a.entregaPendiente && !idsPrevios.has(a.id));
-  if(!nuevos.length) return;
+  if(!nuevos.length){
+    // Aunque no haya ninguno NUEVO en este momento, puede quedar alguno sin marcar de
+    // antes (de la sesión anterior, o de antes de recargar). El cartel tiene que seguir.
+    refrescarBannerAlqNuevos();
+    return;
+  }
   reproducirBeepAviso();
-  const txt = nuevos.length===1
-    ? `Nuevo alquiler: ${nuevos[0].equipoNombre} para ${nuevos[0].cliente} — armá el checklist y el contrato`
-    : `${nuevos.length} alquileres nuevos para preparar (checklist + contrato)`;
-  mostrarBannerAvisoAlq(txt);
+  mostrarBannerAvisoAlq(textoAlquileresNuevos(nuevos), {parpadear:true});
   actualizarFranjaTaller();
   parpadearFranjaTaller();
   if('Notification' in window && Notification.permission==='granted'){
@@ -3041,14 +3096,19 @@ function avisarAlquileresNuevos(previos, actuales){
     });
   }
 }
-function mostrarBannerAvisoAlq(txt){
+function mostrarBannerAvisoAlq(txt, opts){
   const banner=document.getElementById('banner-aviso-alq');
   if(!banner) return;
+  // El parpadeo es para cuando el alquiler entra EN VIVO y hay que llamar la atención.
+  // Al redibujar el cartel después de recargar no corresponde: ya lo vieron parpadear,
+  // y un cartel que parpadea cada vez que abrís la app se vuelve parte del paisaje.
   document.getElementById('banner-aviso-alq-txt').textContent = txt;
   banner.style.display='flex';
   banner.classList.remove('banner-blink');
-  void banner.offsetWidth;
-  banner.classList.add('banner-blink');
+  if(!opts || opts.parpadear!==false){
+    void banner.offsetWidth;
+    banner.classList.add('banner-blink');
+  }
 }
 function cerrarBannerAvisoAlq(){
   const banner=document.getElementById('banner-aviso-alq');
@@ -5017,6 +5077,9 @@ function entrarAlApp(){
   correrMigracionesQueGuardan();
   actualizarBotonBackup();
   actualizarFranjaTaller();
+  // El cartel de alquileres nuevos se vuelve a dibujar al entrar: si quedó alguno sin
+  // marcar, sigue ahí aunque hayan recargado la página.
+  try{ refrescarBannerAlqNuevos(); }catch(e){}
   renderEq();renderCl();initCal();renderDashboard();poblarLocalidadesDatalist();poblarSelectsFlete();
   if(ROL_ACTUAL==='admin' || ROL_ACTUAL==='facturacion' || ROL_ACTUAL==='taller') pedirPermisoNotificaciones();
 }
