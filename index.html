@@ -1520,6 +1520,16 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
       <div id="lista-eq"></div>
     </div>
 
+    <!-- HISTORIAL DE UNA MÁQUINA (hoja propia) ────────────────────────────────
+         Antes todo esto vivía apretado en una solapa de la ficha, dentro de un
+         cuadro de 460px: con muchos registros se volvía ilegible. Acá hay lugar
+         para leer y para filtrar. No es a todo lo ancho a propósito: una columna
+         de texto muy larga cansa más de lo que ayuda. -->
+    <div class="screen" id="screen-histmaq" style="max-width:820px">
+      <button onclick="goTo('equipos')" class="btn-lim" style="padding:5px 11px;font-size:.78rem;margin-bottom:.8rem">← Volver a Equipos</button>
+      <div id="histmaq-cont"></div>
+    </div>
+
     <!-- ALQUILERES -->
     <div class="screen" id="screen-alquileres">
       <div class="sec-title">Alquileres</div>
@@ -2209,7 +2219,7 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
 
   <!-- MODAL DETALLE ALQUILER (global, accesible desde cualquier pantalla) -->
   <div id="modal-alq-det" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:300;align-items:center;justify-content:center;">
-    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:380px;max-width:92vw;max-height:88vh;overflow-y:auto;">
+    <div id="modal-alq-det-caja" style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.5rem;width:380px;max-width:92vw;max-height:88vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
         <div style="font-size:1rem;font-weight:700;color:var(--txt);">Detalle del alquiler</div>
         <button onclick="ALQ_DET_ID=null;document.getElementById('modal-alq-det').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
@@ -2240,7 +2250,8 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
       </div>
 
       <div id="eq-ficha-cont"></div>
-      <div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border2);display:flex;gap:8px;">
+      <div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border2);display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="verHistorialMaquina(eqFichaId)" class="btn-nuevo" style="padding:8px 14px;font-size:.8rem">Ver la hoja completa de esta máquina</button>
         <button onclick="cerrarFichaEq()" class="btn-lim" style="padding:8px 16px;font-size:.8rem">✕ Cerrar</button>
       </div>
     </div>
@@ -5087,7 +5098,9 @@ function entrarAlApp(){
 // fletes). No ven Calendario ni Reportes, y nada del panel financiero.
 // Taller ya no cotiza: toma el pedido como SOLICITUD y la oficina sigue. El precio
 // diario se lo pueden decir al cliente mirando Precios, que si ven.
-const PANTALLAS_TALLER = ['home','calendario','equipos','clientes','alquileres','solicitudes','control','precios','rivadavia'];
+// histmaq (la hoja de vida de una máquina) sí la ve taller: es su propio trabajo
+// anotado. Lo único que no ve de ahí es el costo — eso se filtra adentro.
+const PANTALLAS_TALLER = ['home','calendario','equipos','histmaq','clientes','alquileres','solicitudes','control','precios','rivadavia'];
 // Cambia la vista a la de otro usuario. Solo funciona si el que esta conectado
 // de verdad es Mateo: aunque alguien lo llame a mano desde la consola, si no es
 // el, no hace nada.
@@ -5458,7 +5471,7 @@ function logout(){
   if(btnVer){ btnVer.innerHTML=ICONO_OJO; btnVer.title='Mostrar la contraseña'; btnVer.setAttribute('aria-label','Mostrar la contraseña'); }
   document.getElementById('auth-err').style.display='none';
 }
-const TITLES={home:'Inicio',calendario:'Calendario',cotizador:'Cotizador',equipos:'Equipos',clientes:'Clientes',alquileres:'Alquileres',solicitudes:'Solicitudes',control:'Control de Máquinas',reportes:'Reportes',precios:'Lista de precios',facturacion:'Facturación',pagoprov:'Pago a Proveedores',rivadavia:'Planilla Rivadavia',impuestos:'Impuestos y Servicios'};
+const TITLES={home:'Inicio',calendario:'Calendario',cotizador:'Cotizador',equipos:'Equipos',histmaq:'Historial de la máquina',clientes:'Clientes',alquileres:'Alquileres',solicitudes:'Solicitudes',control:'Control de Máquinas',reportes:'Reportes',precios:'Lista de precios',facturacion:'Facturación',pagoprov:'Pago a Proveedores',rivadavia:'Planilla Rivadavia',impuestos:'Impuestos y Servicios'};
 let pantallaActualNombre='home';
 // Vuelve a dibujar la pantalla actual sin cerrar el sidebar ni tocar
 // la navegación; se usa cuando llegan cambios de otro dispositivo.
@@ -5469,6 +5482,7 @@ function refrescarPantallaActual(){
   if(s==='impuestos')renderDashboard();
   if(s==='control')renderCtrl();
   if(s==='equipos')renderEq();
+  if(s==='histmaq')renderHistorialMaquina();
   if(s==='reportes')renderReportes();
   if(s==='clientes' && typeof renderCl==='function')renderCl();
   if(s==='alquileres' && typeof renderAlq==='function')renderAlq();
@@ -5483,7 +5497,14 @@ function goTo(s){
   document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('#sidebar nav button').forEach(x=>x.classList.remove('active'));
   document.getElementById('screen-'+s).classList.add('active');
-  document.getElementById('nav-'+s).classList.add('active');
+  // Hay pantallas a las que se entra desde adentro de otra y que no tienen botón
+  // propio en el menú (la hoja de una máquina, por ejemplo). En esas se deja marcada
+  // la sección de la que dependen. Sin esto, goTo se cortaba acá con un error y la
+  // pantalla quedaba a medio abrir.
+  const SECCION_PADRE = {histmaq:'equipos'};
+  const navId = 'nav-' + (SECCION_PADRE[s] || s);
+  const btnNav = document.getElementById(navId);
+  if(btnNav) btnNav.classList.add('active');
   document.getElementById('hdr-title').textContent=TITLES[s];
   if(s==='calendario'){
     renderCal();
@@ -5500,6 +5521,7 @@ function goTo(s){
   abrirGrupoDe(s);
   if(s==='control')renderCtrl();
   if(s==='equipos')renderEq();
+  if(s==='histmaq')renderHistorialMaquina();
   if(s==='reportes')renderReportes();
   if(s==='precios')renderPrecios();
   if(s==='solicitudes')renderSolicitudes();
@@ -10106,6 +10128,146 @@ async function eliminarIncidenciaEq(id){
   renderEqFichaProb();
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   HOJA DE VIDA DE UNA MÁQUINA
+
+   Todo lo que se le fue haciendo, en una sola línea de tiempo: los services y
+   mantenimientos que carga taller, y los problemas reportados con su solución.
+   Van juntos porque son la misma historia — un problema termina casi siempre en
+   una reparación, y leerlos en dos solapas separadas obliga a cruzarlos de
+   cabeza.
+
+   El COSTO es la única parte que taller no ve: lo carga la oficina y queda para
+   la oficina (ver esTallerVista en todo este bloque).
+   ═══════════════════════════════════════════════════════════════════════════ */
+let histMaqId = null;
+let histMaqFiltro = 'todo';   // todo | servicios | problemas
+let histMaqAnio = 'todos';
+
+function verHistorialMaquina(eqId){
+  histMaqId = eqId;
+  histMaqFiltro = 'todo';
+  histMaqAnio = 'todos';
+  cerrarFichaEq();
+  goTo('histmaq');
+  renderHistorialMaquina();
+}
+function setHistMaqFiltro(f){ histMaqFiltro=f; renderHistorialMaquina(); }
+function setHistMaqAnio(a){ histMaqAnio=a; renderHistorialMaquina(); }
+
+// Junta services y problemas en una sola lista ordenada por fecha.
+function eventosDeLaMaquina(eqId){
+  const out=[];
+  (EQ_SERVICIOS||[]).filter(s=>s.equipoId===eqId).forEach(s=>{
+    out.push({clase:'servicio', fecha:s.fecha, dato:s});
+  });
+  (EQ_INCIDENCIAS||[]).filter(i=>i.equipoId===eqId).forEach(i=>{
+    out.push({clase:'problema', fecha:i.fecha, dato:i});
+  });
+  return out.sort((a,b)=>String(b.fecha||'').localeCompare(String(a.fecha||'')));
+}
+
+function renderHistorialMaquina(){
+  const cont=document.getElementById('histmaq-cont');
+  if(!cont) return;
+  const eq=EQUIPOS.find(e=>e.id===histMaqId);
+  if(!eq){ cont.innerHTML='<p style="color:var(--txt3)">Elegí una máquina desde Equipos.</p>'; return; }
+  const veCostos = !esTallerVista();
+  const fmtF=str=>{ if(!str) return '—'; const[y,m,d]=String(str).split('-'); return d?`${d}/${m}/${y}`:str; };
+
+  let eventos = eventosDeLaMaquina(histMaqId);
+  const anios = [...new Set(eventos.map(e=>String(e.fecha||'').slice(0,4)).filter(Boolean))].sort().reverse();
+  if(histMaqAnio!=='todos') eventos = eventos.filter(e=>String(e.fecha||'').startsWith(histMaqAnio));
+  if(histMaqFiltro==='servicios') eventos = eventos.filter(e=>e.clase==='servicio');
+  if(histMaqFiltro==='problemas') eventos = eventos.filter(e=>e.clase==='problema');
+
+  // Resumen de arriba: lo que uno quiere saber antes de leer el detalle.
+  const servicios = (EQ_SERVICIOS||[]).filter(s=>s.equipoId===histMaqId);
+  const problemas = (EQ_INCIDENCIAS||[]).filter(i=>i.equipoId===histMaqId);
+  const abiertos = problemas.filter(i=>i.estado==='abierta').length;
+  const ultimoServ = servicios.slice().sort((a,b)=>String(b.fecha||'').localeCompare(String(a.fecha||'')))[0];
+  const gastoTotal = servicios.reduce((s,x)=>s+(Number(x.costo)||0),0);
+  // El próximo service sale del último registro que lo haya dejado anotado.
+  const proxDe = servicios.filter(s=>s.proxFecha||s.proxHoras)
+    .sort((a,b)=>String(b.fecha||'').localeCompare(String(a.fecha||'')))[0];
+
+  const tarjeta=(etiqueta,valor,color)=>`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.7rem .9rem;flex:1;min-width:130px">
+      <div style="font-size:.68rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.05em">${etiqueta}</div>
+      <div style="font-size:1.05rem;font-weight:700;color:${color||'var(--txt)'};margin-top:2px">${valor}</div>
+    </div>`;
+
+  let h=`<div class="sec-title" style="margin-bottom:.1rem">${eq.nombre}</div>
+    <div class="sec-sub">Todo lo que se le fue haciendo a esta máquina</div>
+
+    <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:1rem">
+      ${tarjeta('Services', servicios.length)}
+      ${tarjeta('Último', ultimoServ?fmtF(ultimoServ.fecha):'—')}
+      ${tarjeta('Problemas abiertos', abiertos, abiertos?'var(--rojo)':'var(--txt)')}
+      ${veCostos?tarjeta('Gastado en total', fmt(gastoTotal)):''}
+    </div>`;
+
+  if(proxDe && (proxDe.proxFecha||proxDe.proxHoras)){
+    const venceHoy = proxDe.proxFecha && proxDe.proxFecha<=hoyISO();
+    h+=`<div style="background:${venceHoy?'rgba(201,106,94,.12)':'var(--bg3)'};border-left:3px solid ${venceHoy?'var(--rojo)':'var(--border2)'};border-radius:0 8px 8px 0;padding:.6rem .8rem;margin-bottom:1rem;font-size:.84rem">
+      <b>Próximo service:</b> ${proxDe.proxFecha?fmtF(proxDe.proxFecha):''}${proxDe.proxFecha&&proxDe.proxHoras?' · ':''}${proxDe.proxHoras?'a las '+proxDe.proxHoras+' hs':''}
+      ${venceHoy?' <span style="color:var(--rojo);font-weight:700">— ya pasó la fecha</span>':''}
+    </div>`;
+  }
+
+  h+=`<div class="rb-group" style="margin-bottom:.7rem">
+      <button class="rb ${histMaqFiltro==='todo'?'sel':''}" onclick="setHistMaqFiltro('todo')">Todo</button>
+      <button class="rb ${histMaqFiltro==='servicios'?'sel':''}" onclick="setHistMaqFiltro('servicios')">Services</button>
+      <button class="rb ${histMaqFiltro==='problemas'?'sel':''}" onclick="setHistMaqFiltro('problemas')">Problemas</button>
+    </div>`;
+  if(anios.length>1){
+    h+=`<div class="rb-group" style="margin-bottom:1rem">
+      <button class="rb ${histMaqAnio==='todos'?'sel':''}" onclick="setHistMaqAnio('todos')">Todos los años</button>
+      ${anios.map(a=>`<button class="rb ${histMaqAnio===a?'sel':''}" onclick="setHistMaqAnio('${a}')">${a}</button>`).join('')}
+    </div>`;
+  }
+
+  if(!eventos.length){
+    h+='<p style="color:var(--txt3);font-size:.88rem;padding:1.5rem 0;text-align:center">No hay nada cargado todavía con ese filtro.</p>';
+    cont.innerHTML=h;
+    return;
+  }
+
+  h += eventos.map(ev=>{
+    const d=ev.dato;
+    if(ev.clase==='servicio'){
+      return `<div style="border:1px solid var(--border);border-left:3px solid var(--verde);border-radius:9px;padding:.75rem .9rem;margin-bottom:.6rem;background:var(--bg2)">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+          <span style="font-weight:700;font-size:.92rem">${d.tipo||'Service'}</span>
+          <span style="font-size:.8rem;color:var(--txt2);white-space:nowrap">${fmtF(d.fecha)}${d.horas?' · '+d.horas+' hs':''}</span>
+        </div>
+        ${d.descripcion?`<div class="multilinea" style="font-size:.86rem;color:var(--txt);margin-top:.35rem;line-height:1.5">${d.descripcion}</div>`:''}
+        ${d.repuestos?`<div style="font-size:.8rem;color:var(--txt2);margin-top:.35rem"><b style="color:var(--txt3);font-size:.72rem;text-transform:uppercase">Repuestos</b> · ${d.repuestos}</div>`:''}
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:.45rem;flex-wrap:wrap">
+          <span style="font-size:.76rem;color:var(--txt3)">${d.hechoPor?'Lo hizo '+d.hechoPor:''}${d.hechoPor&&d.cargadoPor&&d.cargadoPor!==d.hechoPor?' · cargó '+d.cargadoPor:''}</span>
+          ${(veCostos && Number(d.costo)>0)?`<span style="font-size:.86rem;font-weight:700;color:var(--txt)">${fmt(d.costo)}</span>`:''}
+        </div>
+      </div>`;
+    }
+    const resuelta = d.estado==='resuelta';
+    const color = resuelta ? 'var(--txt3)' : 'var(--rojo)';
+    return `<div style="border:1px solid var(--border);border-left:3px solid ${color};border-radius:9px;padding:.75rem .9rem;margin-bottom:.6rem;background:var(--bg2)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-weight:700;font-size:.92rem;color:${color}">⚠ Problema${d.urgencia?' · '+d.urgencia:''}${resuelta?' (resuelto)':''}</span>
+        <span style="font-size:.8rem;color:var(--txt2);white-space:nowrap">${fmtF(d.fecha)}</span>
+      </div>
+      ${d.descripcion?`<div class="multilinea" style="font-size:.86rem;color:var(--txt);margin-top:.35rem;line-height:1.5">${d.descripcion}</div>`:''}
+      ${d.reportadoPor?`<div style="font-size:.76rem;color:var(--txt3);margin-top:.3rem">Lo reportó ${d.reportadoPor}</div>`:''}
+      ${d.resolucion?`<div style="margin-top:.45rem;padding-top:.45rem;border-top:1px dashed var(--border2)">
+        <div style="font-size:.72rem;font-weight:700;color:var(--verde);text-transform:uppercase">Se resolvió el ${fmtF(d.resolucion.fecha)}</div>
+        <div class="multilinea" style="font-size:.85rem;color:var(--txt);margin-top:.2rem;line-height:1.5">${d.resolucion.descripcion||''}</div>
+        ${d.resolucion.resueltoPor?`<div style="font-size:.76rem;color:var(--txt3);margin-top:.2rem">Lo arregló ${d.resolucion.resueltoPor}</div>`:''}
+      </div>`:''}
+    </div>`;
+  }).join('');
+
+  cont.innerHTML=h;
+}
+
 // -- Historial (servicios + alquileres) --
 function renderEqFichaHist(){
   const id=eqFichaId;
@@ -10115,9 +10277,12 @@ function renderEqFichaHist(){
   const eventos=EQ_SERVICIOS.filter(s=>s.equipoId===id).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
 
   let h=`<button onclick="mostrarFormServicio()" id="eqf-btn-nuevo-servicio" style="width:100%;background:none;border:1px dashed var(--border2);color:var(--verde);border-radius:8px;padding:8px;font-size:.82rem;font-weight:700;cursor:pointer;margin-bottom:.8rem;">+ Agregar registro de servicio</button>`;
+  // El COSTO solo lo carga y lo ve la oficina. Taller anota qué se hizo; lo que salió
+  // es información de la empresa y no tiene por qué pasar por el galpón.
+  const veCostos = !esTallerVista();
   h+=`<div id="eqf-form-servicio" style="display:none;border:1px solid var(--border);border-radius:8px;padding:.7rem;margin-bottom:.8rem;">
     <div class="row2" style="margin-bottom:.5rem">
-      <div><label class="flabel">Fecha</label><input type="date" id="eqfs-fecha" value="${hoyISO()}"></div>
+      <div><label class="flabel">Fecha</label><input type="date" id="eqfs-fecha" value="${hoyISO()}" min="2020-01-01" max="2100-12-31"></div>
       <div><label class="flabel">Tipo</label><select id="eqfs-tipo">
         <option value="Service">Service</option>
         <option value="Reparación">Reparación</option>
@@ -10125,8 +10290,20 @@ function renderEqFichaHist(){
         <option value="Otro">Otro</option>
       </select></div>
     </div>
-    <div style="margin-bottom:.5rem"><label class="flabel">Horas al momento</label><input type="number" id="eqfs-horas" placeholder="hs"></div>
-    <div style="margin-bottom:.6rem"><label class="flabel">Descripción</label><textarea id="eqfs-desc" rows="4" placeholder="Ej: Cambio de filtros y aceite hidráulico"></textarea></div>
+    <div class="row2" style="margin-bottom:.5rem">
+      <div><label class="flabel">Horas al momento</label><input type="number" id="eqfs-horas" placeholder="hs"></div>
+      <div><label class="flabel">Quién lo hizo</label><input type="text" id="eqfs-por" list="eqfs-por-lista" placeholder="Alejandro, Alex, taller de..."><datalist id="eqfs-por-lista">${(TALLER_PERSONAS||[]).map(n=>`<option value="${n}">`).join('')}</datalist></div>
+    </div>
+    <div style="margin-bottom:.5rem"><label class="flabel">Descripción</label><textarea id="eqfs-desc" rows="3" placeholder="Ej: Cambio de filtros y aceite hidráulico"></textarea></div>
+    <div style="margin-bottom:.5rem"><label class="flabel">Repuestos usados</label><textarea id="eqfs-repuestos" rows="2" placeholder="Ej: 2 filtros de aceite, 5 L hidráulico 46"></textarea></div>
+    ${veCostos?`<div style="margin-bottom:.5rem;background:var(--bg3);border-radius:8px;padding:.5rem .6rem">
+      <label class="flabel">Costo (solo lo ve la oficina)</label>
+      <input type="number" id="eqfs-costo" placeholder="$ mano de obra + repuestos">
+    </div>`:''}
+    <div class="row2" style="margin-bottom:.6rem">
+      <div><label class="flabel">Próximo service — fecha</label><input type="date" id="eqfs-prox-fecha" min="2020-01-01" max="2100-12-31"></div>
+      <div><label class="flabel">Próximo — a las horas</label><input type="number" id="eqfs-prox-horas" placeholder="hs"></div>
+    </div>
     <div style="display:flex;gap:8px">
       <button onclick="guardarServicioEq()" class="btn-nuevo" style="flex:1;padding:8px">Guardar</button>
       <button onclick="cancelarFormServicio()" class="btn-lim" style="flex:1;padding:8px">Cancelar</button>
@@ -10158,10 +10335,25 @@ function cancelarFormServicio(){
 function guardarServicioEq(){
   const fecha=document.getElementById('eqfs-fecha').value;
   if(!fecha){alert('Ingresá una fecha');return;}
+  if(!fechaValidaApp(fecha)){alert(`Esa fecha no es válida: ${porQueLaFechaEstaMal(fecha)}.`);return;}
   const tipo=document.getElementById('eqfs-tipo').value;
   const horas=document.getElementById('eqfs-horas').value;
   const descripcion=document.getElementById('eqfs-desc').value.trim();
-  EQ_SERVICIOS.push({id:Date.now(), equipoId:eqFichaId, fecha, tipo, horas, descripcion, creadoEn:Date.now()});
+  const val=id=>{ const e=document.getElementById(id); return e ? e.value.trim() : ''; };
+  const proxFecha=val('eqfs-prox-fecha');
+  if(proxFecha && !fechaValidaApp(proxFecha)){alert(`La fecha del próximo service no es válida: ${porQueLaFechaEstaMal(proxFecha)}.`);return;}
+  // El costo solo existe si lo cargó la oficina: en taller el campo ni se dibuja.
+  const costoEl=document.getElementById('eqfs-costo');
+  EQ_SERVICIOS.push({
+    id:Date.now(), equipoId:eqFichaId, fecha, tipo, horas, descripcion,
+    hechoPor: val('eqfs-por') || (ROL_ACTUAL==='taller' ? (TALLER_RESPONSABLE||'') : nombreUsuarioActual()),
+    repuestos: val('eqfs-repuestos'),
+    costo: costoEl ? (parseFloat(costoEl.value)||0) : 0,
+    proxFecha, proxHoras: val('eqfs-prox-horas'),
+    cargadoPor: ROL_ACTUAL==='taller' ? (TALLER_RESPONSABLE||'Taller') : nombreUsuarioActual(),
+    creadoEn:Date.now()
+  });
+  marcarAccionUndo(`Cargar ${tipo} de ${(EQUIPOS.find(e=>e.id===eqFichaId)||{}).nombre||'un equipo'}`, 'equipos');
   guardarEqServicios();
   renderEqFichaHist();
 }
@@ -13483,6 +13675,10 @@ function verDetalleAlq(id){
   botones+='<div id="cambio-equipo-box" style="display:none;width:100%;margin-top:.5rem;background:var(--bg3);border-radius:8px;padding:.6rem .8rem;"></div>';
   acc.innerHTML=botones;
   document.getElementById('modal-alq-det').style.display='flex';
+  // El cuadro se abría donde lo habías dejado scrolleado la vez anterior: aparecía
+  // directamente en los botones del fondo, sin ver de qué alquiler se trataba.
+  const cajaDet=document.getElementById('modal-alq-det-caja');
+  if(cajaDet) cajaDet.scrollTop=0;
   actualizarBotonDeshacer();
 }
 
