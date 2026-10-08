@@ -9315,9 +9315,11 @@ function renderEq(){
   const txt={disponible:'Disponible',alquilado:'Alquilado',taller:'Fuera de servicio'};
   document.getElementById('lista-eq').innerHTML=lista.map(({e,r})=>{
     const problemas=EQ_INCIDENCIAS.filter(i=>i.equipoId===e.id && i.estado==='abierta').length;
-    const tabInicial = problemas ? 'prob' : 'check';
+    // Tocar la máquina abre su hoja completa. Antes abría el cuadro chico con cuatro
+    // solapas y había que tocar otro botón para llegar a la historia, que es lo que se
+    // viene a leer. El checklist y la ficha técnica siguen a un toque, desde la hoja.
     return `
-    <div class="eq-item" onclick="abrirFichaEq(${e.id},'${tabInicial}')">
+    <div class="eq-item" onclick="verHistorialMaquina(${e.id})">
       <div class="eq-dot" style="background:${col[r.estado]}"></div>
       <div class="eq-info"><h4>${e.nombre}${problemas?` <span style="color:var(--rojo)">⚠️ ${problemas}</span>`:''}</h4><p>${grupoLabel(equipoMeta(e))}</p></div>
       <span class="eq-badge ${bd[r.estado]}">${txt[r.estado]}</span>
@@ -10128,6 +10130,51 @@ async function eliminarIncidenciaEq(id){
   renderEqFichaProb();
 }
 
+/* El formulario de carga de un service. Es el MISMO en la hoja de la máquina y en
+   la ficha chica; se arma acá una sola vez para que no se vayan separando con el
+   tiempo. El prefijo distingue los ids de cada copia.
+   El COSTO solo lo carga y lo ve la oficina: taller anota qué se hizo, lo que salió
+   es información de la empresa y no pasa por el galpón. */
+function formServicioHTML(pfx){
+  const veCostos = !esTallerVista();
+  const id = n => `${pfx}-eqfs-${n}`;
+  return `<div id="${pfx}-form-servicio" style="display:none;border:1px solid var(--border);border-radius:9px;padding:.8rem;margin-bottom:.9rem;background:var(--bg2)">
+    <div class="row2" style="margin-bottom:.5rem">
+      <div><label class="flabel">Fecha</label><input type="date" id="${id('fecha')}" value="${hoyISO()}" min="2020-01-01" max="2100-12-31"></div>
+      <div><label class="flabel">Tipo</label><select id="${id('tipo')}">
+        <option value="Service">Service</option>
+        <option value="Reparación">Reparación</option>
+        <option value="Cambio de aceite">Cambio de aceite</option>
+        <option value="Otro">Otro</option>
+      </select></div>
+    </div>
+    <div class="row2" style="margin-bottom:.5rem">
+      <div><label class="flabel">Horas al momento</label><input type="number" id="${id('horas')}" placeholder="hs"></div>
+      <div><label class="flabel">Quién lo hizo</label><input type="text" id="${id('por')}" list="${pfx}-por-lista" placeholder="Alejandro, Alex, taller de..."><datalist id="${pfx}-por-lista">${(TALLER_PERSONAS||[]).map(n=>`<option value="${n}">`).join('')}</datalist></div>
+    </div>
+    <div style="margin-bottom:.5rem"><label class="flabel">Descripción</label><textarea id="${id('desc')}" rows="3" placeholder="Ej: Cambio de filtros y aceite hidráulico"></textarea></div>
+    <div style="margin-bottom:.5rem"><label class="flabel">Repuestos usados</label><textarea id="${id('repuestos')}" rows="2" placeholder="Ej: 2 filtros de aceite, 5 L hidráulico 46"></textarea></div>
+    ${veCostos?`<div style="margin-bottom:.5rem;background:var(--bg3);border-radius:8px;padding:.5rem .6rem">
+      <label class="flabel">Costo (solo lo ve la oficina)</label>
+      <input type="number" id="${id('costo')}" placeholder="$ mano de obra + repuestos">
+    </div>`:''}
+    <div class="row2" style="margin-bottom:.6rem">
+      <div><label class="flabel">Próximo service — fecha</label><input type="date" id="${id('prox-fecha')}" min="2020-01-01" max="2100-12-31"></div>
+      <div><label class="flabel">Próximo — a las horas</label><input type="number" id="${id('prox-horas')}" placeholder="hs"></div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="guardarServicioEq('${pfx}')" class="btn-nuevo" style="flex:1;padding:8px">Guardar</button>
+      <button onclick="cancelarFormServicio('${pfx}')" class="btn-lim" style="flex:1;padding:8px">Cancelar</button>
+    </div>
+  </div>`;
+}
+
+function mostrarFormServicioHoja(){
+  document.getElementById('hm-form-servicio').style.display='block';
+  document.getElementById('histmaq-btn-nuevo').style.display='none';
+  document.getElementById('hm-eqfs-desc').focus();
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    HOJA DE VIDA DE UNA MÁQUINA
 
@@ -10196,8 +10243,24 @@ function renderHistorialMaquina(){
       <div style="font-size:1.05rem;font-weight:700;color:${color||'var(--txt)'};margin-top:2px">${valor}</div>
     </div>`;
 
-  let h=`<div class="sec-title" style="margin-bottom:.1rem">${eq.nombre}</div>
-    <div class="sec-sub">Todo lo que se le fue haciendo a esta máquina</div>
+  // Estado de hoy, arriba de todo: es lo primero que se pregunta al abrir una máquina.
+  const r=estadoRealEq(eq);
+  const colEstado={disponible:'var(--azul)',alquilado:'#2e9e52',taller:'var(--rojo)'}[r.estado]||'var(--txt3)';
+  const txtEstado={disponible:'Disponible',alquilado:'Alquilada'+(r.cliente?' a '+r.cliente:''),taller:'Fuera de servicio'}[r.estado]||'';
+
+  let h=`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:.1rem">
+      <div class="sec-title" style="margin:0">${eq.nombre}</div>
+      <span style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${colEstado};background:${colEstado}18;padding:4px 11px;border-radius:11px;white-space:nowrap">${txtEstado}</span>
+    </div>
+    <div class="sec-sub">${grupoLabel(equipoMeta(eq))} · todo lo que se le fue haciendo</div>
+
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:.8rem">
+      <button onclick="mostrarFormServicioHoja()" id="histmaq-btn-nuevo" class="btn-nuevo" style="padding:7px 13px;font-size:.78rem">+ Cargar un service</button>
+      <button onclick="abrirFichaEq(${eq.id},'prob')" class="btn-lim" style="padding:7px 13px;font-size:.78rem${abiertos?';border-color:var(--rojo);color:var(--rojo)':''}">Reportar / ver problemas${abiertos?' ('+abiertos+')':''}</button>
+      <button onclick="abrirFichaEq(${eq.id},'check')" class="btn-lim" style="padding:7px 13px;font-size:.78rem">Checklist</button>
+      <button onclick="abrirFichaEq(${eq.id},'tecnica')" class="btn-lim" style="padding:7px 13px;font-size:.78rem">Ficha técnica</button>
+    </div>
+    ${formServicioHTML('hm')}
 
     <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:1rem">
       ${tarjeta('Services', servicios.length)}
@@ -10277,38 +10340,9 @@ function renderEqFichaHist(){
   const eventos=EQ_SERVICIOS.filter(s=>s.equipoId===id).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
 
   let h=`<button onclick="mostrarFormServicio()" id="eqf-btn-nuevo-servicio" style="width:100%;background:none;border:1px dashed var(--border2);color:var(--verde);border-radius:8px;padding:8px;font-size:.82rem;font-weight:700;cursor:pointer;margin-bottom:.8rem;">+ Agregar registro de servicio</button>`;
-  // El COSTO solo lo carga y lo ve la oficina. Taller anota qué se hizo; lo que salió
-  // es información de la empresa y no tiene por qué pasar por el galpón.
-  const veCostos = !esTallerVista();
-  h+=`<div id="eqf-form-servicio" style="display:none;border:1px solid var(--border);border-radius:8px;padding:.7rem;margin-bottom:.8rem;">
-    <div class="row2" style="margin-bottom:.5rem">
-      <div><label class="flabel">Fecha</label><input type="date" id="eqfs-fecha" value="${hoyISO()}" min="2020-01-01" max="2100-12-31"></div>
-      <div><label class="flabel">Tipo</label><select id="eqfs-tipo">
-        <option value="Service">Service</option>
-        <option value="Reparación">Reparación</option>
-        <option value="Cambio de aceite">Cambio de aceite</option>
-        <option value="Otro">Otro</option>
-      </select></div>
-    </div>
-    <div class="row2" style="margin-bottom:.5rem">
-      <div><label class="flabel">Horas al momento</label><input type="number" id="eqfs-horas" placeholder="hs"></div>
-      <div><label class="flabel">Quién lo hizo</label><input type="text" id="eqfs-por" list="eqfs-por-lista" placeholder="Alejandro, Alex, taller de..."><datalist id="eqfs-por-lista">${(TALLER_PERSONAS||[]).map(n=>`<option value="${n}">`).join('')}</datalist></div>
-    </div>
-    <div style="margin-bottom:.5rem"><label class="flabel">Descripción</label><textarea id="eqfs-desc" rows="3" placeholder="Ej: Cambio de filtros y aceite hidráulico"></textarea></div>
-    <div style="margin-bottom:.5rem"><label class="flabel">Repuestos usados</label><textarea id="eqfs-repuestos" rows="2" placeholder="Ej: 2 filtros de aceite, 5 L hidráulico 46"></textarea></div>
-    ${veCostos?`<div style="margin-bottom:.5rem;background:var(--bg3);border-radius:8px;padding:.5rem .6rem">
-      <label class="flabel">Costo (solo lo ve la oficina)</label>
-      <input type="number" id="eqfs-costo" placeholder="$ mano de obra + repuestos">
-    </div>`:''}
-    <div class="row2" style="margin-bottom:.6rem">
-      <div><label class="flabel">Próximo service — fecha</label><input type="date" id="eqfs-prox-fecha" min="2020-01-01" max="2100-12-31"></div>
-      <div><label class="flabel">Próximo — a las horas</label><input type="number" id="eqfs-prox-horas" placeholder="hs"></div>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button onclick="guardarServicioEq()" class="btn-nuevo" style="flex:1;padding:8px">Guardar</button>
-      <button onclick="cancelarFormServicio()" class="btn-lim" style="flex:1;padding:8px">Cancelar</button>
-    </div>
-  </div>`;
+  // El formulario es el mismo que el de la hoja de la maquina: se arma en
+  // formServicioHTML() para que no se vayan separando con el tiempo.
+  h+=formServicioHTML('f');
 
   if(!eventos.length){
     h+='<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:1rem">Todavía no hay registros de servicio para este equipo.</p>';
@@ -10325,37 +10359,44 @@ function renderEqFichaHist(){
   document.getElementById('eq-ficha-cont').innerHTML=h;
 }
 function mostrarFormServicio(){
-  document.getElementById('eqf-form-servicio').style.display='block';
+  document.getElementById('f-form-servicio').style.display='block';
   document.getElementById('eqf-btn-nuevo-servicio').style.display='none';
 }
-function cancelarFormServicio(){
-  document.getElementById('eqf-form-servicio').style.display='none';
-  document.getElementById('eqf-btn-nuevo-servicio').style.display='block';
+function cancelarFormServicio(pfx){
+  pfx = pfx || 'f';
+  const form=document.getElementById(`${pfx}-form-servicio`);
+  if(form) form.style.display='none';
+  const btn=document.getElementById(pfx==='hm' ? 'histmaq-btn-nuevo' : 'eqf-btn-nuevo-servicio');
+  if(btn) btn.style.display = pfx==='hm' ? 'inline-flex' : 'block';
 }
-function guardarServicioEq(){
-  const fecha=document.getElementById('eqfs-fecha').value;
+// pfx: de qué copia del formulario vienen los datos ('hm' = la hoja de la máquina,
+// 'f' = la ficha chica). El equipo también sale de dónde se cargó.
+function guardarServicioEq(pfx){
+  pfx = pfx || 'f';
+  const eqId = pfx==='hm' ? histMaqId : eqFichaId;
+  if(!eqId){ alert('No se pudo saber a qué equipo cargarle el service.'); return; }
+  const val=n=>{ const e=document.getElementById(`${pfx}-eqfs-${n}`); return e ? String(e.value).trim() : ''; };
+  const fecha=val('fecha');
   if(!fecha){alert('Ingresá una fecha');return;}
   if(!fechaValidaApp(fecha)){alert(`Esa fecha no es válida: ${porQueLaFechaEstaMal(fecha)}.`);return;}
-  const tipo=document.getElementById('eqfs-tipo').value;
-  const horas=document.getElementById('eqfs-horas').value;
-  const descripcion=document.getElementById('eqfs-desc').value.trim();
-  const val=id=>{ const e=document.getElementById(id); return e ? e.value.trim() : ''; };
-  const proxFecha=val('eqfs-prox-fecha');
+  const tipo=val('tipo');
+  const descripcion=val('desc');
+  const proxFecha=val('prox-fecha');
   if(proxFecha && !fechaValidaApp(proxFecha)){alert(`La fecha del próximo service no es válida: ${porQueLaFechaEstaMal(proxFecha)}.`);return;}
   // El costo solo existe si lo cargó la oficina: en taller el campo ni se dibuja.
-  const costoEl=document.getElementById('eqfs-costo');
+  const costoEl=document.getElementById(`${pfx}-eqfs-costo`);
   EQ_SERVICIOS.push({
-    id:Date.now(), equipoId:eqFichaId, fecha, tipo, horas, descripcion,
-    hechoPor: val('eqfs-por') || (ROL_ACTUAL==='taller' ? (TALLER_RESPONSABLE||'') : nombreUsuarioActual()),
-    repuestos: val('eqfs-repuestos'),
+    id:Date.now(), equipoId:eqId, fecha, tipo, horas:val('horas'), descripcion,
+    hechoPor: val('por') || (ROL_ACTUAL==='taller' ? (TALLER_RESPONSABLE||'') : nombreUsuarioActual()),
+    repuestos: val('repuestos'),
     costo: costoEl ? (parseFloat(costoEl.value)||0) : 0,
-    proxFecha, proxHoras: val('eqfs-prox-horas'),
+    proxFecha, proxHoras: val('prox-horas'),
     cargadoPor: ROL_ACTUAL==='taller' ? (TALLER_RESPONSABLE||'Taller') : nombreUsuarioActual(),
     creadoEn:Date.now()
   });
-  marcarAccionUndo(`Cargar ${tipo} de ${(EQUIPOS.find(e=>e.id===eqFichaId)||{}).nombre||'un equipo'}`, 'equipos');
+  marcarAccionUndo(`Cargar ${tipo} de ${(EQUIPOS.find(e=>e.id===eqId)||{}).nombre||'un equipo'}`, 'equipos');
   guardarEqServicios();
-  renderEqFichaHist();
+  if(pfx==='hm') renderHistorialMaquina(); else renderEqFichaHist();
 }
 async function eliminarServicioEq(id){
   if(!(await confirmSiNo('¿Eliminar este registro de servicio?',{si:'Eliminar',no:'Cancelar'})))return;
