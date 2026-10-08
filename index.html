@@ -729,12 +729,11 @@ if ('serviceWorker' in navigator) {
       <span id="banner-aviso-pagoprov-txt"></span>
       <span style="opacity:.85;font-size:.75rem">Tocar para cerrar ✕</span>
     </div>
-    <!-- Al tocarlo se marca como visto y recién ahí se va. Antes solo se cerraba, y al
-         recargar la página el aviso se perdía del todo (ver refrescarBannerAlqNuevos). -->
-    <div id="banner-aviso-alq" onclick="marcarAlquileresVistos()" style="display:none;align-items:center;justify-content:space-between;gap:10px;background:#2e7d32;color:#fff;padding:.6rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;">
-      <span id="banner-aviso-alq-txt"></span>
-      <span style="opacity:.85;font-size:.75rem">Tocar cuando lo vieron ✓</span>
-    </div>
+    <!-- UN CARTEL POR ALQUILER, apilados. Antes era uno solo que decía "3 alquileres
+         nuevos": al tocarlo se daban por vistos los tres de una, y si solo habían
+         mirado uno, los otros dos se perdían sin que nadie se enterara. Ahora se va
+         tachando de a uno. Los dibuja refrescarBannerAlqNuevos(). -->
+    <div id="banners-alq-nuevos"></div>
     <div id="banner-aviso-contrato" onclick="cerrarBannerAvisoContrato()" style="display:none;align-items:center;justify-content:space-between;gap:10px;background:#2e7d32;color:#fff;padding:.6rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;">
       <span id="banner-aviso-contrato-txt"></span>
       <span style="opacity:.85;font-size:.75rem">Tocar para cerrar ✕</span>
@@ -1985,6 +1984,22 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
             <div id="alq-salida-aviso" style="font-size:.76rem;color:var(--txt2);margin-top:.45rem;line-height:1.5"></div>
           </div>
 
+          <!-- DÍAS QUE NO SE COBRAN. El equipo se queda en la obra todo el período (no
+               vuelve el domingo), pero hay días que el cliente no la usa: fines de
+               semana, feriados, obra parada. Se destildan acá y dejan de contar.
+               Las fechas de inicio y fin NO se tocan: el equipo sigue ocupado y
+               reservado todos esos días. Ver renderDiasDelPeriodo(). -->
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:.4rem">
+            <input type="checkbox" id="alq-dias-salteados-check" onchange="toggleDiasSalteados()" style="margin-top:2px">
+            <span><span style="font-size:.83rem;font-weight:700;color:var(--txt)">No se usa todos los días</span>
+            <span style="display:block;font-size:.74rem;color:var(--txt2);margin-top:1px">Para descontar domingos, feriados o días que la obra está parada. El equipo igual queda reservado todo el período.</span></span>
+          </label>
+          <div id="alq-dias-salteados-box" style="display:none;margin-bottom:.6rem;background:var(--bg3);border-radius:8px;padding:.6rem .7rem">
+            <div style="font-size:.74rem;color:var(--txt2);margin-bottom:.5rem">Destildá los días que <b>no</b> se cobran:</div>
+            <div id="alq-dias-lista" style="display:flex;flex-wrap:wrap;gap:6px;max-height:190px;overflow-y:auto"></div>
+            <div id="alq-dias-salteados-resumen" style="font-size:.78rem;font-weight:700;color:var(--verde);margin-top:.5rem"></div>
+          </div>
+
           <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-bottom:.6rem">
             <input type="checkbox" id="alq-tarifa-clasica" onchange="calcDiasAlq()" style="margin-top:2px">
             <span><span style="font-size:.83rem;font-weight:700;color:var(--txt)">Tarifa clásica</span>
@@ -3051,43 +3066,45 @@ function alquileresNuevosSinVer(){
     a.entregaPendiente && a.activo!==false && !a.pausado &&
     (a.creadoEn||0) > corte && !vistos.has(a.id));
 }
-// Tocar el cartel = "ya lo vimos". Se guardan los ids, no un simple "cerrado": si
-// mañana entra otro alquiler, el cartel vuelve a aparecer solo por ese.
-function marcarAlquileresVistos(){
+// Tocar UN cartel = "este ya lo vi". Los demás siguen en pantalla.
+function marcarAlquilerVisto(id){
   const vistos = alqVistosIds();
-  (ALQUILERES||[]).forEach(a=>{ if(a.entregaPendiente) vistos.add(a.id); });
+  vistos.add(id);
   // Se recorta para que la lista no crezca sin fin.
   const arr = [...vistos].slice(-300);
   try{ localStorage.setItem('rtz_alq_vistos', JSON.stringify(arr)); }catch(e){}
-  cerrarBannerAvisoAlq();
+  refrescarBannerAlqNuevos();
 }
 
-// Vuelve a dibujar el cartel a partir de lo que hay sin ver. Se llama al entrar y cada
-// vez que cambian los datos, así sobrevive a recargar la página.
-function refrescarBannerAlqNuevos(){
-  if(ROL_ACTUAL!=='taller'){ cerrarBannerAvisoAlq(); return; }
+// Vuelve a dibujar los carteles a partir de lo que queda sin ver. Se llama al entrar
+// y cada vez que cambian los datos, así sobreviven a recargar la página.
+// idsQueParpadean: los que acaban de entrar en vivo, para que destaquen entre los que
+// ya estaban. Los viejos no parpadean — si parpadea todo, no resalta nada.
+function refrescarBannerAlqNuevos(idsQueParpadean){
+  const cont = document.getElementById('banners-alq-nuevos');
+  if(!cont) return;
+  if(ROL_ACTUAL!=='taller'){ cont.innerHTML=''; return; }
   const sinVer = alquileresNuevosSinVer();
-  if(!sinVer.length){ cerrarBannerAvisoAlq(); return; }
-  mostrarBannerAvisoAlq(textoAlquileresNuevos(sinVer), {parpadear:false});
-}
-
-function textoAlquileresNuevos(lista){
-  return lista.length===1
-    ? `Nuevo alquiler: ${lista[0].equipoNombre} para ${lista[0].cliente} — armá el checklist y el contrato`
-    : `${lista.length} alquileres nuevos para preparar (checklist + contrato)`;
+  if(!sinVer.length){ cont.innerHTML=''; return; }
+  const parpadean = new Set(idsQueParpadean||[]);
+  // El más viejo arriba: es el que lleva más tiempo esperando que alguien lo mire.
+  sinVer.sort((a,b)=>(a.creadoEn||0)-(b.creadoEn||0));
+  cont.innerHTML = sinVer.map(a=>`
+    <div class="${parpadean.has(a.id)?'banner-blink':''}" onclick="marcarAlquilerVisto(${a.id})"
+         style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:#2e7d32;color:#fff;padding:.6rem 1rem;font-size:.85rem;font-weight:700;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.25)">
+      <span>Nuevo alquiler: ${a.equipoNombre||''} para ${a.cliente||''} — armá el checklist y el contrato</span>
+      <span style="opacity:.85;font-size:.75rem;white-space:nowrap">Ya lo vi ✓</span>
+    </div>`).join('');
 }
 
 function avisarAlquileresNuevos(previos, actuales){
   const idsPrevios = new Set((previos||[]).map(a=>a.id));
   const nuevos = (actuales||[]).filter(a=>a.entregaPendiente && !idsPrevios.has(a.id));
-  if(!nuevos.length){
-    // Aunque no haya ninguno NUEVO en este momento, puede quedar alguno sin marcar de
-    // antes (de la sesión anterior, o de antes de recargar). El cartel tiene que seguir.
-    refrescarBannerAlqNuevos();
-    return;
-  }
+  // Se redibuja siempre, haya o no novedades: puede quedar alguno sin marcar de antes
+  // (de la sesión anterior, o de antes de recargar) y ese cartel tiene que seguir ahí.
+  refrescarBannerAlqNuevos(nuevos.map(a=>a.id));
+  if(!nuevos.length) return;
   reproducirBeepAviso();
-  mostrarBannerAvisoAlq(textoAlquileresNuevos(nuevos), {parpadear:true});
   actualizarFranjaTaller();
   parpadearFranjaTaller();
   if('Notification' in window && Notification.permission==='granted'){
@@ -3095,24 +3112,6 @@ function avisarAlquileresNuevos(previos, actuales){
       try{ new Notification('Nuevo alquiler para preparar', { body: `${a.equipoNombre} · ${a.cliente}` }); }catch(e){}
     });
   }
-}
-function mostrarBannerAvisoAlq(txt, opts){
-  const banner=document.getElementById('banner-aviso-alq');
-  if(!banner) return;
-  // El parpadeo es para cuando el alquiler entra EN VIVO y hay que llamar la atención.
-  // Al redibujar el cartel después de recargar no corresponde: ya lo vieron parpadear,
-  // y un cartel que parpadea cada vez que abrís la app se vuelve parte del paisaje.
-  document.getElementById('banner-aviso-alq-txt').textContent = txt;
-  banner.style.display='flex';
-  banner.classList.remove('banner-blink');
-  if(!opts || opts.parpadear!==false){
-    void banner.offsetWidth;
-    banner.classList.add('banner-blink');
-  }
-}
-function cerrarBannerAvisoAlq(){
-  const banner=document.getElementById('banner-aviso-alq');
-  if(banner){ banner.style.display='none'; banner.classList.remove('banner-blink'); }
 }
 
 // Cuando taller termina de completar y guardar el checklist de salida (y con eso el
@@ -9180,7 +9179,13 @@ function alqFinPintado(a, hoy){
     const finConfirmado = new Date(a.fin+'T00:00:00');
     return finConfirmado>hoy ? finConfirmado : hoy;
   }
-  return new Date(a.fin+'T00:00:00');
+  // Hasta acá se pintaba derecho hasta a.fin, sin mirar la hora de retiro. Pero si el
+  // equipo vuelve antes del mediodía, ese último día YA está libre: la app deja
+  // cargárselo a otro cliente (ver alquilerSuperpuesto/finBloqueoAlq) mientras el
+  // calendario lo seguía mostrando ocupado. Dos respuestas distintas para la misma
+  // máquina el mismo día. Ahora el calendario usa la misma cuenta que la que bloquea.
+  const fb = finBloqueoAlq(a);
+  return new Date((fechaValidaApp(fb) ? fb : a.fin)+'T00:00:00');
 }
 function getAlqDia(f){
   const hoy=new Date(); hoy.setHours(0,0,0,0);
@@ -11671,6 +11676,86 @@ function toggleUsdAlq(){
   document.getElementById('alq-usd-box').style.display = document.getElementById('alq-usd-check').checked ? 'block' : 'none';
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   DÍAS QUE NO SE COBRAN
+
+   Caso real: el cliente alquila el viernes, la usa viernes y sábado, el domingo
+   no, el lunes es feriado y la vuelve a usar el martes. El equipo está en la
+   obra los cinco días —no vuelve al depósito el domingo— pero se cobran tres.
+
+   Por eso esto NO toca las fechas de inicio ni de fin: el equipo sigue ocupado
+   y reservado todo el período, y en el calendario se sigue viendo así. Lo único
+   que cambia es cuántos días se facturan.
+
+   Y cuando hay días descontados se cobra por día suelto, sin paquete semanal:
+   tres días son tres días, no "una semana con descuento".
+   ═══════════════════════════════════════════════════════════════════════════ */
+let alqDiasNoCobrados = [];   // fechas ISO destildadas a mano
+
+const NOMBRE_DIA = ['dom','lun','mar','mié','jue','vie','sáb'];
+
+// Los días que la regla de siempre cobra: de "desde" hasta el último día facturable
+// (el de retiro no entra si vuelve antes del mediodía — ver diasAlquilerPorFecha).
+function diasDelPeriodoAlq(desde, hasta, horaRetiro){
+  if(!fechaValidaApp(desde) || !fechaValidaApp(hasta)) return [];
+  const total = diasAlquilerPorFecha(desde, hasta, horaRetiro);
+  if(!total || total<1) return [];
+  const out=[];
+  const d=new Date(desde+'T12:00:00');
+  for(let i=0;i<total;i++){
+    out.push({iso:d.toISOString().slice(0,10), dia:NOMBRE_DIA[d.getDay()], num:d.getDate(), mes:d.getMonth()+1, domingo:d.getDay()===0});
+    d.setDate(d.getDate()+1);
+  }
+  return out;
+}
+
+// Cuántos de los destildados caen DENTRO de los días que se cobran. Si se achica el
+// período, los que quedaron afuera no tienen que seguir descontando.
+function diasNoCobradosEnPeriodo(desde, hasta, horaRetiro){
+  const delPeriodo = new Set(diasDelPeriodoAlq(desde, hasta, horaRetiro).map(x=>x.iso));
+  return (alqDiasNoCobrados||[]).filter(f=>delPeriodo.has(f));
+}
+
+function toggleDiasSalteados(){
+  const on = document.getElementById('alq-dias-salteados-check').checked;
+  document.getElementById('alq-dias-salteados-box').style.display = on ? 'block' : 'none';
+  if(!on) alqDiasNoCobrados = [];
+  renderDiasDelPeriodo();
+  calcDiasAlq();
+}
+
+function toggleUnDiaCobrado(iso, cobrado){
+  if(cobrado) alqDiasNoCobrados = alqDiasNoCobrados.filter(f=>f!==iso);
+  else if(!alqDiasNoCobrados.includes(iso)) alqDiasNoCobrados.push(iso);
+  renderDiasDelPeriodo();
+  calcDiasAlq();
+}
+
+function renderDiasDelPeriodo(){
+  const cont = document.getElementById('alq-dias-lista');
+  if(!cont) return;
+  const desde=document.getElementById('alq-desde').value;
+  const hasta=document.getElementById('alq-hasta').value;
+  const horaRetiro=document.getElementById('alq-hora-retiro').value||'08:00';
+  const dias = diasDelPeriodoAlq(desde, hasta, horaRetiro);
+  if(!dias.length){
+    cont.innerHTML='<span style="font-size:.78rem;color:var(--txt3)">Cargá primero las fechas del alquiler.</span>';
+    document.getElementById('alq-dias-salteados-resumen').textContent='';
+    return;
+  }
+  cont.innerHTML = dias.map(d=>{
+    const cobrado = !alqDiasNoCobrados.includes(d.iso);
+    return `<label style="display:flex;align-items:center;gap:5px;cursor:pointer;background:${cobrado?'var(--bg2)':'transparent'};border:1px solid ${cobrado?'var(--verde)':'var(--border2)'};border-radius:7px;padding:4px 8px;font-size:.78rem;opacity:${cobrado?1:.55}">
+      <input type="checkbox" ${cobrado?'checked':''} onchange="toggleUnDiaCobrado('${d.iso}', this.checked)" style="accent-color:var(--verde)">
+      <span style="font-weight:${d.domingo?700:400}">${d.dia} ${d.num}/${d.mes}</span>
+    </label>`;
+  }).join('');
+  const noCobrados = diasNoCobradosEnPeriodo(desde, hasta, horaRetiro).length;
+  document.getElementById('alq-dias-salteados-resumen').textContent = noCobrados
+    ? `Se cobran ${dias.length - noCobrados} de ${dias.length} días — el equipo queda reservado los ${dias.length}.`
+    : 'Por ahora se cobran todos.';
+}
+
 // ── EL EQUIPO SALE ANTES DEL DEPÓSITO ─────────────────────────────────────
 // Propia y global: los fmtD2 que hay repartidos por el archivo son locales de cada
 // función y desde acá no se ven.
@@ -11777,6 +11862,11 @@ function abrirModalAlq(){
   document.getElementById('alq-hora-entrega').value='08:00';
   document.getElementById('alq-hora-retiro').value='08:00';
   document.getElementById('alq-abierto').checked=false;
+  alqDiasNoCobrados=[];
+  document.getElementById('alq-dias-salteados-check').checked=false;
+  document.getElementById('alq-dias-salteados-box').style.display='none';
+  document.getElementById('alq-dias-lista').innerHTML='';
+  document.getElementById('alq-dias-salteados-resumen').textContent='';
   document.getElementById('alq-salida-antes-check').checked=false;
   document.getElementById('alq-salida-antes-box').style.display='none';
   document.getElementById('alq-salida-fecha').value='';
@@ -12429,9 +12519,18 @@ function calcDiasAlq(){
       dias=TOPE_DIAS_TALLER;
       alert(`Como taller, se puede cargar hasta ${TOPE_DIAS_TALLER} día${TOPE_DIAS_TALLER!==1?'s':''}. Para más días, el cliente tiene que hablar directamente con Mateo.`);
     }
-    res.textContent=`${dias} día${dias!==1?'s':''} (${fmtFechaCot(desde)} ${horaEntrega} al ${fmtFechaCot(hasta)} ${horaRetiro})`;
+    // Días que el cliente no usa (domingos, feriados, obra parada): se descuentan de
+    // lo que se cobra, pero el equipo sigue reservado todo el período.
+    const noCobrados = diasNoCobradosEnPeriodo(desde, hasta, horaRetiro).length;
+    const diasCobrados = Math.max(0, dias - noCobrados);
+    renderDiasDelPeriodo();
+    res.innerHTML = noCobrados
+      ? `${diasCobrados} día${diasCobrados!==1?'s':''} a cobrar `
+        + `<span style="color:var(--txt2);font-weight:400">— el equipo queda ${dias} días en la obra (${fmtFechaCot(desde)} ${horaEntrega} al ${fmtFechaCot(hasta)} ${horaRetiro}), `
+        + `no se cobra${noCobrados!==1?'n':''} ${noCobrados} día${noCobrados!==1?'s':''}</span>`
+      : `${dias} día${dias!==1?'s':''} (${fmtFechaCot(desde)} ${horaEntrega} al ${fmtFechaCot(hasta)} ${horaRetiro})`;
     res.style.display='block';
-    alqEquiposState.forEach((r,i)=>{ if(r.eqId) calcPrecioAlq(dias, i); });
+    alqEquiposState.forEach((r,i)=>{ if(r.eqId) calcPrecioAlq(diasCobrados, i, {diasSueltos: noCobrados>0}); });
     if(abierto){
       retiroRes.textContent='Alquiler abierto — fecha de retiro a confirmar';
     } else {
@@ -12448,7 +12547,9 @@ function calcDiasAlq(){
   calcTotalAlq();
 }
 
-function calcPrecioAlq(dias, idx){
+// opts.diasSueltos: cuando hay días descontados se cobra por día, sin paquete semanal.
+// Si no, un alquiler de 5 días con 2 sin cobrar pagaría "una semana" por 3 días de uso.
+function calcPrecioAlq(dias, idx, opts){
   const row = alqEquiposState[idx];
   if(!row || !row.eqId){ return; }
   const eq=EQUIPOS.find(e=>e.id===row.eqId);
@@ -12470,11 +12571,14 @@ function calcPrecioAlq(dias, idx){
   if(!p){ row.precio=0; row.precioDetalle=''; return; }
 
   const tarifaClasica = document.getElementById('alq-tarifa-clasica').checked;
+  const diasSueltos = !!(opts && opts.diasSueltos);
 
   let base=0, perLabel='';
-  if(tarifaClasica || dias<=4 || !p.sem){
+  if(tarifaClasica || diasSueltos || dias<=4 || !p.sem){
     base=dias*p.dia;
-    perLabel=`${dias} día${dias>1?'s':''} × ${fmt(p.dia)}`+(tarifaClasica?' (tarifa clásica)':'');
+    perLabel=`${dias} día${dias>1?'s':''} × ${fmt(p.dia)}`
+      + (tarifaClasica?' (tarifa clásica)':'')
+      + (!tarifaClasica && diasSueltos?' (días efectivos de uso)':'');
   } else {
     // Misma regla de redondeo que el cotizador (ver memoria/comentario en cotizar()):
     // 5+ días se arma en semanas; un resto de 5 o 6 días se redondea a una semana más.
@@ -12576,9 +12680,14 @@ async function guardarAlq(){
     }
   }
 
-  // Días por fecha calendario + regla del mediodía (ver diasAlquilerPorFecha).
+  // Días por fecha calendario + regla del mediodía (ver diasAlquilerPorFecha), menos
+  // los días que el cliente no usa (domingos, feriados, obra parada). El equipo queda
+  // reservado todo el período igual: inicio y fin no se tocan.
   const horaRetiroCalc=document.getElementById('alq-hora-retiro').value||'08:00';
-  const dias=diasAlquilerPorFecha(desde, hasta, horaRetiroCalc);
+  const diasPeriodo=diasAlquilerPorFecha(desde, hasta, horaRetiroCalc);
+  const diasNoCobrados = document.getElementById('alq-dias-salteados-check').checked
+    ? diasNoCobradosEnPeriodo(desde, hasta, horaRetiroCalc) : [];
+  const dias=Math.max(0, diasPeriodo - diasNoCobrados.length);
 
   // Calcular flete (una sola vez para todo el alquiler, se adjudica al primer equipo)
   let fVal=0,fLabel='Sin flete',fTransportista='Sin flete';
@@ -12797,6 +12906,10 @@ async function guardarAlq(){
       // No cambia nada de lo que se cobra: solo adelanta el aviso a taller.
       salidaDeposito: modoHoras ? null : salidaDeposito,
       horaSalidaDeposito: modoHoras ? null : horaSalidaDeposito,
+      // Los días que no se cobran. Se guardan las FECHAS, no solo cuántos: así después
+      // se puede mirar el alquiler y saber por qué dio 3 días y no 5.
+      diasNoCobrados: modoHoras ? [] : diasNoCobrados.slice(),
+      diasPeriodo: modoHoras ? 0 : diasPeriodo,
       grupoId, grupoCant: filas.length,
       modoHoras, minutosUso, bloques30, horasFacturadas,
       creadoEn, cargadoPor
@@ -12893,6 +13006,24 @@ function editarAlq(id){
   renderEquiposAlqRows();
   syncPesadaAlq();
 
+  // OJO CON EL ORDEN. Todo esto tiene que quedar cargado ANTES de calcular los días,
+  // porque calcDiasAlq() y calcPrecioAlq() lo leen de la pantalla. Estaba más abajo, y
+  // el resultado era que al abrir un alquiler para editarlo se recalculaba con los
+  // valores por defecto del formulario en blanco: la hora de retiro quedaba en 08:00
+  // aunque el alquiler dijera 17:00, y eso cambia los días (regla del mediodía) y el
+  // precio. Un alquiler de 2 días aparecía como de 1.
+  document.getElementById('alq-tarifa-clasica').checked = !!a.tarifaClasica;
+  document.getElementById('alq-sin-factura').checked = !!a.sinFactura;
+  document.getElementById('alq-abierto').checked = !!a.abierto;
+  document.getElementById('alq-hora-entrega').value = a.horaEntrega||'08:00';
+  document.getElementById('alq-hora-retiro').value = a.horaRetiro||'08:00';
+  // Los días descontados también: si no, calcDiasAlq cobra el período completo.
+  if(a.diasNoCobrados && a.diasNoCobrados.length){
+    alqDiasNoCobrados = a.diasNoCobrados.slice();
+    document.getElementById('alq-dias-salteados-check').checked = true;
+    document.getElementById('alq-dias-salteados-box').style.display = 'block';
+  }
+
   // Período: por hora, o fecha desde/hasta
   if(a.modoHoras){
     setAlqPerModo('horas');
@@ -12917,11 +13048,8 @@ function editarAlq(id){
         + `La dejé vacía para que elijas la correcta del calendario. Al guardar se recalculan los días y el precio.`), 60);
     }
   }
-  document.getElementById('alq-tarifa-clasica').checked = !!a.tarifaClasica;
-  document.getElementById('alq-sin-factura').checked = !!a.sinFactura;
-  document.getElementById('alq-abierto').checked = !!a.abierto;
-  document.getElementById('alq-hora-entrega').value = a.horaEntrega||'08:00';
-  document.getElementById('alq-hora-retiro').value = a.horaRetiro||'08:00';
+  // Ya con las horas y la tarifa puestas arriba, se repinta la lista de días.
+  if(alqDiasNoCobrados.length) renderDiasDelPeriodo();
   // Si el equipo salía antes del depósito, que al editar se siga viendo — y no se
   // pierda sin querer al guardar de nuevo.
   if(a.salidaDeposito){
@@ -13181,6 +13309,9 @@ function resumenAlquilerHTML(a){
     ${a.sustituido?`<div style="font-size:.78rem;color:var(--azul);background:rgba(30,136,229,.1);border-radius:6px;padding:5px 10px;margin:4px 0">⚠ Sustituido — cotizado originalmente: ${a.equipoOriginalNombre}${a.precioCambiadoPorSustitucion?'':' (precio sin cambios)'}${a.sustitucionNota?`<div style="margin-top:4px;font-weight:400">Motivo: ${a.sustitucionNota}</div>`:''}${a.precioCambiadoPorSustitucion?`<div style="margin-top:4px;font-weight:700">Precio actualizado — aprobado por el cliente (antes: ${fmt(a.precioOriginalAlCambiar)})</div>`:''}</div>`:''}
     ${fila('Entrega', txtEntrega)}
     ${fila('Retiro', txtRetiro)}
+    ${(a.diasNoCobrados && a.diasNoCobrados.length) ? fila('Días que no se cobran',
+        `${a.diasNoCobrados.length} de ${a.diasPeriodo||'?'} — ${a.diasNoCobrados.map(f=>fmtD(f)).join(', ')}<br>`
+        + `<span style="font-weight:400;color:var(--txt2)">El equipo estuvo reservado el período completo</span>`) : ''}
     ${a.pausado?fila('Pausado desde', `${fmtD(a.pausadoDesde)}${a.pausadoMotivo?' — '+a.pausadoMotivo:''}`):''}
     ${a.salidaSinChecklist?`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:.8rem;color:#b3791f;font-weight:700">⚠️ Salió sin checklist — lo marcó ${a.salidaSinChecklistPor||'oficina'}${a.salidaSinChecklistFecha?' el '+fmtD(a.salidaSinChecklistFecha):''}. El checklist de salida sigue pendiente.</div>`:''}
     ${(!esTallerDet && a.sinFactura && !a.mesFacturado) ? fila('Facturación', 'SIN factura (cargado así de entrada — ya cuenta en reportes)') : ''}
