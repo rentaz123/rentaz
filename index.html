@@ -2071,7 +2071,10 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
               </div>
               <div id="alq-rosso-km" style="display:none">
                 <label class="flabel">Kilómetros (Google Maps, un tramo)</label>
-                <input type="number" id="alq-rosso-km-val" placeholder="km" oninput="calcTotalAlq()">
+                <input type="number" id="alq-rosso-km-val" placeholder="km" oninput="calcTotalAlq();marcarKmTocadosAMano()">
+                <!-- Los destinos por km se van guardando solos: al escribir la localidad,
+                     si ya se viajó ahí aparecen los km de esa vez. Ver DESTINOS_KM. -->
+                <div id="alq-km-sugerido" style="display:none;font-size:.76rem;color:var(--verde);font-weight:700;margin-top:5px"></div>
                 <div id="alq-rosso-km-desglose" style="display:none;font-size:.75rem;color:var(--txt2);background:var(--bg3);border-radius:7px;padding:.5rem .7rem;line-height:1.8;margin-top:6px;"></div>
               </div>
             </div>
@@ -2083,7 +2086,7 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
             </div>
             <div id="alq-localidad-box" style="display:none;margin-top:.6rem">
               <label class="flabel" id="alq-localidad-label">Localidad de destino *</label>
-              <input type="text" id="alq-localidad" list="localidades-list" placeholder="Ej: Rafaela, Susana, Bella Italia..." oninput="document.getElementById('alq-disponibilidad-aviso').dataset.localidadTouched='1'">
+              <input type="text" id="alq-localidad" list="localidades-list" placeholder="Ej: Rafaela, Susana, Bella Italia..." oninput="document.getElementById('alq-disponibilidad-aviso').dataset.localidadTouched='1';sugerirKmPorLocalidad()">
               <datalist id="localidades-list"></datalist>
             </div>
             <div id="alq-extras-box" style="display:none;margin-top:.6rem">
@@ -2713,7 +2716,8 @@ const SB_CONFIGS = [
   { clave:'FLETES_OVERRIDE',  get:()=>FLETES_OVERRIDE,  set:v=>FLETES_OVERRIDE=v },
   { clave:'FICHAS_TECNICAS',  get:()=>FICHAS_TECNICAS,  set:v=>FICHAS_TECNICAS=v },
   { clave:'DOLAR_REF',        get:()=>DOLAR_REF,        set:v=>DOLAR_REF=v },
-  { clave:'PRECIOS_USD_OVERRIDE', get:()=>PRECIOS_USD_OVERRIDE, set:v=>PRECIOS_USD_OVERRIDE=v }
+  { clave:'PRECIOS_USD_OVERRIDE', get:()=>PRECIOS_USD_OVERRIDE, set:v=>PRECIOS_USD_OVERRIDE=v },
+  { clave:'DESTINOS_KM',      get:()=>DESTINOS_KM,      set:v=>DESTINOS_KM=v }
 ];
 
 // ── Foto de lo ultimo que sabemos que quedo guardado ──────────────────────
@@ -7147,21 +7151,44 @@ function limpiarEquiposExtraCot(){
   renderEquiposExtraCot();
 }
 
-// Calcula el costo de flete que corresponde a UN equipo en particular, según su propio
-// peso (pesada o no) — usado en el modo "sin total" del cotizador, donde cada equipo
-// puede tener un costo de envío distinto aunque se cotice el mismo trayecto/destino.
-// Si el flete es por destino fijo (Alejandro o Rosso "fijo"), el valor no depende del
-// peso del equipo puntual (es precio de lista por localidad), así que se usa el mismo
-// para todos. Solo el modo Rosso "por km" varía la tarifa según si el equipo es pesado.
+// De qué destino es un valor del selector de Rosso. El "value" de cada opción es el
+// precio, con una letra pegada para distinguir los destinos que podrían costar igual
+// (ver poblarRossoSelect): nada = Rafaela, "b" = Bella Italia, "s" = Susana.
+function destinoRossoDesdeValue(v){
+  const s = String(v||'');
+  if(!s) return '';
+  if(s.endsWith('b')) return 'bellaItalia';
+  if(s.endsWith('s')) return 'susana';
+  return 'rafaela';
+}
+
+/* Calcula el flete que le corresponde a UN equipo según su propio peso. Se usa en el
+   modo "sin total" del cotizador, donde cada equipo es una alternativa con su precio.
+
+   OJO con Rosso a destino fijo. Acá decía que con destino fijo el precio "no depende
+   del peso del equipo", y eso es falso: la lista de Rosso tiene dos columnas, liviana
+   y pesada (a Rafaela, $160.000 contra $240.000). Como el tipo del selector se pone en
+   "pesada" si hay UNA sola máquina pesada en la cotización, a todas las demás se les
+   cobraba el flete de la pesada. En una cotización de un Brazo Snorkel (pesada) más un
+   Zoomlion (liviana), el Zoomlion salía $240.000 en vez de $160.000.
+
+   Para Alejandro sí es un único precio por localidad, así que ahí no hay nada que
+   distinguir. */
 function fleteParaEquipoSinTotal(tipo, fValGlobal){
   const fleteEspecial = document.getElementById('cot-flete-especial-check').checked;
   if(fleteEspecial) return fValGlobal;
   if(fleteMode!=='rosso') return fValGlobal;
+  const esPesada=PESADAS.includes(tipo);
   const modo=document.getElementById('rosso-modo').value;
-  if(modo!=='km') return fValGlobal;
+
+  if(modo!=='km'){
+    const destino = destinoRossoDesdeValue(document.getElementById('rosso-dest').value);
+    if(!destino) return fValGlobal;
+    return fleteRosso(esPesada?'pesada':'liviana', destino);
+  }
+
   const kmInput=parseFloat(document.getElementById('rosso-km-val').value)||0;
   if(!kmInput) return fValGlobal;
-  const esPesada=PESADAS.includes(tipo);
   const tkm=esPesada?fleteKmParam('pesada'):fleteKmParam('liviana');
   const kmTotal=(kmInput+fleteKmParam('kmExtra'))*2;
   const conRecargo=kmTotal*tkm*(1+fleteKmParam('recargo')/100);
@@ -8432,6 +8459,54 @@ const FLETES_BASE = {
   }
 };
 let FLETES_OVERRIDE = JSON.parse(localStorage.getItem('rtz_fletes_override') || '{}');
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESTINOS POR KM QUE SE VAN APRENDIENDO
+
+   Los viajes por km de Rosso terminan siendo casi siempre a los mismos lugares,
+   y los kilómetros había que buscarlos de nuevo en Google Maps cada vez (o
+   acordarse). Acá se guarda, por localidad, cuántos km se usaron la última vez.
+
+   Se guarda solo: cada alquiler que se carga con Rosso "por km" deja anotado su
+   destino. La próxima vez que se escriba esa localidad, los km aparecen puestos
+   y se puede corregir si el viaje es distinto.
+
+   La clave va sin acentos y en minúscula para que "Bella Italia", "bella italia"
+   y "BELLA ITALIA" sean el mismo destino y no tres.
+   ═══════════════════════════════════════════════════════════════════════════ */
+let DESTINOS_KM = JSON.parse(localStorage.getItem('rtz_destinos_km') || '{}');
+
+function claveDestino(nombre){
+  return String(nombre||'').trim().toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')   // saca los acentos
+    .replace(/\s+/g,' ');
+}
+function kmGuardadosDe(nombre){
+  const d = DESTINOS_KM[claveDestino(nombre)];
+  return d && d.km ? d.km : null;
+}
+// Se llama al guardar un alquiler con Rosso por km. Si el destino ya existía con
+// otros km, se queda con los últimos: el viaje de hoy manda sobre el de hace un año.
+function recordarDestinoKm(nombre, km){
+  const k = claveDestino(nombre);
+  if(!k || !(km>0)) return;
+  const previo = DESTINOS_KM[k] || {};
+  DESTINOS_KM[k] = {
+    nombre: String(nombre).trim(),
+    km: km,
+    usos: (previo.usos||0) + 1,
+    ultimoEn: Date.now()
+  };
+  try{ localStorage.setItem('rtz_destinos_km', JSON.stringify(DESTINOS_KM)); }catch(e){}
+}
+function guardarDestinosKm(){
+  try{ localStorage.setItem('rtz_destinos_km', JSON.stringify(DESTINOS_KM)); }catch(e){}
+  sincronizarFirebase();
+}
+// Los destinos conocidos, el más usado primero.
+function destinosKmOrdenados(){
+  return Object.values(DESTINOS_KM||{}).sort((a,b)=>(b.usos||0)-(a.usos||0) || String(a.nombre).localeCompare(String(b.nombre),'es'));
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  FLETE ROSSO "POR KM" — los cuatro numeros de la formula
@@ -11902,7 +11977,16 @@ function poblarLocalidadesDatalist(){
     return (esGrito || esSusurro) ? capitalizar(original) : original;
   }).sort((a,b)=>a.localeCompare(b,'es'));
 
-  dl.innerHTML=lista.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`).join('');
+  // Los destinos a los que ya se viajó por km, arriba y con los km a la vista: son los
+  // que más se repiten y así se eligen de la lista en vez de escribirlos de nuevo.
+  const yaViajados = destinosKmOrdenados();
+  const clavesViajadas = new Set(yaViajados.map(d=>claveDestino(d.nombre)));
+  const opcionesViajadas = yaViajados.map(d=>
+    `<option value="${String(d.nombre).replace(/"/g,'&quot;')}">${d.km} km${d.usos>1?' · '+d.usos+' viajes':''}</option>`).join('');
+  // Las de clientes que ya están entre los destinos no se repiten.
+  const resto = lista.filter(c=>!clavesViajadas.has(claveDestino(c)));
+
+  dl.innerHTML = opcionesViajadas + resto.map(c=>`<option value="${c.replace(/"/g,'&quot;')}">`).join('');
 }
 
 function toggleUsdAlq(){
@@ -12251,6 +12335,42 @@ function autocompletarLocalidadAlq2(sel){
 // "completar". Sigue siendo editable a mano en los únicos casos donde el destino NO es
 // uno fijo: flete "Otro" (fletero externo, destino libre) o Rosso "Por km" (se tipea la
 // localidad porque el precio se calcula por kilómetros, no hay una lista fija).
+/* Al escribir la localidad en un flete de Rosso "por km", si ya se viajó a ese lugar
+   se ponen los kilómetros de aquella vez. Es una sugerencia, no una imposición: se
+   puede pisar a mano y entonces deja de ofrecerse para no estar peleando con quien
+   está cargando (marcarKmTocadosAMano). */
+let kmTocadosAMano = false;
+function marcarKmTocadosAMano(){
+  kmTocadosAMano = true;
+  const av=document.getElementById('alq-km-sugerido');
+  if(av) av.style.display='none';
+}
+function sugerirKmPorLocalidad(){
+  const aviso = document.getElementById('alq-km-sugerido');
+  const campoKm = document.getElementById('alq-rosso-km-val');
+  if(!aviso || !campoKm) return;
+  // Solo cuando el flete es Rosso por km: en los otros la localidad sale del destino.
+  const modoRosso = document.getElementById('alq-rosso-modo');
+  const esPorKm = alqFleteMode==='rosso' && modoRosso && modoRosso.value==='km';
+  if(!esPorKm){ aviso.style.display='none'; return; }
+
+  const loc = document.getElementById('alq-localidad').value;
+  const km = kmGuardadosDe(loc);
+  if(!km){ aviso.style.display='none'; return; }
+
+  // Si ya hay km escritos a mano, no se pisan: solo se avisa cuántos se usaron antes.
+  if(kmTocadosAMano && campoKm.value && parseFloat(campoKm.value)!==km){
+    aviso.innerHTML = `<span style="color:var(--txt2);font-weight:400">La última vez a ${DESTINOS_KM[claveDestino(loc)].nombre} fueron <b>${km} km</b>.</span>`;
+    aviso.style.display='block';
+    return;
+  }
+  campoKm.value = km;
+  const usos = DESTINOS_KM[claveDestino(loc)].usos||1;
+  aviso.innerHTML = `✓ ${km} km — como la${usos>1?'s '+usos+' veces':' vez'} anterior${usos>1?'es':''} a ${DESTINOS_KM[claveDestino(loc)].nombre}. Cambialo si este viaje es distinto.`;
+  aviso.style.display='block';
+  calcTotalAlq();
+}
+
 function actualizarCampoLocalidadAlq(sufijo){
   const modo = sufijo==='2' ? alqFleteMode2 : alqFleteMode;
   const rossoModoEl = document.getElementById('alq'+sufijo+'-rosso-modo');
@@ -12804,10 +12924,15 @@ function calcPrecioAlq(dias, idx, opts){
   if(!p){ row.precio=0; row.precioDetalle=''; return; }
 
   const tarifaClasica = document.getElementById('alq-tarifa-clasica').checked;
+  // OJO: los días descontados NO fuerzan tarifa diaria. Se los saca del total y se
+  // aplica la escala de siempre sobre lo que queda. Forzar día suelto hacía que 6 días
+  // cobrados salieran $1.008.000 cuando la semana entera vale $840.000: el cliente que
+  // usaba MENOS días pagaba MÁS. La escala normal ya da lo que corresponde en los dos
+  // extremos — 3 días cobran 3 días, y 6 días cobran una semana.
   const diasSueltos = !!(opts && opts.diasSueltos);
 
   let base=0, perLabel='';
-  if(tarifaClasica || diasSueltos || dias<=4 || !p.sem){
+  if(tarifaClasica || dias<=4 || !p.sem){
     base=dias*p.dia;
     perLabel=`${dias} día${dias>1?'s':''} × ${fmt(p.dia)}`
       + (tarifaClasica?' (tarifa clásica)':'')
@@ -12946,6 +13071,9 @@ async function guardarAlq(){
       const conRecargo=sinRecargo*(1+fleteKmParam('recargo')/100);
       fVal=Math.round(conRecargo);
       fLabel=`Por km (${tipoKm}): ${kmInput} km × 2 (ida/vuelta) + ${fleteKmParam('kmExtra')} km extra c/tramo = ${kmTotal} km × ${fmt(tkm)}/km = ${fmt(sinRecargo)} + ${fleteKmParam('recargo')}% recargo = ${fmt(fVal)}`;
+      // Se aprende el destino: la próxima vez que se escriba esta localidad, los km
+      // aparecen solos. Ver sugerirKmPorLocalidad().
+      recordarDestinoKm(localidad, kmInput);
     }
     fTransportista='Rosso';
   } else if(alqFleteMode==='otro'){
@@ -13562,6 +13690,9 @@ function resumenAlquilerHTML(a){
         <div style="display:flex;justify-content:flex-end;align-items:center;gap:5px">
           ${c.numeroFactura?`<span style="font-size:.72rem;color:var(--txt2)">N° <b style="color:var(--txt)">${c.numeroFactura}</b></span>`:`<span style="font-size:.72rem;color:var(--rojo)">sin N° de factura</span>`}
           <button onclick="editarNumeroFacturaParcial(${a.id},${i})" style="background:none;border:none;color:var(--txt3);cursor:pointer;font-size:.72rem;text-decoration:underline;padding:0">${c.numeroFactura?'editar':'cargar'}</button>
+          ${/* Borrar solo la última: las de arriba quedarían con un agujero de días.
+                Ver borrarFacturaParcial. */''}
+          ${i===a.diasAgregados.length-1?`<button onclick="borrarFacturaParcial(${a.id},${i})" title="Borrar esta factura y volver atrás" style="background:none;border:none;color:var(--rojo);cursor:pointer;font-size:.72rem;text-decoration:underline;padding:0;margin-left:4px">borrar</button>`:''}
         </div>
       </div>`).join('')}
     </div>`:''}
@@ -15705,6 +15836,78 @@ async function agregarDiasFacturablesAlq(id, periodo){
   guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion(); renderReportes();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
   alert(`Factura ${fmtD(desde)} al ${fmtD(nuevaFin)} — ${detalle} (${fmt(montoChunk)})${numeroFactura?' · N° '+numeroFactura:''}.\n\nYa cuenta para el reporte de ${mesLabel(mesActual)}. Si en realidad corresponde a otro mes, tocá "cambiar" al lado de esta factura en el detalle del alquiler.`);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BORRAR UNA FACTURA PARCIAL MAL CARGADA
+
+   Cargar una factura toca cuatro cosas del alquiler a la vez: el precio, los días,
+   la fecha de fin y la de retiro. Si te equivocaste en los días (cargaste 3 y eran
+   4), no alcanzaba con editar: la app ya daba esos días por facturados y no dejaba
+   volver a cargarlos. Quedabas trabado.
+
+   Esto deshace el tramo y devuelve el alquiler a como estaba, para poder cargarlo
+   de nuevo bien.
+
+   Solo se puede borrar el ÚLTIMO tramo cargado, a propósito: cada tramo arranca
+   donde terminó el anterior, así que sacar uno del medio dejaría un agujero de
+   días sin facturar y los de después apuntando a fechas que ya no existen. Para
+   corregir uno viejo hay que ir borrando de atrás para adelante.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function borrarFacturaParcial(alqId, idx){
+  const a = ALQUILERES.find(x=>x.id===alqId); if(!a) return;
+  const lista = a.diasAgregados || [];
+  const c = lista[idx]; if(!c) return;
+
+  if(idx !== lista.length-1){
+    alert(`Solo se puede borrar la última factura cargada.\n\n`
+      + `Cada tramo arranca donde terminó el anterior: si se saca uno del medio, quedan días sin facturar y los siguientes apuntan a fechas que ya no existen.\n\n`
+      + `Borrá primero las de abajo, hasta llegar a esta.`);
+    return;
+  }
+
+  const fmtD = s => { if(!s) return ''; const[y,m,d]=String(s).split('-'); return `${d}/${m}/${y.slice(2)}`; };
+  const queEs = c.desde&&c.hasta ? `${fmtD(c.desde)} al ${fmtD(c.hasta)}` : `${c.dias} día${c.dias!==1?'s':''}`;
+  if(!(await confirmSiNo(
+    `¿Borrar esta factura?\n\n${queEs} · ${c.dias} día${c.dias!==1?'s':''} · ${fmt(c.monto||0)}`
+    + (c.numeroFactura?`\nN° ${c.numeroFactura}`:'')
+    + `\n\nEl alquiler vuelve a como estaba antes de cargarla y vas a poder cargar esos días de nuevo.`
+    + `\n\nOJO: esto NO anula la factura en AFIP — si ya se emitió, hay que resolverlo aparte.`,
+    {si:'Sí, borrarla', no:'Cancelar'}))) return;
+
+  // El hueco entre el fin facturado y la fecha de retiro real se conserva.
+  const gapDias = (a.fechaRetiro && a.fin && fechaValidaApp(a.fechaRetiro) && fechaValidaApp(a.fin))
+    ? Math.round((new Date(a.fechaRetiro+'T00:00:00') - new Date(a.fin+'T00:00:00'))/86400000) : 0;
+
+  lista.splice(idx,1);
+
+  if(!lista.length && a.precioBase!=null){
+    // Era la única: se vuelve exactamente a la foto que se guardó al cargar la primera.
+    a.precio = a.precioBase;
+    a.dias   = a.diasBase;
+    a.fin    = a.finBase;
+    delete a.precioBase; delete a.diasBase; delete a.finBase;
+  } else {
+    a.precio = Math.max(0, (a.precio||0) - (c.monto||0));
+    a.dias   = Math.max(0, (a.dias||0)   - (c.dias||0));
+    // El fin vuelve al día anterior al que arrancaba este tramo.
+    if(c.desde && fechaValidaApp(c.desde)){
+      const d = new Date(c.desde+'T00:00:00'); d.setDate(d.getDate()-1);
+      a.fin = d.toISOString().slice(0,10);
+    }
+  }
+
+  if(!a.abierto && a.fin && fechaValidaApp(a.fin)){
+    const r = new Date(a.fin+'T00:00:00'); r.setDate(r.getDate()+gapDias);
+    a.fechaRetiro = r.toISOString().slice(0,10);
+  }
+
+  recalcularTotalesAlq(a);
+  marcarAccionUndo(`Borrar factura de "${a.equipoNombre}" — ${a.cliente} (${queEs})`, 'alquileres');
+  guardar();
+  refrescarDetalleAlqSiAbierto(alqId);
+  renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion(); renderReportes();
+  alert(`Listo. El alquiler volvió a ${a.dias} día${a.dias!==1?'s':''} y ${fmt(a.precio)}.\n\nYa podés cargar la factura de nuevo con los días correctos.`);
 }
 
 // Muestra entre paréntesis cuántos hay en cada solapa. Antes había que contarlos
