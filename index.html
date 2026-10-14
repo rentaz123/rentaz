@@ -15915,9 +15915,25 @@ function recalcPeriodoFactura(){
       avisos.push(`Esta factura arranca <b>antes</b> del ${fmtD(esperado)}, que es desde donde quedaba pendiente. Revisá que no estés cobrando dos veces los mismos días.`);
     }
   }
-  // ¿El período cruza de mes? Ahí el rendimiento se reparte entre dos meses.
-  if(String(desde).slice(0,7)!==String(hasta).slice(0,7)){
-    avisos.push(`El período abarca dos meses. En el reporte de Máquinas, con la vista "prorrateado", los días se reparten entre ${mesLabel(String(desde).slice(0,7))} y ${mesLabel(String(hasta).slice(0,7))}.`);
+  /* ¿El período cruza de mes?
+
+     El texto anterior decía que los días se reparten entre los dos meses "en el
+     reporte de Máquinas, con la vista prorrateado". Esa vista se sacó el 8/9/2026
+     — el reporte pasó a contar por MES DE FACTURACIÓN, entero. Así que el aviso
+     estaba asustando con algo que ya no pasa.
+
+     Lo que de verdad importa saber acá es en qué mes va a contar esta factura: el
+     que quede marcado como mes de facturación, completa, sin repartir. */
+  const mesDesde = String(desde).slice(0,7), mesHasta = String(hasta).slice(0,7);
+  if(mesDesde!==mesHasta){
+    const mesActual = hoyISO().slice(0,7);
+    const contaraEn = (mesHasta < mesActual) ? null : mesActual;
+    avisos.push(
+      `El período arranca en ${mesLabel(mesDesde)} y termina en ${mesLabel(mesHasta)}. `
+      + (contaraEn
+          ? `La factura cuenta <b>entera</b> en ${mesLabel(contaraEn)} — no se reparte entre los dos meses.`
+          : `Al continuar vas a poder elegir en qué mes cuenta: se imputa completa a uno de los dos.`)
+    );
   }
   if(avisos.length){
     avisoEl.style.cssText='display:block;font-size:.79rem;border-radius:8px;padding:8px 11px;margin-bottom:.7rem;line-height:1.5;background:rgba(229,168,59,.16);color:#8a6216';
