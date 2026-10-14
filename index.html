@@ -1719,11 +1719,17 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
       </div>
       <div id="rep-rango-txt" style="font-size:.74rem;color:var(--txt3);margin:-.5rem 0 .9rem"></div>
 
+      <!-- Máquinas va primero: el rendimiento de los equipos es lo que se mira todos
+           los días; clientes y fletes son información complementaria. -->
       <div class="rb-group" style="margin-bottom:1rem" id="rep-tabs">
-        <button class="rb sel" id="rep-tab-ventas" onclick="setRepTab('ventas')" style="flex:1;min-width:0">Clientes</button>
-        <button class="rb" id="rep-tab-maquinas" onclick="setRepTab('maquinas')" style="flex:1;min-width:0">Máquinas</button>
+        <button class="rb sel" id="rep-tab-maquinas" onclick="setRepTab('maquinas')" style="flex:1;min-width:0">Máquinas</button>
+        <button class="rb" id="rep-tab-ventas" onclick="setRepTab('ventas')" style="flex:1;min-width:0">Clientes</button>
         <button class="rb" id="rep-tab-fletes" onclick="setRepTab('fletes')" style="flex:1;min-width:0">Fletes</button>
-        <button class="rb" id="rep-tab-perdidas" onclick="setRepTab('perdidas')" style="flex:1;min-width:0">Oportunidades perdidas</button>
+        <!-- "Oportunidades perdidas" se sacó de Reportes (14/10/2026, a pedido de Mateo).
+             Los datos NO se borran: las solicitudes dadas por perdidas se siguen
+             guardando y se ven en la pantalla de Solicitudes. Si alguna vez hace falta
+             volver a tenerlo acá, basta con reponer este botón: renderRepPerdidas()
+             sigue existiendo y funcionando. -->
       </div>
       <div id="rep-cont"></div>
     </div>
@@ -16784,10 +16790,13 @@ function setRepTab(t){
   repTab=t;
   // "historial" ya no existe como solapa: cada una de las otras ES el historial,
   // pero mirado con el período elegido, que es lo que sirve para decidir.
+  // 'perdidas' queda en la lista aunque su botón ya no esté: así, si algún día se
+  // repone, no hay que acordarse de tocar también esta línea.
   ['ventas','maquinas','fletes','perdidas'].forEach(x=>{
     const b=document.getElementById('rep-tab-'+x); if(b) b.classList.remove('sel');
   });
-  document.getElementById('rep-tab-'+t).classList.add('sel');
+  const btn=document.getElementById('rep-tab-'+t);
+  if(btn) btn.classList.add('sel');
   renderReportes();
 }
 // Un alquiler entra a los reportes (ventas, máquinas, fletes, ranking, historial)
@@ -16924,11 +16933,13 @@ let repPeriodo = 30;      // 15 | 30 | 60 | 90 | 0 = todo
 
 function repRango(){
   if(!repPeriodo) return null;                    // "Todo": sin filtro
-  const f = d => d.toISOString().slice(0,10);
+  // fechaISOLocal y no toISOString: este último devuelve la fecha en UTC, y acá son
+  // UTC-3. Entre las 21:00 y la medianoche daba la fecha de mañana, y la ventana de
+  // "últimos 15 días" quedaba corrida un día (ver nota al principio del archivo).
   const hasta = new Date();
   const desde = new Date();
   desde.setDate(desde.getDate() - repPeriodo + 1);
-  return { desde: f(desde), hasta: f(hasta) };
+  return { desde: fechaISOLocal(desde), hasta: fechaISOLocal(hasta) };
 }
 
 function repSetPeriodo(d){
@@ -16997,11 +17008,20 @@ function renderReportes(){
   // meses con movimiento parece un error de la app y no una decisión tomada.
   let aviso='';
   if(REPORTES_DESDE_MES){
-    aviso=`<div style="background:rgba(47,111,208,.08);border-left:3px solid var(--azul);border-radius:0 8px 8px 0;padding:9px 13px;margin-bottom:1rem;font-size:.8rem;color:var(--txt2);line-height:1.5">
-      Los reportes cuentan las facturas <b style="color:var(--txt)">de ${mesLabel(REPORTES_DESDE_MES).toLowerCase()} en adelante</b>.
-      Lo facturado antes quedó guardado pero no se suma acá — lo seguís viendo en Alquileres y en la solapa Historial.<br>
-      Un alquiler que arrancó hace meses <b style="color:var(--txt)">sí cuenta</b>: aporta cada factura parcial en el mes en que la cargues.
-    </div>`;
+    // Fletes mide otra cosa que las demás solapas: lo que te sale el transporte, que se
+    // devenga cuando el camión viaja. Por eso su aviso es distinto — decir "cuenta las
+    // facturas" ahí sería mentira, y de las que hacen desconfiar de todo el número.
+    aviso = (repTab==='fletes')
+      ? `<div style="background:rgba(47,111,208,.08);border-left:3px solid var(--azul);border-radius:0 8px 8px 0;padding:9px 13px;margin-bottom:1rem;font-size:.8rem;color:var(--txt2);line-height:1.5">
+          Acá los viajes cuentan <b style="color:var(--txt)">cuando se hacen</b>, no cuando se facturan: la ida entra el día que taller marca que el equipo salió, y la vuelta el día que marca que volvió.
+          Un viaje ya hecho cuenta aunque el alquiler todavía no esté facturado — al fletero se le paga igual.<br>
+          Se muestran los viajes <b style="color:var(--txt)">de ${mesLabel(REPORTES_DESDE_MES).toLowerCase()} en adelante</b>.
+        </div>`
+      : `<div style="background:rgba(47,111,208,.08);border-left:3px solid var(--azul);border-radius:0 8px 8px 0;padding:9px 13px;margin-bottom:1rem;font-size:.8rem;color:var(--txt2);line-height:1.5">
+          Los reportes cuentan las facturas <b style="color:var(--txt)">de ${mesLabel(REPORTES_DESDE_MES).toLowerCase()} en adelante</b>.
+          Lo facturado antes quedó guardado pero no se suma acá — lo seguís viendo en Alquileres y en la solapa Historial.<br>
+          Un alquiler que arrancó hace meses <b style="color:var(--txt)">sí cuenta</b>: aporta cada factura parcial en el mes en que la cargues.
+        </div>`;
   }
 
   if(repTab==='ventas') cont.innerHTML=aviso+renderRepVentas();
@@ -17177,12 +17197,18 @@ function renderRepVentas(){
   if(!ALQUILERES.length && !rivReportes.length) return '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">Todavía no hay alquileres cargados.</p>';
   const rango = repRango();
   const porCliente={};
+  // Se guarda qué alquiler aportó cuánto, para poder abrir el renglón y ver de dónde
+  // sale el número. Antes el ranking era un total y punto: no había forma de saber qué
+  // lo componía sin ir a buscar alquiler por alquiler.
+  repClientesDetalle={};
   const sumar=a=>{
     const ap = repAporteEnRango(a, rango);
     if(ap.dias <= 0) return;                       // no tocó el período
     if(!porCliente[a.cliente]) porCliente[a.cliente]={cliente:a.cliente, total:0, cantidad:0};
     porCliente[a.cliente].total += ap.monto;
     porCliente[a.cliente].cantidad += 1;
+    if(!repClientesDetalle[a.cliente]) repClientesDetalle[a.cliente]=[];
+    repClientesDetalle[a.cliente].push({a, monto:ap.monto, dias:ap.dias});
   };
   ALQUILERES.forEach(a=>{ if(alqCuentaParaReportes(a)) sumar(a); });
   rivReportes.forEach(sumar);
@@ -17207,11 +17233,59 @@ function renderRepVentas(){
       <b style="color:var(--txt);font-size:1.05rem">${fmt(granTotal)}</b> ·
       ${totalAlq} alquiler${totalAlq!==1?'es':''} · ${lista.length} cliente${lista.length!==1?'s':''}
     </div>` +
-    lista.map((x,i)=>`<div class="eq-item" style="cursor:default">
+    lista.map((x,i)=>{
+      const abierto = repClienteAbierto===x.cliente;
+      return `<div class="eq-item" style="cursor:pointer" onclick="repToggleCliente(${JSON.stringify(x.cliente).replace(/"/g,'&quot;')})">
       <div style="width:26px;text-align:center;font-weight:700;color:var(--txt3);font-size:.85rem;flex:none">${i+1}</div>
-      <div class="eq-info"><h4>${x.cliente}</h4><p>${x.cantidad} alquiler${x.cantidad!==1?'es':''}</p></div>
-      <span style="font-weight:700;color:var(--txt);font-size:.9rem;white-space:nowrap">${fmt(x.total)}</span>
-    </div>`).join('');
+      <div class="eq-info"><h4>${x.cliente}</h4><p>${x.cantidad} alquiler${x.cantidad!==1?'es':''} · tocá para ver el detalle</p></div>
+      <span style="font-weight:700;color:var(--txt);font-size:.9rem;white-space:nowrap">${fmt(x.total)} <span style="color:var(--txt3);font-weight:400">${abierto?'▲':'▼'}</span></span>
+    </div>` + (abierto ? repDetalleClienteHTML(x.cliente) : '');
+    }).join('');
+}
+
+/* De dónde sale el número de cada cliente: un renglón por alquiler, con lo que
+   efectivamente aportó al período, el estado de su facturación y el número si lo
+   tiene. Es la respuesta a "¿y esto de qué es?". */
+let repClienteAbierto=null;
+let repClientesDetalle={};
+function repToggleCliente(cliente){
+  repClienteAbierto = (repClienteAbierto===cliente) ? null : cliente;
+  renderReportes();
+}
+function repDetalleClienteHTML(cliente){
+  const filas = (repClientesDetalle[cliente]||[]).slice().sort((x,y)=>y.monto-x.monto);
+  if(!filas.length) return '';
+  const fmtD = s => { if(!s) return ''; const[y,m,d]=String(s).split('-'); return `${d}/${m}/${y.slice(2)}`; };
+  return `<div style="margin:-6px 0 10px 34px;border-left:2px solid var(--border2);padding-left:11px">`
+    + filas.map(({a, monto, dias})=>{
+      // Cómo cuenta este alquiler: por factura con número, por tramos, o "sin factura"
+      // (el acuerdo de cobro directo, que entra a reportes igual).
+      let estado, color;
+      if(a.sinFactura){
+        estado = 'Sin factura — cargado así de entrada, cuenta igual en reportes';
+        color = '#b3791f';
+      } else if(a.diasAgregados && a.diasAgregados.length){
+        const conNro = a.diasAgregados.filter(d=>d.numeroFactura).length;
+        estado = `${a.diasAgregados.length} factura${a.diasAgregados.length!==1?'s':''} cargada${a.diasAgregados.length!==1?'s':''}`
+          + (conNro ? ' · N° ' + a.diasAgregados.filter(d=>d.numeroFactura).map(d=>d.numeroFactura).join(', ') : ' · sin N° cargado');
+        color = conNro ? 'var(--txt3)' : 'var(--rojo)';
+      } else if(a.mesFacturado){
+        estado = `Facturado ${mesLabel(a.mesFacturado)}` + (a.numeroFactura ? ' · N° '+a.numeroFactura : ' · sin N° cargado');
+        color = a.numeroFactura ? 'var(--txt3)' : 'var(--rojo)';
+      } else {
+        estado = 'Sin facturar todavía';
+        color = 'var(--rojo)';
+      }
+      return `<div onclick="event.stopPropagation();verDetalleAlq(${a.id})" style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:.45rem 0;border-bottom:1px solid var(--border);cursor:pointer">
+        <div style="min-width:0">
+          <div style="font-size:.82rem;font-weight:700;color:var(--txt)">${a.equipoNombre||'(sin equipo)'}</div>
+          <div style="font-size:.75rem;color:var(--txt2)">${fmtD(a.inicio)}${a.fin?' al '+fmtD(a.fin):''} · ${dias} día${dias!==1?'s':''}</div>
+          <div style="font-size:.73rem;color:${color}">${estado}</div>
+        </div>
+        <span style="font-weight:700;font-size:.84rem;white-space:nowrap">${fmt(monto)}</span>
+      </div>`;
+    }).join('')
+    + `<div style="font-size:.72rem;color:var(--txt3);padding:.4rem 0">Tocá cualquiera para abrir el alquiler.</div></div>`;
 }
 // Mes que corresponde a un alquiler para el reporte de fletes: el mes de facturación si ya
 // El fletero cobra CADA TRAMO (ida y vuelta) en la fecha en que efectivamente lo hace, no
@@ -17222,6 +17296,28 @@ function renderRepVentas(){
 // Si ida y vuelta caen en el mismo mes, se suman ahí. Si caen en meses distintos, el monto
 // total guardado (fVal + extras, que es el costo del viaje completo ida+vuelta) se reparte
 // 50/50 entre el mes de la ida y el mes de la vuelta.
+/* Los alquileres que entran al reporte de FLETES.
+
+   OJO: NO usa alquileresParaReportes(). Ese filtro exige que el alquiler tenga al
+   menos una factura cargada, que es lo correcto para Clientes y Máquinas —miden
+   plata facturada— pero no para los fletes: al fletero se le paga el viaje lo haya
+   facturado Walter o no. Con el filtro puesto, el reporte mostraba de menos (dos
+   alquileres idénticos con ida y vuelta hechas daban $240.000 en vez de $480.000,
+   porque uno todavía no estaba facturado).
+
+   El arranque limpio de octubre se respeta igual, pero por la FECHA DEL VIAJE: un
+   viaje de septiembre no cuenta, uno de octubre sí, esté facturado o no. */
+function alquileresParaReporteFletes(){
+  return (ALQUILERES||[]).filter(a =>
+    a.activo!==false && a.fTransportista && a.fTransportista!=='Sin flete');
+}
+// ¿Este viaje entra, según el corte de arranque de los reportes? Mira la fecha en que
+// se hizo el viaje, no cuándo se facturó.
+function eventoFleteEntraEnElCorte(ev){
+  if(!REPORTES_DESDE_MES) return true;
+  return !!ev.fecha && ev.fecha.slice(0,7) >= REPORTES_DESDE_MES;
+}
+
 function fleteEventos(a){
   // Si este alquiler está vinculado a otro como "viaje compartido" y NO es el principal, el
   // camión y el costo ya se cuentan a través del alquiler vinculado — no generar eventos acá
@@ -17268,11 +17364,13 @@ function fleteEventos(a){
 
 function renderRepFletes(){
   const rango = repRango();
-  const conFlete=alquileresParaReportes().filter(a=>a.fTransportista && a.fTransportista!=='Sin flete');
+  const conFlete=alquileresParaReporteFletes();
   const porMes={};
   let huboAlgo=false;
   conFlete.forEach(a=>{
     fleteEventos(a).forEach(ev=>{
+      // El viaje cuenta desde que se hizo, esté facturado o no (ver alquileresParaReporteFletes).
+      if(!eventoFleteEntraEnElCorte(ev)) return;
       // Un flete es un hecho puntual (sale tal día), así que se cuenta entero
       // si su fecha cae adentro del período. No se prorratea como los alquileres.
       if(rango && (!ev.fecha || ev.fecha < rango.desde || ev.fecha > rango.hasta)) return;
@@ -17311,8 +17409,11 @@ function verDetalleFletero(nombre, mes){
   // Recorremos TODOS los alquileres con flete (no solo los que tienen a.fTransportista===nombre)
   // porque un evento de "vuelta" puede pertenecer a un fletero distinto del que figura como
   // transportista principal del alquiler (ver fTransportistaRetiro / fleteEventos).
-  alquileresParaReportes().filter(a=>a.fTransportista && a.fTransportista!=='Sin flete').forEach(a=>{
+  // Misma lista que el reporte: si acá se filtrara distinto, el detalle no sumaría
+  // lo mismo que el renglón que se tocó.
+  alquileresParaReporteFletes().forEach(a=>{
     fleteEventos(a).forEach(ev=>{
+      if(!eventoFleteEntraEnElCorte(ev)) return;
       if(ev.transportista!==nombre) return;
       if(mes && ev.mes!==mes) return;
       filas.push({a, ev});
