@@ -872,6 +872,18 @@ if ('serviceWorker' in navigator) {
         <div class="dash-collapse-body" id="dash-solicitudes-container" style="display:none"></div>
       </div>
 
+      <!-- Equipos que taller marcó como devueltos pero que todavía no tienen definido
+           qué se cobra (alquiler abierto, o volvió antes de la fecha pactada). Es plata
+           sin resolver, así que va arriba. Ver marcarVueltaDeTaller. -->
+      <div class="dash-collapse" id="dc-cobropend" style="border-color:#b3791f;display:none">
+        <button class="dash-collapse-header" id="dch-cobropend" onclick="toggleDashCollapse('cobropend')" style="color:#b3791f">
+          <span class="dc-title">Volvieron — falta definir qué se cobra</span>
+          <span class="dc-badge" id="dc-badge-cobropend" style="background:#b3791f;color:#fff"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-cobropend-container" style="display:none"></div>
+      </div>
+
       <!-- Alquileres guardados con una fecha imposible (el caso del año 22026). Van
            arriba de todo y en rojo: mientras estén así, los días y el precio de ese
            alquiler son basura y contaminan reportes y facturación. -->
@@ -2929,10 +2941,12 @@ function aplicarEstadoRemoto(estado, esSincroTiempoReal){
       avisarPresupuestosTallerNuevos(presupuestosPrevios, PRESUPUESTOS);
       avisarSolicitudesEsperaCubiertasNuevas(equiposPrevios, alquileresPrevios);
       avisarEquipoRetiradoFisicoNuevo(alquileresPrevios, ALQUILERES);
+      avisarCobroPendienteNuevo(alquileresPrevios, ALQUILERES);
     }
     if(ROL_ACTUAL==='facturacion'){
       avisarPagosProvPagados(pagosProvPrevios, PAGOS_PROVEEDORES);
       avisarContratosListos(contratosPrevios, CONTRATOS);
+      avisarCobroPendienteNuevo(alquileresPrevios, ALQUILERES);
     }
     if(ROL_ACTUAL==='taller'){
       avisarAlquileresNuevos(alquileresPrevios, ALQUILERES);
@@ -3244,6 +3258,30 @@ function cerrarBannerAvisoPresup(){
 // recibe el aviso activo en el momento — antes esto solo aparecía pasivo en el
 // panel "Para retirar" del Dashboard, sin ningún sonido ni banner que le
 // avisara que hay algo nuevo para ir a buscar.
+// Taller marcó que un equipo volvió y quedó sin definir qué se cobra. Es plata: la
+// oficina se entera en el momento, no cuando alguien pasa por Inicio.
+function avisarCobroPendienteNuevo(previos, actuales){
+  const previosPend = new Set((previos||[]).filter(a=>a.cobroPendiente).map(a=>a.id));
+  const nuevos = (actuales||[]).filter(a=>a.cobroPendiente && !previosPend.has(a.id));
+  if(!nuevos.length) return;
+  reproducirBeepAviso();
+  const txt = nuevos.length===1
+    ? `Volvió ${nuevos[0].equipoNombre} (${nuevos[0].cliente}) — falta definir qué se cobra`
+    : `${nuevos.length} equipos volvieron — falta definir qué se cobra`;
+  const banner=document.getElementById('banner-aviso-retiro');
+  if(banner){
+    document.getElementById('banner-aviso-retiro-txt').textContent = txt;
+    banner.style.display='flex';
+    banner.classList.remove('banner-blink'); void banner.offsetWidth;
+    banner.classList.add('banner-blink');
+  }
+  if('Notification' in window && Notification.permission==='granted'){
+    nuevos.forEach(a=>{
+      try{ new Notification('Equipo devuelto — falta definir el cobro', { body: `${a.equipoNombre} · ${a.cliente}` }); }catch(e){}
+    });
+  }
+}
+
 function avisarRetirosPendientesNuevos(previos, actuales){
   const idsPendientesPrevios = new Set((previos||[]).filter(a=>a.pickupPendiente).map(a=>a.id));
   const nuevos = (actuales||[]).filter(a=>a.pickupPendiente && !idsPendientesPrevios.has(a.id));
@@ -3509,6 +3547,45 @@ function cotizVolverASeguir(id){
   const p=(PRESUPUESTOS||[]).find(x=>x.id===id); if(!p) return;
   p.segArchivada = false; p.segArchivadaEn = null;
   guardarSeguimientoCotiz(`Volver a seguir la cotización de ${p.clienteNombre||'(sin cliente)'}`);
+}
+
+// ── Volvieron pero falta definir qué se cobra ─────────────────────────────
+function renderCobroPendiente(){
+  const caja = document.getElementById('dc-cobropend');
+  if(!caja) return;
+  // Es un tema de plata: lo ve oficina, no taller.
+  if(esTallerVista()){ caja.style.display='none'; return; }
+  const lista = alquileresConCobroPendiente()
+    .sort((a,b)=>String(a.cobroPendiente.desde||'').localeCompare(String(b.cobroPendiente.desde||'')));
+  badgeDash('dc-badge-cobropend', lista.length);
+  caja.style.display = lista.length ? 'block' : 'none';
+  if(!lista.length) return;
+
+  const fmtD = s => { if(!s) return ''; const[y,m,d]=String(s).split('-'); return `${d}/${m}/${y.slice(2)}`; };
+  document.getElementById('dash-cobropend-container').innerHTML =
+    `<p style="font-size:.8rem;color:var(--txt2);margin:0 0 .6rem;line-height:1.5">
+       Taller marcó que estos equipos volvieron. Ya están disponibles, pero falta decidir
+       cuántos días se facturan.
+     </p>` +
+    lista.map(a=>{
+      const c=a.cobroPendiente;
+      const porQue = c.motivo==='abierto'
+        ? 'Era un alquiler abierto — hay que definir hasta cuándo se cobra'
+        : `Volvió antes del ${fmtD(a.fin)} pactado — hay que decidir si se descuentan días`;
+      return `<div style="display:flex;gap:9px;align-items:flex-start;padding:.55rem .7rem;border:1px solid #b3791f33;border-left:3px solid #b3791f;border-radius:8px;margin-bottom:.35rem;background:var(--bg2)">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:.88rem">${a.equipoNombre||''}</div>
+          <div style="font-size:.78rem;color:var(--txt2)">${a.cliente||''}</div>
+          <div style="font-size:.76rem;color:#b3791f;font-weight:700;margin-top:2px">Volvió el ${fmtD(c.desde)}${c.marcadoPor?' · lo marcó '+c.marcadoPor:''}</div>
+          <div style="font-size:.74rem;color:var(--txt3);margin-top:1px">${porQue}</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:.45rem">
+            <button onclick="${a.abierto?`abrirModalCerrarAbierto(${a.id})`:`marcarRetiroAnticipado(${a.id})`}" class="btn-nuevo" style="padding:4px 10px;font-size:.73rem">Definir qué se cobra</button>
+            <button onclick="cobroPendienteSinCambios(${a.id})" class="btn-lim" style="padding:4px 10px;font-size:.73rem">Está bien como está</button>
+            <button onclick="verDetalleAlq(${a.id})" class="btn-lim" style="padding:4px 10px;font-size:.73rem">Ver alquiler</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
 }
 
 // ── Alquileres con la fecha mal cargada ───────────────────────────────────
@@ -4256,10 +4333,12 @@ function dispararAvisosRemotos(previo){
       avisarPresupuestosTallerNuevos(previo.presupuestos, PRESUPUESTOS);
       avisarSolicitudesEsperaCubiertasNuevas(previo.equipos, previo.alquileres);
       avisarEquipoRetiradoFisicoNuevo(previo.alquileres, ALQUILERES);
+      avisarCobroPendienteNuevo(previo.alquileres, ALQUILERES);
     }
     if(ROL_ACTUAL==='facturacion'){
       avisarPagosProvPagados(previo.pagosProv, PAGOS_PROVEEDORES);
       avisarContratosListos(previo.contratos, CONTRATOS);
+      avisarCobroPendienteNuevo(previo.alquileres, ALQUILERES);
     }
     if(ROL_ACTUAL==='taller'){
       avisarAlquileresNuevos(previo.alquileres, ALQUILERES);
@@ -6094,6 +6173,7 @@ function renderDashboard(){
     }
   }
 
+  renderCobroPendiente();
   renderAvisoFechasRotas();
   renderSeguimientoCotiz();
 
@@ -6316,10 +6396,10 @@ function renderDashboard(){
 }
 
 // ── Ventanas rebatibles del dashboard ──────────────────────────
-const dashCollapseIds={paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
+const dashCollapseIds={paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',cobropend:'cobropend',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
 // Todas arrancan CERRADAS, salvo "Vencidos y vence hoy" en Impuestos y Servicios, que
 // arranca ABIERTA a propósito para que un impuesto vencido nunca pase desapercibido.
-let dashCollapseOpen={paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
+let dashCollapseOpen={paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,cobropend:true,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
 function applyDashCollapseState(key){
   const id=dashCollapseIds[key];
   const header=document.getElementById('dch-'+id);
@@ -6335,7 +6415,7 @@ function applyDashCollapseState(key){
 // OJO: solo los del Inicio. Los de Impuestos y Pago a Proveedores viven en otras
 // pantallas y ahi conviene poder tener varios abiertos a la vez (por eso "impVencHoy"
 // arranca abierto a proposito).
-const ACORDEON_INICIO = ['fechasrotas','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
+const ACORDEON_INICIO = ['cobropend','fechasrotas','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
   'solEspera','solicitudes','segcotiz','presuptaller','contratosListos','alqHoy','alqSemana','cargadoHoy'];
 function toggleDashCollapse(key){
   dashCollapseOpen[key]=!dashCollapseOpen[key];
@@ -11725,15 +11805,33 @@ function finBloqueoAlq(a){
   if(finReal === a.inicio) return finReal;
   return (a.horaRetiro||'00:00') > '12:00' ? finReal : menosUnDia(finReal);
 }
-// Devuelve el alquiler existente que se superpone con el rango dado para ese equipo, o null si está libre
-function alquilerSuperpuesto(eqId, desde, hasta, excludeAlqId){
+/* Devuelve el alquiler existente que se superpone con el rango dado para ese equipo,
+   o null si está libre.
+
+   horaRetiroNuevo: la hora a la que vuelve el equipo del alquiler que se está
+   cargando/editando. Hasta acá la regla del mediodía se aplicaba SOLO al alquiler
+   que ya existía, no al nuevo — y eso marcaba choques que no existen:
+
+     PAPEL   05/10 al 06/10, vuelve 09:00  → el 06 el equipo ya está libre
+     ADVANCED 06/10 al 09/10               → arranca el 06
+
+   No se pisan, pero como el rango nuevo se comparaba con el 06 crudo, saltaba
+   "ya está alquilado" y no dejaba guardar. Si no se pasa la hora se mantiene el
+   criterio viejo, que bloquea el día entero — conservador y seguro. */
+function alquilerSuperpuesto(eqId, desde, hasta, excludeAlqId, horaRetiroNuevo){
   const excl = Array.isArray(excludeAlqId) ? excludeAlqId : (excludeAlqId!=null ? [excludeAlqId] : []);
+  // Mismo criterio que finBloqueoAlq, aplicado al rango que se está por guardar.
+  let finNuevo = hasta;
+  if(horaRetiroNuevo && hasta && hasta!==desde && fechaValidaApp(hasta) && !(String(horaRetiroNuevo) > '12:00')){
+    const d = new Date(hasta+'T00:00:00'); d.setDate(d.getDate()-1);
+    finNuevo = d.toISOString().slice(0,10);
+  }
   return ALQUILERES.find(a=>{
     if(a.equipoId!==eqId || a.activo===false || excl.includes(a.id)) return false;
     if(a.modoHoras) return false; // los alquileres por hora (uso corto) no ocupan el equipo, no bloquean otras reservas
     if(a.pausado) return false; // pausado (ver pausarAlq): no se está usando, no bloquea otras reservas
     const finBloqueo = finBloqueoAlq(a);
-    return !(hasta < a.inicio || desde > finBloqueo);
+    return !(finNuevo < a.inicio || desde > finBloqueo);
   }) || null;
 }
 
@@ -11840,8 +11938,12 @@ function actualizarDisponibilidadAlq(excludeAlqId){
   const filas = alqEquiposState.filter(r=>r.eqId);
   if(!filas.length||!desde||!hasta||hasta<desde){ aviso.style.display='none'; return true; }
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
+  // La hora de retiro de ESTE alquiler: si vuelve antes del mediodía, ese último día
+  // ya no ocupa el equipo y no choca con uno que arranque ese mismo día.
+  const horaRetiroAquiEl=document.getElementById('alq-hora-retiro');
+  const horaRetiroAqui=horaRetiroAquiEl?horaRetiroAquiEl.value:'';
   for(const row of filas){
-    const conflicto=alquilerSuperpuesto(row.eqId, desde, hasta, excl);
+    const conflicto=alquilerSuperpuesto(row.eqId, desde, hasta, excl, horaRetiroAqui);
     if(conflicto){
       const eq=EQUIPOS.find(e=>e.id===row.eqId);
       const nombreElegido = eq ? eq.nombre : 'Este equipo';
@@ -13029,8 +13131,11 @@ async function guardarAlq(){
   }
 
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
+  // Misma hora de retiro que usa el aviso en pantalla: si no se pasa, el chequeo del
+  // guardado sería más estricto que el aviso y bloquearía algo que se veía en verde.
+  const horaRetiroChequeo=document.getElementById('alq-hora-retiro').value||'';
   for(const row of filas){
-    const conflicto=alquilerSuperpuesto(row.eqId, desde, hasta, alqEditandoIds);
+    const conflicto=alquilerSuperpuesto(row.eqId, desde, hasta, alqEditandoIds, horaRetiroChequeo);
     if(conflicto){
       const eq=EQUIPOS.find(e=>e.id===row.eqId);
       alert(`No se puede guardar: ${eq?eq.nombre:'un equipo'} ya está alquilado a ${conflicto.cliente} del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}. Elegí otro equipo u otras fechas.`);
@@ -13176,6 +13281,33 @@ async function guardarAlq(){
       const old = ALQUILERES.find(x=>x.id===id);
       if(old) registrosOriginales[id] = old;
     });
+
+    /* El precio se recalcula SIEMPRE con la lista de hoy, y si la lista cambió desde
+       que se cargó el alquiler, el importe se mueve solo. Editar una fecha o corregir
+       una localidad no debería cambiar lo que se le cobra al cliente sin que nadie se
+       entere — menos todavía si ya está facturado.
+
+       No se decide por el sistema: se muestra la diferencia y elige quien edita. */
+    const viejoTotal = Object.values(registrosOriginales).reduce((s,o)=>s+(o.precio||0),0);
+    const nuevoTotal = filas.reduce((s,r)=>s+(r.precio||0),0);
+    if(viejoTotal>0 && nuevoTotal>0 && Math.round(viejoTotal)!==Math.round(nuevoTotal)){
+      const yaFacturado = Object.values(registrosOriginales).some(o=>o.mesFacturado || (o.diasAgregados&&o.diasAgregados.length));
+      const dif = nuevoTotal - viejoTotal;
+      const ok = await confirmSiNo(
+        `El alquiler estaba cargado en ${fmt(viejoTotal)} y con la lista de precios de hoy da ${fmt(nuevoTotal)} `
+        + `(${dif>0?'+':''}${fmt(dif)}).\n\n`
+        + (yaFacturado ? `⚠ OJO: este alquiler YA tiene facturación cargada. Si lo cambiás, el importe no va a coincidir con la factura emitida.\n\n` : '')
+        + `¿Qué hacés?`,
+        {si:`Actualizar a ${fmt(nuevoTotal)}`, no:`Dejar ${fmt(viejoTotal)}`});
+      if(!ok){
+        // Se respeta el precio original: se repone en cada fila antes de guardar.
+        filas.forEach(row=>{
+          const orig = registrosOriginales[row.idOriginal] || Object.values(registrosOriginales).find(o=>o.equipoId===row.eqId);
+          if(orig && orig.precio!=null){ row.precio = orig.precio; row.precioDetalle = orig.precioDetalle || row.precioDetalle; }
+        });
+      }
+    }
+
     ALQUILERES = ALQUILERES.filter(x=>!idsEditados.includes(x.id));
   }
 
@@ -13809,7 +13941,19 @@ function verDetalleAlq(id){
     if(!esTallerVista()) botones+=`<button onclick="agregarDiasFacturablesAlq(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Agregar otra factura (días extra)</button>
     <div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">El cliente sumó días después de la factura ya emitida: esto carga la SEGUNDA factura con su propio N° y su propio mes, sin tocar la primera.</div>`;
   }
-  botones+=`<button onclick="${a.abierto?`abrirModalCerrarAbierto(${a.id})`:`toggleAbierto(${a.id})`}" class="btn-lim" title="${a.abierto?'Usar cuando el cliente avisa que retira — cierra el alquiler abierto y calcula los días reales':'Marcar sin fecha fija de retiro'}" style="flex:1;padding:8px;font-size:.8rem">${a.abierto?'Confirmar fecha de retiro':'Marcar como abierto'}</button>${a.abierto?'<div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Este alquiler es ABIERTO (sin fecha fija) — usar esto (no "retiro anticipado") apenas el cliente avise que retira.</div>':''}`;
+  // Taller no decide plata. Antes veía "Confirmar fecha de retiro", que abre el cuadro
+  // donde se eligen los días a facturar y la tarifa — y si el equipo volvía un sábado
+  // sin Mateo ni Walter, o no lo tocaban (y el equipo quedaba figurando alquilado), o lo
+  // completaban a ojo. Ahora taller tiene un botón que SOLO registra que el equipo
+  // volvió; lo que se cobra queda pendiente y le aparece a la oficina en Inicio.
+  if(esTallerVista()){
+    if(!a.retiroFisicoFecha){
+      botones+=`<button onclick="marcarVueltaDeTaller(${a.id})" class="btn-nuevo" style="flex:1;padding:8px;font-size:.8rem">El equipo volvió al depósito</button>
+      <div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Marcalo apenas vuelve, aunque no esté nadie de oficina. Los días que se cobran los define Mateo después.</div>`;
+    }
+  } else {
+    botones+=`<button onclick="${a.abierto?`abrirModalCerrarAbierto(${a.id})`:`toggleAbierto(${a.id})`}" class="btn-lim" title="${a.abierto?'Usar cuando el cliente avisa que retira — cierra el alquiler abierto y calcula los días reales':'Marcar sin fecha fija de retiro'}" style="flex:1;padding:8px;font-size:.8rem">${a.abierto?'Confirmar fecha de retiro':'Marcar como abierto'}</button>${a.abierto?'<div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Este alquiler es ABIERTO (sin fecha fija) — usar esto (no "retiro anticipado") apenas el cliente avise que retira.</div>':''}`;
+  }
   if(!a.abierto && !a.pickupPendiente && !a.retiradoAnticipado){
     if(!esTallerVista()) botones+=`<button onclick="avisarTallerRetiro(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Avisar a taller: retirar equipo</button>`;
   }
@@ -15115,6 +15259,8 @@ async function marcarRetiroAnticipado(id){
     a.retiroFisicoHora=null;
     a.retiroFisicoPor=null;
   }
+  // Ya se definió qué se cobra: sale del aviso "falta definir" de Inicio.
+  resolverCobroPendiente(a);
   marcarAccionUndo(`Marcar retiro anticipado de "${a.equipoNombre}" — cliente ${a.cliente}`, 'alquileres');
   guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
@@ -15308,6 +15454,8 @@ async function continuarCerrarAlquilerAbierto(){
   a.retiroFisicoHora=null;
   a.retiroFisicoPor=null;
 
+  // Ya se definió qué se cobra: sale del aviso "falta definir" de Inicio.
+  resolverCobroPendiente(a);
   marcarAccionUndo(`Confirmar retiro de "${a.equipoNombre}" — cliente ${a.cliente}`, 'alquileres');
   guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
@@ -15329,6 +15477,73 @@ function avisarTallerRetiro(id){
   marcarAccionUndo(`Avisar a taller retiro de "${a.equipoNombre}" — cliente ${a.cliente}`, 'alquileres');
   guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
   alert('Avisado. Va a aparecer en "Para retirar" en el Dashboard hasta que taller lo marque como retirado.');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EL EQUIPO VOLVIÓ, PERO FALTA DEFINIR QUÉ SE COBRA
+
+   Un equipo puede volver un sábado, o a las 8 de la noche, sin Mateo ni Walter.
+   Antes taller tenía dos caminos y los dos malos: no tocar nada —y el equipo
+   quedaba figurando alquilado, sin poder ofrecerlo— o abrir "Confirmar fecha de
+   retiro", que le pide elegir cuántos días facturar y a qué tarifa. Eso no lo
+   tiene que decidir taller.
+
+   Ahora taller solo dice "volvió": queda la fecha, la hora y quién lo marcó, y
+   el equipo se libera al instante. Lo que se cobra queda PENDIENTE y le aparece
+   a la oficina en Inicio, con aviso.
+
+   Cuándo queda pendiente: si el alquiler era abierto (nunca se definió hasta
+   cuándo) o si volvió antes de la fecha pactada (hay que decidir si se descuentan
+   días). Si volvió el día pactado o después, no hay nada que resolver: los días
+   son los del contrato.
+   ═══════════════════════════════════════════════════════════════════════════ */
+async function marcarVueltaDeTaller(id){
+  const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
+  const fecha = await pedirFechaReal(
+    `¿"${a.equipoNombre}" ya está de vuelta en el depósito?`,
+    {minFecha: a.entregaFisicaFecha || a.inicio, minLabel: 'el día que salió'});
+  if(!fecha) return;
+
+  a.pickupPendiente=false;
+  a.retiroFisicoFecha=fecha;
+  a.retiroFisicoHora = (fecha===hoyISO()) ? new Date().toTimeString().slice(0,5) : '';
+  a.retiroFisicoPor = (ROL_ACTUAL==='taller' ? TALLER_RESPONSABLE : nombreUsuarioActual()) || 'Taller';
+
+  const volvioAntes = a.fin && fechaValidaApp(a.fin) && fecha < a.fin;
+  if(a.abierto || volvioAntes){
+    a.cobroPendiente = {
+      desde: fecha,
+      marcadoPor: a.retiroFisicoPor,
+      marcadoEn: Date.now(),
+      motivo: a.abierto ? 'abierto' : 'volvio-antes'
+    };
+  }
+  marcarAccionUndo(`Marcar vuelta de "${a.equipoNombre}" — cliente ${a.cliente}`, 'home');
+  guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
+  alert(a.cobroPendiente
+    ? `Listo, quedó registrado que volvió.\n\nEl equipo ya figura disponible. Mateo define después cuántos días se cobran — le va a aparecer avisado.`
+    : `Listo, quedó registrado que volvió. El equipo ya figura disponible.`);
+}
+
+// Los que volvieron y todavía no tienen definido qué se cobra.
+function alquileresConCobroPendiente(){
+  return (ALQUILERES||[]).filter(a=>a.cobroPendiente && a.activo!==false);
+}
+
+// La oficina resolvió: se limpia el pendiente. Lo llaman las funciones que definen
+// los días (cerrar un abierto, retiro anticipado, o confirmar que quedaba bien).
+function resolverCobroPendiente(a){
+  if(a && a.cobroPendiente){ delete a.cobroPendiente; }
+}
+
+// "Está bien como está": el alquiler ya tenía sus días y no hay nada que cambiar.
+async function cobroPendienteSinCambios(id){
+  const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
+  if(!(await confirmSiNo(`¿Dejar este alquiler como está?\n\n${a.equipoNombre} · ${a.cliente}\nSe cobran los ${a.dias||0} día${(a.dias||0)!==1?'s':''} ya cargados.`,
+    {si:'Sí, está bien', no:'Cancelar'}))) return;
+  resolverCobroPendiente(a);
+  marcarAccionUndo(`Resolver cobro de "${a.equipoNombre}" — ${a.cliente}`, 'home');
+  guardar(); renderDashboard(); renderAlq(); refrescarDetalleAlqSiAbierto(id);
 }
 
 // Taller confirma que fue a buscar el equipo y ya está de vuelta. Recién acá el equipo
