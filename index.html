@@ -2430,11 +2430,20 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
            período). Si se completa acá, este importe manda y la app no pregunta nada más
            sobre el precio; si se deja vacío, sigue el camino de siempre (paquete semanal o
            tarifa diaria). -->
+      <!-- DÍAS QUE SE COBRAN. El caso de THERMOFIN: el período de la factura son 7 días
+           pero al cliente se le cobran 6. Antes la única salida era calcular 6 × tarifa a
+           mano y escribir el importe acá abajo — cuenta que hay que hacer cada vez y que
+           se presta a error. Poniendo 6 acá, la app saca el monto sola. -->
+      <div style="margin-bottom:.8rem;background:var(--bg3);border-radius:8px;padding:.6rem .7rem">
+        <label class="flabel">Días que se le cobran</label>
+        <input type="number" id="perfact-dias-cobrar" min="0" step="0.5" oninput="this.dataset.tocado='1';recalcPeriodoFactura()">
+        <div id="perfact-dias-ayuda" style="font-size:.74rem;color:var(--txt3);margin-top:3px;line-height:1.45"></div>
+      </div>
       <div style="margin-bottom:.8rem">
         <label class="flabel">Monto a facturar — opcional</label>
         <input type="number" id="perfact-monto" placeholder="Dejalo vacío para calcularlo por tarifa" oninput="recalcPeriodoFactura()">
         <div id="perfact-monto-ayuda" style="font-size:.74rem;color:var(--txt3);margin-top:3px;line-height:1.45">
-          Usalo cuando al cliente se le cobran menos (o más) días de los que dura el período.
+          Usalo cuando el importe no sale de multiplicar días por tarifa.
         </div>
       </div>
       <button id="perfact-btn" onclick="continuarFacturaParcial()" class="btn-nuevo" style="width:100%;padding:.75rem">Continuar</button>
@@ -15805,6 +15814,11 @@ function abrirPeriodoFactura(id){
   // El monto a mano arranca vacío en cada apertura: es la excepción, no lo normal, y
   // dejarlo pegado del alquiler anterior sería la peor forma de equivocarse acá.
   document.getElementById('perfact-monto').value = '';
+  // Los días a cobrar vuelven a seguir al período en cada apertura: si quedara pegado el
+  // "6" del alquiler anterior, la factura siguiente saldría con días de menos sin que
+  // nadie lo note.
+  const diasEl = document.getElementById('perfact-dias-cobrar');
+  if(diasEl){ diasEl.value=''; delete diasEl.dataset.tocado; delete diasEl.dataset.periodo; }
   recalcPeriodoFactura();
   document.getElementById('modal-periodo-factura').style.display='flex';
 }
@@ -15832,23 +15846,48 @@ function recalcPeriodoFactura(){
   const dias=Math.round((new Date(hasta+'T00:00:00')-new Date(desde+'T00:00:00'))/86400000)+1;
   resumen.textContent=`${dias} día${dias!==1?'s':''} · del ${fmtD(desde)} al ${fmtD(hasta)}`;
 
+  // La tarifa diaria de ESTE alquiler (la pactada, si está guardada).
+  let tarifaDia = a.tarifaDiaUsada!=null ? a.tarifaDiaUsada : 0;
+  if(!tarifaDia){ const eqRef=EQUIPOS.find(e=>e.id===a.equipoId); const pRef=eqRef?precioTipo(eqRef.tipo):null; tarifaDia = pRef?(pRef.dia||0):0; }
+
+  // Días que se cobran: arranca igual al período y se puede bajar (o subir). Es el caso
+  // de THERMOFIN — 7 días de período, 6 que se cobran.
+  const diasCobrarEl = document.getElementById('perfact-dias-cobrar');
+  const diasAyudaEl = document.getElementById('perfact-dias-ayuda');
+  if(diasCobrarEl && diasAyudaEl){
+    if(diasCobrarEl.value==='' || diasCobrarEl.dataset.periodo!==String(dias)){
+      // Mientras no se toque a mano, acompaña al período.
+      if(!diasCobrarEl.dataset.tocado){ diasCobrarEl.value = dias; }
+      diasCobrarEl.dataset.periodo = String(dias);
+    }
+    const diasCobrar = parseFloat(diasCobrarEl.value);
+    if(diasCobrar>0 && Math.abs(diasCobrar-dias)>0.001){
+      const dif = dias - diasCobrar;
+      diasAyudaEl.innerHTML = `Se factura el período de ${dias} día${dias!==1?'s':''} pero se cobran `
+        + `<b style="color:var(--txt)">${String(diasCobrar).replace('.',',')}</b>`
+        + (tarifaDia>0?` — ${fmt(diasCobrar*tarifaDia)} a ${fmt(tarifaDia)}/día`:'')
+        + `. <span style="color:var(--verde);font-weight:700">${dif>0?dif+' día'+(dif!==1?'s':'')+' bonificado'+(dif!==1?'s':''):''}</span>`;
+      diasAyudaEl.style.color='var(--txt2)';
+    } else {
+      diasAyudaEl.textContent = `Se cobran los ${dias} día${dias!==1?'s':''} del período. Cambialo si al cliente se le cobran menos (ej: la semana pero 6 días).`;
+      diasAyudaEl.style.color='var(--txt3)';
+    }
+  }
+
   // Si se cargó un monto a mano, debajo se muestra a cuántos días equivale a la tarifa
-  // pactada. Sirve para verificar de un vistazo que el número tipeado es el que se quería
-  // (ej: THERMOFIN, período de 7 días pero el importe equivale a 6).
+  // pactada. Sirve para verificar de un vistazo que el número tipeado es el que se quería.
   const montoManualEl = document.getElementById('perfact-monto');
   const ayudaEl = document.getElementById('perfact-monto-ayuda');
   if(montoManualEl && ayudaEl){
     const montoManual = parseFloat(montoManualEl.value);
     if(montoManual > 0){
-      let tarifaDia = a.tarifaDiaUsada!=null ? a.tarifaDiaUsada : 0;
-      if(!tarifaDia){ const eqRef=EQUIPOS.find(e=>e.id===a.equipoId); const pRef=eqRef?precioTipo(eqRef.tipo):null; tarifaDia = pRef?(pRef.dia||0):0; }
       const eqDias = tarifaDia>0 ? Math.round((montoManual/tarifaDia)*100)/100 : null;
       ayudaEl.innerHTML = eqDias!=null
         ? `Se factura <b style="color:var(--txt)">${fmt(montoManual)}</b> por el período de ${dias} día${dias!==1?'s':''} — equivale a <b style="color:var(--txt)">${eqDias} día${eqDias!==1?'s':''}</b> a ${fmt(tarifaDia)}/día.`
         : `Se factura <b style="color:var(--txt)">${fmt(montoManual)}</b> por el período de ${dias} día${dias!==1?'s':''}.`;
       ayudaEl.style.color='var(--txt2)';
     } else {
-      ayudaEl.textContent='Usalo cuando al cliente se le cobran menos (o más) días de los que dura el período.';
+      ayudaEl.textContent='Usalo cuando el importe no sale de multiplicar días por tarifa.';
       ayudaEl.style.color='var(--txt3)';
     }
   }
@@ -15892,8 +15931,18 @@ function continuarFacturaParcial(){
   if(!desde || !hasta || hasta<desde) return;
   // Si se cargó un monto a mano, viaja con el período y saltea todo el cálculo por tarifa.
   const montoManual = parseFloat(document.getElementById('perfact-monto').value);
+  // Días que se le cobran al cliente, que pueden ser menos que los del período
+  // (THERMOFIN: 7 de período, 6 cobrados). Solo viaja si difiere del período.
+  const diasPeriodo = Math.round((new Date(hasta+'T00:00:00')-new Date(desde+'T00:00:00'))/86400000)+1;
+  const diasCobrarEl = document.getElementById('perfact-dias-cobrar');
+  const diasCobrar = diasCobrarEl ? parseFloat(diasCobrarEl.value) : NaN;
+  const diasACobrar = (diasCobrar>0 && Math.abs(diasCobrar-diasPeriodo)>0.001) ? diasCobrar : null;
   document.getElementById('modal-periodo-factura').style.display='none';
-  agregarDiasFacturablesAlq(periodoFacturaAlqId, {desde, hasta, montoManual: (montoManual>0 ? montoManual : null)});
+  agregarDiasFacturablesAlq(periodoFacturaAlqId, {
+    desde, hasta,
+    montoManual: (montoManual>0 ? montoManual : null),
+    diasACobrar
+  });
 }
 
 // `periodo` viene del modal de arriba: {desde, hasta} tal como está en la factura.
@@ -15940,6 +15989,22 @@ async function agregarDiasFacturablesAlq(id, periodo){
     detalle = (equivalen!=null && equivalen!==dias)
       ? `Monto acordado — período de ${dias} día${dias!==1?'s':''}, se cobran ${equivalen}`
       : 'Monto acordado';
+  }
+  // Se cobran menos días (o más) que los del período, a la tarifa diaria pactada. Es
+  // el caso de THERMOFIN: el período de la factura son 7 días y se le cobran 6. Antes
+  // había que hacer la multiplicación a mano y escribir el importe.
+  else if(periodo.diasACobrar > 0){
+    const tarifaDiaRef = (p && p.dia) ? p.dia : 0;
+    if(!tarifaDiaRef){
+      alert('Este equipo no tiene tarifa diaria cargada, así que no se puede calcular por días. Poné el monto a mano.');
+      return;
+    }
+    tarifa = tarifaDiaRef;
+    montoFactura = periodo.diasACobrar * tarifaDiaRef;
+    const bonif = Math.round((dias - periodo.diasACobrar)*100)/100;
+    detalle = bonif>0
+      ? `${String(periodo.diasACobrar).replace('.',',')} de ${dias} días — ${String(bonif).replace('.',',')} bonificado${bonif!==1?'s':''}`
+      : `${String(periodo.diasACobrar).replace('.',',')} días cobrados de un período de ${dias}`;
   }
   else {
   const comoPaquete = await confirmSiNo(`Vas a facturar ${dias} día${dias!==1?'s':''}${esPrimeraFactura?' (total)':' más'}.`, {si:'Paquete semanal', no:'Días sueltos (tarifa diaria)'});
