@@ -915,6 +915,17 @@ if ('serviceWorker' in navigator) {
         <div class="dash-collapse-body" id="dash-fechasrotas-container" style="display:none"></div>
       </div>
 
+      <!-- MÁQUINA LIBRE CON EL ALQUILER CORRIENDO. Las dos cosas no pueden ser ciertas:
+           o está en la obra o está en el galpón. Ver alquileresQueNoOcupanLaMaquina. -->
+      <div class="dash-collapse" id="dc-libreocupada" style="border-color:var(--rojo);display:none">
+        <button class="dash-collapse-header" id="dch-libreocupada" onclick="toggleDashCollapse('libreocupada')" style="color:var(--rojo)">
+          <span class="dc-title">M&aacute;quinas que figuran libres pero est&aacute;n alquiladas</span>
+          <span class="dc-badge" id="dc-badge-libreocupada" style="background:var(--rojo);color:#fff"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-libreocupada-container" style="display:none"></div>
+      </div>
+
       <!-- HOJAS DE MANTENIMIENTO POR VENCER. Valen 3 meses y sin ellas las empresas no
            dejan entrar la máquina. Avisa 15 días antes. Ver renderMantenimientoAVencer. -->
       <div class="dash-collapse" id="dc-mantvence" style="border-color:#e5a83b;display:none">
@@ -3898,6 +3909,80 @@ function renderCobroPendiente(){
     }).join('');
 }
 
+/* ── LA MÁQUINA FIGURA LIBRE PERO EL ALQUILER ESTÁ CORRIENDO ───────────────
+   El alquiler del autoelevador de Molfino aparecía en Facturación sumando días,
+   y la máquina al mismo tiempo figuraba Disponible. Las dos cosas no pueden ser
+   ciertas: o está en la obra, o está en el galpón.
+
+   El estado del equipo NO sale de la fecha del alquiler sino de los movimientos
+   físicos (ver estadoRealEq). Así que hay varias formas de llegar a esta
+   contradicción, y desde afuera no se puede saber cuál pasó. Esto las busca una
+   por una y dice el motivo en cada caso, con el botón para arreglarlo cuando se
+   puede arreglar solo. */
+function alquileresQueNoOcupanLaMaquina(){
+  const hoy = hoyISO();
+  const out = [];
+  (ALQUILERES||[]).forEach(a=>{
+    if(a.modoHoras) return;            // van y vuelven al toque, nunca ocupan
+    if(a.pausado) return;              // está libre a propósito
+    if(!a.inicio || a.inicio > hoy) return;   // todavía no arrancó
+    const fin = alqFinEfectivo(a);
+    const deberiaEstarOcupando = a.abierto || fin===null || fin >= hoy;
+    if(!deberiaEstarOcupando) return;
+
+    const eq = (EQUIPOS||[]).find(e=>e.id===a.equipoId);
+    if(!eq) return;
+    const r = estadoRealEq(eq);
+    if(r.alquiler && r.alquiler.id === a.id) return;   // todo en orden
+
+    let motivo, arreglo = '';
+    const fmtD = s => { if(!s) return ''; const[y,m,d]=String(s).split('-'); return d?`${d}/${m}/${y.slice(2)}`:s; };
+    if(eq.estado==='taller'){
+      motivo = 'La máquina está marcada "Fuera de servicio", y eso le gana a todo lo demás.';
+    } else if(a.activo===false){
+      motivo = 'El alquiler está dado de baja, pero sigue figurando con días corriendo.';
+    } else if(a.entregaPendiente){
+      motivo = 'Taller todavía no marcó que la máquina salió del depósito, así que para la app sigue adentro.';
+      arreglo = `<button onclick="marcarEquipoEntregado(${a.id})" class="btn-nuevo" style="padding:5px 11px;font-size:.74rem;flex-shrink:0">Marcar que salió</button>`;
+    } else if(a.retiroFisicoFecha && !a.pickupPendiente){
+      motivo = `Figura que volvió al depósito el ${fmtD(a.retiroFisicoFecha)}, pero el alquiler sigue abierto y sumando días.`;
+      arreglo = `<button onclick="verDetalleAlq(${a.id})" class="btn-nuevo" style="padding:5px 11px;font-size:.74rem;flex-shrink:0">Abrir y cerrarlo</button>`;
+    } else if(r.alquiler){
+      motivo = `La máquina figura ocupada por otro alquiler (${r.alquiler.cliente}). Uno de los dos está mal cargado.`;
+      arreglo = `<button onclick="verDetalleAlq(${a.id})" class="btn-nuevo" style="padding:5px 11px;font-size:.74rem;flex-shrink:0">Ver este</button>`;
+    } else {
+      motivo = 'No se pudo determinar el motivo — abrí el alquiler y revisá las fechas y los movimientos.';
+      arreglo = `<button onclick="verDetalleAlq(${a.id})" class="btn-nuevo" style="padding:5px 11px;font-size:.74rem;flex-shrink:0">Abrir</button>`;
+    }
+    out.push({a, eq, motivo, arreglo});
+  });
+  return out;
+}
+
+function renderMaquinasLibresConAlquiler(){
+  const caja = document.getElementById('dc-libreocupada');
+  if(!caja) return;
+  // Es un tema de datos de la oficina, igual que las fechas rotas.
+  if(esTallerVista()){ caja.style.display='none'; return; }
+  const lista = alquileresQueNoOcupanLaMaquina();
+  badgeDash('dc-badge-libreocupada', lista.length);
+  caja.style.display = lista.length ? 'block' : 'none';
+  if(!lista.length) return;
+  document.getElementById('dash-libreocupada-container').innerHTML =
+    `<p style="font-size:.8rem;color:var(--txt2);margin:0 0 .6rem;line-height:1.5">
+       Estos alquileres están corriendo pero su máquina figura libre. Mientras siga así,
+       la máquina se puede prometer a otro cliente por error.
+     </p>` +
+    lista.map(({a, eq, motivo, arreglo})=>
+      `<div style="display:flex;gap:9px;align-items:flex-start;padding:.55rem .7rem;border:1px solid var(--rojo)33;border-left:3px solid var(--rojo);border-radius:8px;margin-bottom:.35rem;background:var(--bg2)">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:.88rem;overflow-wrap:anywhere">${eq.nombre} · ${a.cliente||''}</div>
+          <div style="font-size:.76rem;color:var(--rojo);font-weight:700;margin-top:2px;line-height:1.4">${motivo}</div>
+        </div>
+        ${arreglo}
+      </div>`).join('');
+}
+
 // ── Hojas de mantenimiento por vencer ─────────────────────────────────────
 // Lo ve taller también: son ellos los que revisan la máquina y vuelven a cargarla.
 function renderMantenimientoAVencer(){
@@ -6800,6 +6885,7 @@ function renderDashboard(){
 
   renderCobroPendiente();
   renderAvisoFechasRotas();
+  renderMaquinasLibresConAlquiler();
   renderMantenimientoAVencer();
   renderHorasPendientes();
   renderSeguimientoCotiz();
@@ -7023,10 +7109,10 @@ function renderDashboard(){
 }
 
 // ── Ventanas rebatibles del dashboard ──────────────────────────
-const dashCollapseIds={mantvence:'mantvence',horaspend:'horaspend',paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',cobropend:'cobropend',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
+const dashCollapseIds={libreocupada:'libreocupada',mantvence:'mantvence',horaspend:'horaspend',paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',cobropend:'cobropend',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
 // Todas arrancan CERRADAS, salvo "Vencidos y vence hoy" en Impuestos y Servicios, que
 // arranca ABIERTA a propósito para que un impuesto vencido nunca pase desapercibido.
-let dashCollapseOpen={mantvence:true,horaspend:true,paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,cobropend:true,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
+let dashCollapseOpen={libreocupada:true,mantvence:true,horaspend:true,paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,cobropend:true,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
 function applyDashCollapseState(key){
   const id=dashCollapseIds[key];
   const header=document.getElementById('dch-'+id);
@@ -7042,7 +7128,7 @@ function applyDashCollapseState(key){
 // OJO: solo los del Inicio. Los de Impuestos y Pago a Proveedores viven en otras
 // pantallas y ahi conviene poder tener varios abiertos a la vez (por eso "impVencHoy"
 // arranca abierto a proposito).
-const ACORDEON_INICIO = ['cobropend','fechasrotas','mantvence','horaspend','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
+const ACORDEON_INICIO = ['libreocupada','cobropend','fechasrotas','mantvence','horaspend','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
   'solEspera','solicitudes','segcotiz','presuptaller','contratosListos','alqHoy','alqSemana','cargadoHoy'];
 function toggleDashCollapse(key){
   dashCollapseOpen[key]=!dashCollapseOpen[key];
@@ -10242,7 +10328,7 @@ function renderEq(){
     return `
     <div class="eq-item" onclick="verHistorialMaquina(${e.id})">
       <div class="eq-dot" style="background:${col[r.estado]}"></div>
-      <div class="eq-info"><h4>${e.nombre}${problemas?` <span style="color:var(--rojo)">⚠️ ${problemas}</span>`:''}</h4><p>${grupoLabel(equipoMeta(e))}</p></div>
+      <div class="eq-info"><h4>${e.nombre}${problemas?` <span style="color:var(--rojo)">⚠️ ${problemas}</span>`:''}</h4><p>${nroInternoEq(e)?`<b style="color:var(--txt2)">${nroInternoEq(e)}</b> · `:''}${grupoLabel(equipoMeta(e))}</p></div>
       <span class="eq-badge ${bd[r.estado]}">${txt[r.estado]}</span>
     </div>`;
   }).join('');
@@ -10620,7 +10706,7 @@ function renderEqFichaMantenimiento(){
   const st = estadoMantenimiento(eq.id);
   const fmtF = s => { if(!s) return '—'; const[y,m,d]=String(s).split('-'); return d?`${d}/${m}/${y}`:s; };
   const horasEq = horasDeEquipo(eq.id);
-  const faltanDatos = !eq.marca || !eq.modelo || !eq.nSerie;
+  const faltanDatos = !eq.nInterno || !eq.marca || !eq.modelo || !eq.nSerie;
 
   const COL = {sin:'var(--txt3)', vigente:'var(--verde)', porvencer:'#b57d10', vencida:'var(--rojo)'}[st.estado];
   const TXT = {
@@ -10634,7 +10720,7 @@ function renderEqFichaMantenimiento(){
 
   if(faltanDatos){
     h+=`<div style="background:#e5a83b18;border:1px solid #e5a83b55;border-radius:8px;padding:.55rem .75rem;margin-bottom:.9rem;font-size:.78rem;color:var(--txt);line-height:1.45">
-        Faltan la marca, el modelo o el N° de serie: la hoja sale incompleta.
+        Faltan el N° de máquina, la marca, el modelo o el N° de serie: la hoja sale incompleta.
         <a href="javascript:void(0)" onclick="setEqFichaTab('datos')" style="color:var(--verde);font-weight:700">Cargarlos ahora</a>
       </div>`;
   }
@@ -10678,7 +10764,10 @@ function descargarHojaMantenimiento(eqId){
   if(!h0 || !h0.fecha){ alert('Primero cargá la hoja de esta máquina y guardala.'); return; }
   const fmtF = s => { if(!s) return '-'; const[y,m,d]=String(s).split('-'); return `${Number(d)}/${Number(m)}/${y}`; };
   const esc = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  const nombreMaq = [eq.marca, eq.modelo].filter(Boolean).join(' ') || eq.nombre;
+  // "Nombre/Código": el código es el número interno, que es con el que la empresa
+  // la identifica en sus papeles y con el que la van a pedir.
+  const nombreMaq = ([eq.marca, eq.modelo].filter(Boolean).join(' ') || eq.nombre)
+    + (eq.nInterno ? ` — N° ${eq.nInterno}` : '');
 
   let secciones='';
   seccionesMantenimiento(eq).forEach((sec,i)=>{
@@ -10776,13 +10865,32 @@ function guardarHojaMantenimiento(){
    máquina y son los que van en el encabezado de la hoja de mantenimiento que
    se les manda a las empresas. Hasta ahora no estaban en ningún lado: había
    que ir a buscarlos a un PDF viejo cada vez. */
+/* El N° INTERNO es el número con el que la empresa conoce a la máquina de toda la
+   vida (los autoelevadores lo arrastran de hace años, la Genie que está en taller
+   es la 7). NO es el "— #1 / #2" que aparece en el nombre: ese lo inventó la app
+   para distinguir unidades iguales y quedó pegado al nombre con el que se
+   guardaron los alquileres viejos. Si lo pisáramos, los alquileres de hace meses
+   pasarían a decir otra máquina. Por eso va como dato aparte. */
 const DATOS_EQUIPO = [
+  {key:'nInterno',label:'N° de máquina (el de la empresa)', ph:'7'},
   {key:'marca',   label:'Marca',          ph:'ALO'},
   {key:'modelo',  label:'Modelo',         ph:'LIFT 140W'},
   {key:'anio',    label:'Año',            ph:'2019'},
   {key:'nSerie',  label:'N° de serie',    ph:'03311500031'},
   {key:'nChasis', label:'N° de chasis',   ph:'Si no tiene, dejalo vacío'}
 ];
+// Lo que se muestra al lado del nombre cuando el número está cargado.
+function nroInternoEq(eq){
+  const n = eq && eq.nInterno ? String(eq.nInterno).trim() : '';
+  return n ? ('N° '+n) : '';
+}
+// Dos máquinas con el mismo número es un problema real: al pedir "mandá la 7" nadie
+// sabe cuál es. Se avisa al guardar, no se bloquea (puede ser un paso intermedio).
+function otroEquipoConMismoNro(eqId, nro){
+  const n = String(nro||'').trim();
+  if(!n) return null;
+  return (EQUIPOS||[]).find(e=>e.id!==eqId && String(e.nInterno||'').trim()===n) || null;
+}
 function renderEqFichaDatos(){
   const eq=EQUIPOS.find(e=>e.id===eqFichaId); if(!eq) return;
   const horas = horasDeEquipo(eq.id);
@@ -10790,7 +10898,9 @@ function renderEqFichaDatos(){
   const fmtF = s => { if(!s) return ''; const[y,m,dd]=String(s).split('-'); return dd?`${dd}/${m}/${y}`:s; };
   let h=`<div style="font-size:.74rem;color:var(--txt3);margin-bottom:.9rem;line-height:1.45">Estos datos salen impresos en la hoja de mantenimiento. Se cargan una vez y quedan.</div>`;
   h+=DATOS_EQUIPO.map(c=>
-    `<div style="margin-bottom:.6rem"><label class="flabel">${c.label}</label><input type="text" class="mayus" id="eqd-${c.key}" value="${String(eq[c.key]||'').replace(/"/g,'&quot;')}" placeholder="${c.ph}"></div>`
+    `<div style="margin-bottom:.6rem"><label class="flabel">${c.label}</label><input type="text" class="mayus" id="eqd-${c.key}" value="${String(eq[c.key]||'').replace(/"/g,'&quot;')}" placeholder="${c.ph}">${
+      c.key==='nInterno' ? `<div style="font-size:.71rem;color:var(--txt3);margin-top:3px;line-height:1.4">El número con el que la conocen en el galpón. No tiene nada que ver con el "#${''}1 / #2" del nombre, que lo puso la app para distinguir las iguales.</div>` : ''
+    }</div>`
   ).join('');
   h+=`<div style="background:var(--bg3);border-radius:8px;padding:.55rem .7rem;margin:.9rem 0;font-size:.8rem;color:var(--txt2)">
       <b style="color:var(--txt)">Horómetro:</b> ${horas!==null?horas+' hs':'sin cargar'}${d.fecha?' · lectura del '+fmtF(d.fecha):''}${d.horasPor?' · '+d.horasPor:''}
@@ -10800,14 +10910,22 @@ function renderEqFichaDatos(){
   h+=`<button onclick="guardarDatosEq()" class="btn-nuevo" style="width:100%;padding:10px;margin-top:.3rem">Guardar datos</button>`;
   document.getElementById('eq-ficha-cont').innerHTML=h;
 }
-function guardarDatosEq(){
+async function guardarDatosEq(){
   const eq=EQUIPOS.find(e=>e.id===eqFichaId); if(!eq) return;
+  const nuevoNro = String((document.getElementById('eqd-nInterno')||{}).value||'').trim().toUpperCase();
+  const repetida = otroEquipoConMismoNro(eq.id, nuevoNro);
+  if(repetida){
+    if(!(await confirmSiNo(
+      `El N° ${nuevoNro} ya lo tiene "${repetida.nombre}".\n\nSi quedan dos con el mismo número, cuando pidan "mandá la ${nuevoNro}" no se va a saber cuál es.\n\n¿Lo guardás igual?`,
+      {si:'Guardar igual', no:'Cancelar'}))) return;
+  }
   DATOS_EQUIPO.forEach(c=>{
     const el=document.getElementById('eqd-'+c.key);
     if(el) eq[c.key] = String(el.value||'').trim().toUpperCase();
   });
   marcarAccionUndo(`Editar los datos de "${eq.nombre}"`, 'equipos');
   guardar(); renderEq();
+  if(pantallaActualNombre==='histmaq') renderHistorialMaquina();
   alert('Datos guardados.');
   renderEqFichaDatos();
 }
@@ -11293,7 +11411,7 @@ function renderHistorialMaquina(){
   const abiertos = problemas.filter(i=>i.estado==='abierta').length;
   const fotos = cuantasFotosEq(histMaqId);
   // Sin marca/modelo/serie la hoja de mantenimiento sale incompleta: se avisa en el botón.
-  const faltanDatos = !eq.marca || !eq.modelo || !eq.nSerie;
+  const faltanDatos = !eq.nInterno || !eq.marca || !eq.modelo || !eq.nSerie;
   // Y el estado de la hoja, en el botón: vencida o por vencer tiene que verse sin entrar.
   const stMant = estadoMantenimiento(histMaqId);
   const colorMant = {vencida:'var(--rojo)', porvencer:'#b57d10', sin:'#b57d10', vigente:''}[stMant.estado];
@@ -11318,7 +11436,7 @@ function renderHistorialMaquina(){
       <div class="sec-title" style="margin:0">${eq.nombre}</div>
       <span style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${colEstado};background:${colEstado}18;padding:4px 11px;border-radius:11px;white-space:nowrap">${txtEstado}</span>
     </div>
-    <div class="sec-sub">${grupoLabel(equipoMeta(eq))} · todo lo que se le fue haciendo</div>
+    <div class="sec-sub">${nroInternoEq(eq)?`<b style="color:var(--txt2)">${nroInternoEq(eq)}</b> · `:''}${grupoLabel(equipoMeta(eq))} · todo lo que se le fue haciendo</div>
 
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:.8rem">
       <button onclick="mostrarFormServicioHoja()" id="histmaq-btn-nuevo" class="btn-nuevo" style="padding:7px 13px;font-size:.78rem">+ Cargar un service</button>
