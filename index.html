@@ -796,6 +796,19 @@ if ('serviceWorker' in navigator) {
       <span style="font-size:.8rem;opacity:.9">Ver &rarr;</span>
     </div>
 
+    <!-- HORÓMETROS SIN CARGAR.
+         Marcar que la máquina volvió no se bloquea: si vuelve de noche con la batería
+         baja y no se puede leer el tablero, bloquear significaría dejarla figurando
+         alquilada y sin poder ofrecerla. Pero entonces la alerta tiene que molestar.
+         Por eso es una franja fija arriba de todo, en todas las pantallas y para
+         todos los roles, que no se va hasta que alguien carga las horas.
+         Ver actualizarFranjaHorometro. -->
+    <div id="franja-horometro" onclick="irAHorometrosPendientes()" style="display:none;align-items:center;gap:10px;padding:.65rem 1.5rem;cursor:pointer;font-size:.88rem;font-weight:700;color:#fff;background:#b57d10">
+      <span id="franja-horometro-txt"></span>
+      <span style="flex:1"></span>
+      <span style="font-size:.8rem;opacity:.9">Cargar &rarr;</span>
+    </div>
+
     <!-- HOME / DASHBOARD -->
     <div class="screen active" id="screen-home">
       <div class="sec-title" style="margin-top:0;padding-top:0;">Buen día </div>
@@ -6222,6 +6235,9 @@ function actualizarFranjaTaller(){
   const fr = document.getElementById('franja-taller');
   if(!fr) return;
   // Solo taller. Para oficina esta info ya esta en el panel y no hace falta la franja.
+  // La de horómetros va siempre, sea cual sea el rol — se actualiza acá porque esta
+  // función ya se llama desde goTo() y desde el dashboard.
+  actualizarFranjaHorometro();
   if(!esTallerVista()){
     fr.style.display='none';
     document.title = 'Rentaz S.A.';
@@ -6250,6 +6266,40 @@ function actualizarFranjaTaller(){
     : `${equipos} para entregar`;
   // El numero tambien en el titulo: se ve con la app minimizada o en otra pestana.
   document.title = `(${n}) Rentaz S.A.`;
+}
+
+/* La franja de horómetros sin cargar. A diferencia de la de taller, esta la ven
+   todos: taller es quien puede leer el tablero, pero la oficina es la que arma la
+   hoja de mantenimiento y necesita saber que el número está viejo.
+   Se pone roja a los 2 días, igual criterio que la de entregas: lo viejo tiene que
+   molestar más que lo de recién. */
+const DIAS_HOROMETRO_VIEJO = 2;
+function actualizarFranjaHorometro(){
+  const fr = document.getElementById('franja-horometro');
+  if(!fr) return;
+  const pend = equiposConHorasPendientes();
+  const n = pend.length;
+  if(!n){ fr.style.display='none'; return; }
+  const hoyD = new Date(hoyISO()+'T00:00:00');
+  const dias = pend.map(e=>{
+    const f = (EQ_CHECKLIST[e.id]||{}).horasPendienteDesde;
+    if(!f || !fechaValidaApp(f)) return 0;
+    return Math.round((hoyD - new Date(f+'T00:00:00'))/86400000);
+  });
+  const diasMax = Math.max(0, ...dias);
+  const viejo = diasMax >= DIAS_HOROMETRO_VIEJO;
+  fr.style.background = viejo ? 'var(--rojo)' : '#b57d10';
+  fr.style.display = 'flex';
+  const equipos = n===1 ? '1 equipo volvió' : `${n} equipos volvieron`;
+  document.getElementById('franja-horometro-txt').innerHTML = viejo
+    ? `&#9888; ${equipos} sin anotar las horas &mdash; el m&aacute;s viejo hace ${diasMax} d&iacute;as`
+    : `&#9888; ${equipos} y falta anotar las horas del hor&oacute;metro`;
+}
+function irAHorometrosPendientes(){
+  goTo('home');
+  if(!dashCollapseOpen.horaspend) toggleDashCollapse('horaspend');
+  const caja = document.getElementById('dc-horaspend');
+  if(caja) setTimeout(()=>caja.scrollIntoView({block:'center', behavior:'smooth'}), 60);
 }
 
 // Parpadea un momento cuando entra uno nuevo, y despues queda fija.
@@ -9710,6 +9760,8 @@ function guardarHorasEquipo(eqId, horas, fecha, quien){
   EQ_CHECKLIST[eqId].horasEn = Date.now();
   EQ_CHECKLIST[eqId].horasPendienteDesde = null;
   guardarEqChecklist();
+  // La franja de arriba tiene que irse en el momento, no al siguiente refresco.
+  if(typeof actualizarFranjaHorometro==='function') actualizarFranjaHorometro();
 }
 // Las que volvieron y nadie cargó las horas. Es lo que alimenta el aviso de Inicio.
 function equiposConHorasPendientes(){
@@ -9717,6 +9769,28 @@ function equiposConHorasPendientes(){
     const d = EQ_CHECKLIST[e.id];
     return d && d.horasPendienteDesde;
   });
+}
+
+/* El paso de las horas cuando una máquina vuelve al depósito.
+
+   OJO: hay DOS botones distintos que marcan la vuelta — "Retirado" desde Inicio y
+   la lista de alquileres (marcarEquipoRetiradoFisico), y "volvió" cuando falta
+   definir qué se cobra (marcarVueltaDeTaller). La primera vez enganché uno solo y
+   por el otro no se pedían las horas nunca. Por eso esto vive acá, en un lugar, y
+   lo llaman los dos. Si algún día aparece un tercer camino, que llame a esto. */
+async function pedirHorasAlVolver(a, fecha){
+  const eq = (EQUIPOS||[]).find(e=>e.id===a.equipoId);
+  if(!eq) return;
+  const quien = a.retiroFisicoPor || (ROL_ACTUAL==='taller' ? TALLER_RESPONSABLE : nombreUsuarioActual()) || 'Taller';
+  const horas = await pedirHorasHorometro(eq, fecha);
+  if(horas!==null){
+    guardarHorasEquipo(eq.id, horas, fecha, quien);
+    return;
+  }
+  asegurarEqChecklist(eq.id);
+  EQ_CHECKLIST[eq.id].horasPendienteDesde = fecha;
+  guardarEqChecklist();
+  actualizarFranjaHorometro();
 }
 
 // Devuelve el número de horas, o null si lo saltearon / cerraron.
@@ -9758,7 +9832,16 @@ function pedirHorasHorometro(eq, fechaVuelta){
       cerrar(n);
     };
     btnG.onclick = intentarGuardar;
-    btnS.onclick = () => cerrar(null);
+    // Saltearlo tiene que costar un paso más. Era un botón suelto al lado de Guardar
+    // y se tocaba de apuro; la idea es que solo se saltee cuando de verdad no se pueden
+    // leer (volvió de noche, batería baja), no por ir rápido.
+    btnS.onclick = async () => {
+      const seguro = await confirmSiNo(
+        `¿Seguís sin poder ver el horómetro de "${eq.nombre}"?\n\nVa a quedar marcado en rojo en Inicio hasta que alguien cargue las horas.`,
+        {si:'No las puedo ver', no:'Las cargo ahora'});
+      if(!seguro){ inp.focus(); return; }
+      cerrar(null);
+    };
     inp.onkeydown = e => { if(e.key==='Enter'){ e.preventDefault(); intentarGuardar(); } };
   });
 }
@@ -16120,19 +16203,7 @@ async function marcarVueltaDeTaller(id){
   a.retiroFisicoHora = (fecha===hoyISO()) ? new Date().toTimeString().slice(0,5) : '';
   a.retiroFisicoPor = (ROL_ACTUAL==='taller' ? TALLER_RESPONSABLE : nombreUsuarioActual()) || 'Taller';
 
-  // Antes de cerrar: las horas del horómetro. Es el único momento en que hay alguien
-  // parado al lado de la máquina — ver el bloque EL HORÓMETRO.
-  const eq = (EQUIPOS||[]).find(e=>e.id===a.equipoId);
-  if(eq){
-    const horas = await pedirHorasHorometro(eq, fecha);
-    if(horas!==null){
-      guardarHorasEquipo(eq.id, horas, fecha, a.retiroFisicoPor);
-    }else{
-      asegurarEqChecklist(eq.id);
-      EQ_CHECKLIST[eq.id].horasPendienteDesde = fecha;
-      guardarEqChecklist();
-    }
-  }
+  await pedirHorasAlVolver(a, fecha);
 
   const volvioAntes = a.fin && fechaValidaApp(a.fin) && fecha < a.fin;
   if(a.abierto || volvioAntes){
@@ -16188,6 +16259,8 @@ async function marcarEquipoRetiradoFisico(id){
   a.retiroFisicoHora = (fecha===hoyISO()) ? new Date().toTimeString().slice(0,5) : '';
   // Igual que en la salida: siempre queda registrado quién lo marcó, no solo si fue taller.
   a.retiroFisicoPor = (ROL_ACTUAL==='taller' ? TALLER_RESPONSABLE : nombreUsuarioActual()) || 'Oficina';
+  // Las horas con las que llegó — ver pedirHorasAlVolver.
+  await pedirHorasAlVolver(a, fecha);
   marcarAccionUndo(`Marcar "${a.equipoNombre}" como retirado (vuelto al depósito) — cliente ${a.cliente}`, 'home');
   // Mismo criterio que la salida: ya se confirmó arriba, el cartel sobra.
   guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
