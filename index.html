@@ -188,6 +188,11 @@ select,input[type=number],input[type=text],textarea{width:100%;border:1.5px soli
 textarea{font-family:inherit;resize:vertical;line-height:1.4;}
 select:focus,input:focus{border-color:var(--verde);}
 .flabel{font-size:.72rem;font-weight:700;color:var(--txt2);display:block;margin-bottom:3px;}
+/* Campos que van en mayúscula (datos de clientes). El text-transform es solo lo que
+   se VE: lo que se guarda lo pasa a mayúscula aMayusCliente() al grabar. Las dos
+   cosas, para que lo que se escribe y lo que queda guardado coincidan siempre. */
+input.mayus{text-transform:uppercase;}
+input.mayus::placeholder{text-transform:none;}
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 /* Las dos columnas no se achicaban por debajo del ancho "natural" de lo que tienen
    adentro. Con dos campos de fecha al lado (que traen su propio calendario) eso
@@ -642,6 +647,7 @@ if ('serviceWorker' in navigator) {
         <button id="nav-cotizador" onclick="goTo('cotizador')">Cotizador</button>
         <button id="nav-alquileres" onclick="goTo('alquileres')">Lista de alquileres</button>
         <button id="nav-solicitudes" onclick="goTo('solicitudes')">Solicitudes</button>
+        <button id="nav-nocerrados" onclick="goTo('nocerrados')">Alquileres no cerrados</button>
         <button id="nav-calendario" onclick="goTo('calendario')">Calendario</button>
         <button id="nav-rivadavia" onclick="goTo('rivadavia')">Planilla Rivadavia</button>
       </div>
@@ -1202,14 +1208,17 @@ if ('serviceWorker' in navigator) {
         <div id="cot-cl-nuevo-form" style="display:none;margin-top:.8rem;border-top:1px solid var(--border);padding-top:.8rem;">
           <div style="font-size:.78rem;font-weight:700;color:var(--txt2);margin-bottom:.6rem;text-transform:uppercase;letter-spacing:.04em">Nuevo cliente</div>
           <div style="display:flex;flex-direction:column;gap:.5rem">
-            <div><label class="flabel">Nombre / Razón social *</label><input type="text" id="ncl-nombre" placeholder="Ej: ACME S.A."></div>
-            <div><label class="flabel">Dirección</label><input type="text" id="ncl-dir" placeholder="Ej: Belgrano 123"></div>
+            <!-- class="mayus": se escribe en mayúscula mientras se tipea, así se ve lo
+                 que va a quedar guardado. El email queda afuera a propósito (ver
+                 aMayusCliente): en mayúscula se lee mal y puede dar problemas al enviar. -->
+            <div><label class="flabel">Nombre / Razón social *</label><input type="text" class="mayus" id="ncl-nombre" placeholder="EJ: ACME S.A."></div>
+            <div><label class="flabel">Dirección</label><input type="text" class="mayus" id="ncl-dir" placeholder="EJ: BELGRANO 123"></div>
             <div class="row2">
-              <div><label class="flabel">Ciudad</label><input type="text" id="ncl-ciudad" placeholder="Rafaela"></div>
-              <div><label class="flabel">CUIT</label><input type="text" id="ncl-cuit" placeholder="30-12345678-9"></div>
+              <div><label class="flabel">Ciudad</label><input type="text" class="mayus" id="ncl-ciudad" placeholder="RAFAELA"></div>
+              <div><label class="flabel">CUIT</label><input type="text" class="mayus" id="ncl-cuit" placeholder="30-12345678-9"></div>
             </div>
             <div class="row2">
-              <div><label class="flabel">Teléfono</label><input type="text" id="ncl-tel" placeholder="3492-..."></div>
+              <div><label class="flabel">Teléfono</label><input type="text" class="mayus" id="ncl-tel" placeholder="3492-..."></div>
               <div><label class="flabel">Email</label><input type="text" id="ncl-email" placeholder="mail@..."></div>
             </div>
             <div style="display:flex;gap:8px;margin-top:.2rem">
@@ -1252,8 +1261,10 @@ if ('serviceWorker' in navigator) {
           </div>
           <!-- modo fechas -->
           <div id="per-fechas-bloque" style="display:none;gap:8px" class="row2">
-            <div><label class="flabel">Desde</label><input type="date" id="cot-fecha-desde" onchange="calcDiasDesde()"></div>
-            <div><label class="flabel">Hasta</label><input type="date" id="cot-fecha-hasta" onchange="calcDiasDesde()"></div>
+            <!-- min/max igual que en Alquileres: sin tope, el campo acepta años de
+                 hasta 6 cifras y un "22026" tipeado al voleo rompe todas las cuentas. -->
+            <div><label class="flabel">Desde</label><input type="date" id="cot-fecha-desde" min="2020-01-01" max="2100-12-31" onchange="calcDiasDesde()"></div>
+            <div><label class="flabel">Hasta</label><input type="date" id="cot-fecha-hasta" min="2020-01-01" max="2100-12-31" onchange="calcDiasDesde()"></div>
           </div>
           <div id="per-fechas-resumen" style="display:none;font-size:.75rem;color:var(--verde);font-weight:700;margin-top:2px"></div>
           <div id="warn-mes" class="warn-txt">⚠ Precio mensual: el cliente debe confirmar desde el inicio (28 días)</div>
@@ -1570,6 +1581,22 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
 <div id="lista-alq"></div>
       <div id="lista-solicitudes-espera" style="display:none"></div>
 
+    </div>
+
+    <!-- ALQUILERES NO CERRADOS
+         El archivo de las cotizaciones que el cliente no terminó tomando, cada una con
+         el motivo. No es una papelera: es para poder mirar de vez en cuando por qué se
+         caen los alquileres (precio, lo resolvió otro, se le cayó la obra...).
+         Entran desde el botón "No cerró" del seguimiento de cotizaciones en Inicio. -->
+    <div class="screen" id="screen-nocerrados" style="max-width:900px">
+      <div class="sec-title">Alquileres no cerrados</div>
+      <div class="sec-sub">Cotizaciones que el cliente no terminó tomando, con el motivo de cada una</div>
+      <div id="nocerrados-resumen" style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:1rem"></div>
+      <div id="nocerrados-motivos" style="margin-bottom:1rem"></div>
+      <div style="position:relative;margin-bottom:1rem">
+        <input type="text" id="nocerrados-buscar" placeholder="Buscar por cliente, equipo o motivo..." oninput="renderNoCerrados()" style="width:100%;padding:.6rem .8rem;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:var(--txt);font-size:.85rem">
+      </div>
+      <div id="lista-nocerrados"></div>
     </div>
 
     <!-- CONTROL DE MÁQUINAS -->
@@ -2263,16 +2290,18 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
       <div id="eq-ficha-sub" style="font-size:.78rem;color:var(--txt2);margin-bottom:.8rem;"></div>
       <div id="eq-ficha-solicitudes" style="margin-bottom:.8rem"></div>
 
-      <div class="rb-group" style="margin-bottom:1rem;flex-wrap:wrap">
-        <button class="rb sel" id="eq-ficha-tab-check" onclick="setEqFichaTab('check')" style="flex:1">Checklist actualizado</button>
-        <button class="rb" id="eq-ficha-tab-prob" onclick="setEqFichaTab('prob')" style="flex:1">⚠️ Problemas</button>
-        <button class="rb" id="eq-ficha-tab-hist" onclick="setEqFichaTab('hist')" style="flex:1">Historial de servicios</button>
-        <button class="rb" id="eq-ficha-tab-tecnica" onclick="setEqFichaTab('tecnica')" style="flex:1">Ficha técnica</button>
-      </div>
+      <!-- Una ventana = una cosa. Antes esto tenia cuatro solapas (checklist, problemas,
+           historial, ficha tecnica) y abrias el checklist pero te comias todo lo demas
+           arriba. Ahora cada boton de la hoja de la maquina abre su propia ventana y
+           este renglon dice cual es. -->
+      <div id="eq-ficha-modo" style="font-size:.72rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.8rem"></div>
 
       <div id="eq-ficha-cont"></div>
       <div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border2);display:flex;gap:8px;flex-wrap:wrap">
-        <button onclick="verHistorialMaquina(eqFichaId)" class="btn-nuevo" style="padding:8px 14px;font-size:.8rem">Ver la hoja completa de esta máquina</button>
+        <!-- Sirve cuando la ventana se abrió desde Inicio o desde la lista de Equipos.
+             Si ya estás parado en la hoja de esa misma máquina se esconde: te mandaría
+             al mismo lugar donde estás. Lo decide renderEqFichaHeader. -->
+        <button id="eq-ficha-btn-hoja" onclick="verHistorialMaquina(eqFichaId)" class="btn-nuevo" style="padding:8px 14px;font-size:.8rem">Ver la hoja completa de esta máquina</button>
         <button onclick="cerrarFichaEq()" class="btn-lim" style="padding:8px 16px;font-size:.8rem">✕ Cerrar</button>
       </div>
     </div>
@@ -2368,7 +2397,7 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
           <button onclick="limpiarClSolEspera()" style="background:none;border:none;color:var(--txt2);cursor:pointer">✕</button>
         </div>
         <div id="solespera-cl-nuevo-form" style="display:none;margin-top:.5rem">
-          <input type="text" id="solespera-ncl-nombre" placeholder="Nombre / Razón social del cliente nuevo" style="margin-bottom:.4rem">
+          <input type="text" class="mayus" id="solespera-ncl-nombre" placeholder="NOMBRE / RAZÓN SOCIAL DEL CLIENTE NUEVO" style="margin-bottom:.4rem">
           <div style="display:flex;gap:8px">
             <button onclick="guardarNuevoClienteSolEspera()" class="btn-nuevo" style="flex:1;padding:8px;font-size:.82rem">Guardar y usar</button>
             <button onclick="cancelarNuevoClienteSolEspera()" class="btn-lim" style="flex:1;padding:8px;font-size:.82rem">Cancelar</button>
@@ -2390,6 +2419,65 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
   </div>
 
   <!-- Agregar equipo nuevo a la flota -->
+  <!-- POR QUÉ NO CERRÓ
+       Sacar una cotización de la lista sin decir por qué no sirve de nada: a fin de mes
+       no se sabe si se caen por precio, por disponibilidad o porque nadie volvió a
+       llamar. El motivo es obligatorio (aunque sea elegir uno de la lista). -->
+  <div id="modal-nocerro" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:420;align-items:center;justify-content:center;">
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:430px;max-width:92vw;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem;">
+        <div style="font-size:1rem;font-weight:700;color:var(--txt);">&iquest;Por qu&eacute; no cerr&oacute;?</div>
+        <button onclick="cerrarModalNoCerro()" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">&#10005;</button>
+      </div>
+      <div id="nocerro-quien" style="font-size:.8rem;color:var(--txt2);margin-bottom:1rem"></div>
+      <div style="margin-bottom:.7rem">
+        <label class="flabel">Motivo</label>
+        <select id="nocerro-motivo"></select>
+      </div>
+      <div style="margin-bottom:1rem">
+        <label class="flabel">Detalle (opcional)</label>
+        <textarea id="nocerro-detalle" rows="3" placeholder="Lo que te dijo el cliente"></textarea>
+      </div>
+      <div style="font-size:.73rem;color:var(--txt3);line-height:1.45;margin-bottom:.9rem">No se borra nada: la cotizaci&oacute;n pasa a <b>Alquileres no cerrados</b> y desde ah&iacute; la pod&eacute;s volver a seguir cuando quieras.</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="guardarNoCerro()" class="btn-nuevo" style="flex:1;padding:.7rem">Archivar</button>
+        <button onclick="cerrarModalNoCerro()" class="btn-lim" style="flex:1;padding:8px">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ALTA Y EDICION DE CLIENTE (pantalla Clientes)
+       Antes esto eran cinco prompt() del navegador, uno atras de otro. Dos problemas:
+       no se podia forzar la mayuscula (el cuadrito del navegador no se puede tocar),
+       asi que cada uno cargaba como queria; y no se veia el cliente entero, se cargaba
+       a ciegas de a un campo. Este formulario es el mismo que el del cotizador, con
+       class="mayus" en todos los campos menos el email. -->
+  <div id="modal-cliente" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:400;align-items:center;justify-content:center;">
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+        <div id="mcl-titulo" style="font-size:1rem;font-weight:700;color:var(--txt);">Nuevo cliente</div>
+        <button onclick="cerrarModalCliente()" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">&#10005;</button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:.6rem">
+        <div><label class="flabel">Nombre / Raz&oacute;n social *</label><input type="text" class="mayus" id="mcl-nombre" placeholder="EJ: ACME S.A."></div>
+        <div><label class="flabel">Direcci&oacute;n</label><input type="text" class="mayus" id="mcl-dir" placeholder="EJ: BELGRANO 123"></div>
+        <div class="row2">
+          <div><label class="flabel">Ciudad</label><input type="text" class="mayus" id="mcl-ciudad" placeholder="RAFAELA"></div>
+          <div><label class="flabel">CUIT</label><input type="text" class="mayus" id="mcl-cuit" placeholder="30-12345678-9"></div>
+        </div>
+        <div class="row2">
+          <div><label class="flabel">Tel&eacute;fono</label><input type="text" class="mayus" id="mcl-tel" placeholder="3492-..."></div>
+          <div><label class="flabel">Email</label><input type="text" id="mcl-email" placeholder="mail@..."></div>
+        </div>
+        <div style="font-size:.72rem;color:var(--txt3);line-height:1.45">Se guarda todo en may&uacute;scula (menos el mail) para que la base quede pareja.</div>
+        <div style="display:flex;gap:8px;margin-top:.3rem">
+          <button onclick="guardarModalCliente()" class="btn-nuevo" style="flex:1;padding:.7rem">Guardar</button>
+          <button onclick="cerrarModalCliente()" class="btn-lim" style="flex:1;padding:8px">Cancelar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="modal-equipo-nuevo" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:400;align-items:center;justify-content:center;">
     <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:420px;max-width:92vw;max-height:88vh;overflow-y:auto;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
@@ -3461,11 +3549,11 @@ function cotizDiasSinTocar(p){
   if(!desde) return 0;
   return Math.floor((Date.now() - desde) / UN_DIA_MS);
 }
-// Abierta = todavia no se convirtio en alquiler y no se saco a mano de la lista.
-// No hay un "la perdimos": mientras el cliente lo este evaluando la cotizacion sigue
-// ahi, y el dia que entra se convierte en alquiler y sale sola (lo marca
-// convertirEnAlquiler). Para las que ya no van a ningun lado esta "sacar del
-// seguimiento", que NO borra nada: la cotizacion sigue entera en el historial.
+// Abierta = todavia no se convirtio en alquiler y no se archivo como no cerrada.
+// Mientras el cliente lo este evaluando la cotizacion sigue ahi; el dia que entra se
+// convierte en alquiler y sale sola (lo marca convertirEnAlquiler), y el dia que el
+// cliente dice que no se archiva con el motivo (ver abrirModalNoCerro). Archivar NO
+// borra: la cotizacion sigue entera en el historial y en Alquileres no cerrados.
 function cotizAbierta(p){
   return p.estadoConv !== 'convertido' && !p.segArchivada;
 }
@@ -3491,6 +3579,19 @@ function cotizacionesAgrupadas(){
   esperando.sort((a,b)=>cotizDesdeCuando(a)-cotizDesdeCuando(b));
   recientes.sort((a,b)=>cotizDesdeCuando(b)-cotizDesdeCuando(a));
   return {vencidas, esperando, recientes};
+}
+
+// Las tres pilas van plegadas adentro del desplegable. Abiertas todas juntas la
+// lista se hacia larguisima y lo que habia que hacer HOY quedaba perdido en el
+// medio. Funciona como los desplegables de Inicio: se abre uno y se cierra el que
+// estaba abierto. Arranca en "hay que llamar", que es la unica que pide accion.
+// Vive en memoria nomas: es como esta mirando la pantalla ahora, no un dato.
+let cotizSecAbierta = 'vencidas';
+// Para que el desplegable se abra solo UNA vez por sesión cuando hay atrasadas.
+let segCotizYaSaludo = false;
+function toggleCotizSec(cual){
+  cotizSecAbierta = (cotizSecAbierta===cual) ? '' : cual;
+  renderSeguimientoCotiz();
 }
 
 // "Lo llame y sigue viendolo": el reloj vuelve a cero y en 5 dias aparece otra vez.
@@ -3535,33 +3636,159 @@ function actualizarBarraCotizTildadas(){
   if(txt) txt.textContent = `${n} marcada${n!==1?'s':''}`;
 }
 
-async function cotizSacarTildadas(){
-  const ids = [...cotizTildadas];
+// Varias de una vez, pero pasando por el mismo cartel del motivo: si no, la mitad de
+// las no cerradas quedarian sin explicacion y la pantalla no serviria para nada.
+function cotizSacarTildadas(){
+  const ids = [...cotizTildadas].filter(id=>(PRESUPUESTOS||[]).some(p=>p.id===id));
   if(!ids.length) return;
-  const nombres = ids.map(id=>{
-    const p=(PRESUPUESTOS||[]).find(x=>x.id===id);
-    return p ? (p.clienteNombre||'(sin cliente)') : '';
-  }).filter(Boolean);
-  const lista = nombres.slice(0,8).join('\n• ');
-  const resto = nombres.length>8 ? `\n…y ${nombres.length-8} más` : '';
-  // "cotización" pierde la tilde en plural: cotizaciones, no "cotizaciónes".
-  const cuantas = ids.length===1 ? '1 cotización' : `${ids.length} cotizaciones`;
-  if(!(await confirmSiNo(
-    `¿Sacar ${cuantas} de la lista de seguimiento?\n\n• ${lista}${resto}\n\nNo se borra nada: las seguís viendo en el historial de presupuestos, y desde ahí las podés volver a traer.`,
-    {si:`Sacar ${ids.length} de la lista`, no:'Cancelar'}))) return;
-  ids.forEach(id=>{
-    const p=(PRESUPUESTOS||[]).find(x=>x.id===id);
-    if(p){ p.segArchivada = true; p.segArchivadaEn = Date.now(); }
-  });
-  cotizTildadas.clear();
-  guardarSeguimientoCotiz(`Sacar ${cuantas} del seguimiento`);
+  abrirModalNoCerro(ids);
 }
 
-// Devolverla a la lista desde el historial de presupuestos.
+// Devolverla a la lista desde el historial de presupuestos o desde Alquileres no cerrados.
 function cotizVolverASeguir(id){
   const p=(PRESUPUESTOS||[]).find(x=>x.id===id); if(!p) return;
   p.segArchivada = false; p.segArchivadaEn = null;
+  // El motivo se borra: vuelve a estar abierta, no tiene sentido que siga diciendo
+  // por qué se cerró. Si se cierra de nuevo se carga el motivo de ese momento.
+  p.segMotivo = ''; p.segMotivoDetalle = ''; p.segCerradaPor = '';
+  // El reloj arranca de cero: no tiene sentido que aparezca "para llamar" al instante
+  // solo porque la cotización es de hace tres semanas.
+  p.segUltimoContacto = Date.now();
   guardarSeguimientoCotiz(`Volver a seguir la cotización de ${p.clienteNombre||'(sin cliente)'}`);
+  if(pantallaActualNombre==='nocerrados') renderNoCerrados();
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   NO CERRÓ — el tercer camino del seguimiento
+
+   Los tres finales posibles de una cotización, y qué hace cada botón:
+     · "Lo confirmó"      → se convierte en alquiler y sale sola de la lista.
+     · "Sigue viéndolo"   → el reloj vuelve a cero, en 5 días aparece otra vez.
+     · "No cerró"         → se pide el motivo y se archiva en Alquileres no cerrados.
+
+   Archivar NO borra: la cotización sigue entera en el historial y se puede volver
+   a seguir con un botón.
+   ══════════════════════════════════════════════════════════════════════════ */
+const MOTIVOS_NO_CERRO = [
+  'Lo resolvió con otro proveedor',
+  'Por precio',
+  'Se le cayó el trabajo',
+  'Lo dejó para más adelante',
+  'No teníamos el equipo disponible',
+  'Nunca más contestó',
+  'Otro'
+];
+// Guarda siempre una lista: desde la tarjeta viene una sola, desde los tildes vienen
+// varias, y el resto del circuito es exactamente el mismo.
+let noCerroIds = [];
+
+function abrirModalNoCerro(idOIds){
+  const ids = Array.isArray(idOIds) ? idOIds : [idOIds];
+  const presups = ids.map(id=>(PRESUPUESTOS||[]).find(x=>x.id===id)).filter(Boolean);
+  if(!presups.length) return;
+  noCerroIds = presups.map(p=>p.id);
+  const cabecera = presups.length===1
+    ? `<b>${presups[0].clienteNombre||'(sin cliente)'}</b> · ${presups[0].equipo||''} · ${fmt(presups[0].total)}`
+    : `<b>${presups.length} cotizaciones</b> · ${fmt(presups.reduce((s,p)=>s+(Number(p.total)||0),0))}<br>` +
+      presups.slice(0,6).map(p=>p.clienteNombre||'(sin cliente)').join(' · ') +
+      (presups.length>6 ? ` …y ${presups.length-6} más` : '');
+  document.getElementById('nocerro-quien').innerHTML = cabecera;
+  const sel=document.getElementById('nocerro-motivo');
+  sel.innerHTML = MOTIVOS_NO_CERRO.map(m=>`<option value="${m}">${m}</option>`).join('');
+  sel.value = MOTIVOS_NO_CERRO[0];
+  document.getElementById('nocerro-detalle').value='';
+  document.getElementById('modal-nocerro').style.display='flex';
+}
+function cerrarModalNoCerro(){
+  document.getElementById('modal-nocerro').style.display='none';
+  noCerroIds=[];
+}
+function guardarNoCerro(){
+  const motivo = document.getElementById('nocerro-motivo').value;
+  const detalle = document.getElementById('nocerro-detalle').value.trim();
+  const ahora = Date.now();
+  const quien = nombreUsuarioActual();
+  const tocadas = [];
+  noCerroIds.forEach(id=>{
+    const p=(PRESUPUESTOS||[]).find(x=>x.id===id);
+    if(!p) return;
+    p.segArchivada = true;
+    p.segArchivadaEn = ahora;
+    p.segMotivo = motivo;
+    p.segMotivoDetalle = detalle;
+    p.segCerradaPor = quien;
+    tocadas.push(p.clienteNombre||'(sin cliente)');
+  });
+  cotizTildadas.clear();
+  cerrarModalNoCerro();
+  if(!tocadas.length) return;
+  // "cotización" pierde la tilde en plural: cotizaciones, no "cotizaciónes".
+  const queSeHizo = tocadas.length===1
+    ? `Archivar la cotización de ${tocadas[0]} como no cerrada`
+    : `Archivar ${tocadas.length} cotizaciones como no cerradas`;
+  guardarSeguimientoCotiz(queSeHizo);
+}
+
+// Las archivadas que no terminaron en alquiler. Las que SÍ se convirtieron nunca
+// entran acá aunque alguien las hubiera archivado antes por error.
+function cotizacionesNoCerradas(){
+  return (PRESUPUESTOS||[])
+    .filter(p => p.segArchivada && p.estadoConv!=='convertido')
+    .sort((a,b)=>(b.segArchivadaEn||0)-(a.segArchivadaEn||0));
+}
+
+function renderNoCerrados(){
+  const cont=document.getElementById('lista-nocerrados');
+  if(!cont) return;
+  const fmtFH=ts=>ts?new Date(ts).toLocaleDateString('es-AR'):'—';
+  const todas = cotizacionesNoCerradas();
+
+  // Resumen: cuántas y cuánta plata quedó afuera. Sirve para dimensionar el tema.
+  const tarjeta=(etiqueta,valor)=>`<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.7rem .9rem;flex:1;min-width:140px">
+      <div style="font-size:.68rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.05em">${etiqueta}</div>
+      <div style="font-size:1.05rem;font-weight:700;color:var(--txt);margin-top:2px">${valor}</div>
+    </div>`;
+  const total = todas.reduce((s,p)=>s+(Number(p.total)||0),0);
+  document.getElementById('nocerrados-resumen').innerHTML =
+    tarjeta('No cerradas', todas.length) + tarjeta('Lo que no entró', fmt(total));
+
+  // Por qué se caen: el dato que justifica que esta pantalla exista.
+  const porMotivo = {};
+  todas.forEach(p=>{ const m=p.segMotivo||'Sin motivo cargado'; porMotivo[m]=(porMotivo[m]||0)+1; });
+  const motivos = Object.keys(porMotivo).sort((a,b)=>porMotivo[b]-porMotivo[a]);
+  document.getElementById('nocerrados-motivos').innerHTML = motivos.length
+    ? `<div style="font-size:.68rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.4rem">Por qué se caen</div>
+       <div style="display:flex;gap:6px;flex-wrap:wrap">${motivos.map(m=>
+         `<span style="font-size:.76rem;color:var(--txt2);background:var(--bg3);border:1px solid var(--border);border-radius:11px;padding:3px 10px">${m} · <b style="color:var(--txt)">${porMotivo[m]}</b></span>`).join('')}</div>`
+    : '';
+
+  const buscar = (document.getElementById('nocerrados-buscar').value||'').trim().toLowerCase();
+  const lista = buscar
+    ? todas.filter(p=>[p.clienteNombre,p.equipo,p.segMotivo,p.segMotivoDetalle].some(t=>String(t||'').toLowerCase().includes(buscar)))
+    : todas;
+
+  if(!lista.length){
+    cont.innerHTML = `<p style="color:var(--txt3);font-size:.88rem;padding:1.5rem 0;text-align:center">${
+      todas.length ? 'Ninguna coincide con esa búsqueda.'
+                   : 'Todavía no hay cotizaciones archivadas acá. Se archivan desde "No cerró", en Cotizaciones para seguir.'}</p>`;
+    return;
+  }
+
+  cont.innerHTML = lista.map(p=>`<div style="border:1px solid var(--border);border-left:3px solid var(--txt3);border-radius:9px;padding:.75rem .9rem;margin-bottom:.6rem;background:var(--bg2)">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+        <span style="font-weight:700;font-size:.9rem;color:var(--txt);overflow-wrap:anywhere">${p.clienteNombre||'(sin cliente)'}</span>
+        <span style="font-weight:700;font-size:.86rem;color:var(--txt);white-space:nowrap">${fmt(p.total)}</span>
+      </div>
+      <div style="font-size:.79rem;color:var(--txt2);margin-top:1px">${p.equipo||''} · ${p.dias} día${p.dias!==1?'s':''}</div>
+      <div style="margin-top:.45rem;padding:.4rem .6rem;background:var(--bg3);border-radius:7px">
+        <div style="font-size:.8rem;font-weight:700;color:var(--txt)">${p.segMotivo||'Sin motivo cargado'}</div>
+        ${p.segMotivoDetalle?`<div class="multilinea" style="font-size:.8rem;color:var(--txt2);margin-top:2px;line-height:1.45">${p.segMotivoDetalle}</div>`:''}
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:.5rem;flex-wrap:wrap">
+        <span style="font-size:.74rem;color:var(--txt3)">Cotizada el ${fmtFH(cotizCreadaEn(p))} · archivada el ${fmtFH(p.segArchivadaEn)}${p.segCerradaPor?' por '+p.segCerradaPor:''}</span>
+        <button onclick="cotizVolverASeguir(${p.id})" class="btn-lim" style="padding:4px 10px;font-size:.73rem">Volver a seguirla</button>
+      </div>
+    </div>`).join('');
 }
 
 // ── Volvieron pero falta definir qué se cobra ─────────────────────────────
@@ -3659,10 +3886,14 @@ function cotizTarjeta(p, urgente){
       </div>
       <div style="font-size:.78rem;color:var(--txt2);margin-top:1px">${p.equipo||''} · ${p.dias} día${p.dias!==1?'s':''}</div>
       <div style="font-size:.74rem;color:${colorFecha};font-weight:${urgente?'700':'400'};margin-top:1px">${cuando}${vueltas}${p.creadoPor?' · '+p.creadoPor:''}</div>
-      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:.45rem">
+      <!-- Los tres finales posibles, con el nombre de lo que te dijo el cliente y no
+           de lo que hace el sistema: así no hay que acordarse de nada. -->
+      <div style="font-size:.7rem;color:var(--txt3);margin-top:.5rem">Después de hablarlo, ¿qué te dijo?</div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:.3rem">
         ${tel?`<a href="tel:${tel}" style="${btn};background:none;border:1px solid var(--border2);color:var(--txt2);text-decoration:none">${p.clienteTelefono}</a>`:''}
-        <button onclick="cotizRegistrarContacto(${p.id})" style="${btn};background:none;border:1px solid var(--border2);color:var(--txt)">Lo llamé</button>
-        ${p.cot?`<button onclick="cotizConfirmada(${p.id})" style="${btn};background:var(--verde);border:1px solid var(--verde);color:#fff">Lo confirmó</button>`:''}
+        <button onclick="cotizConfirmada(${p.id})" style="${btn};background:var(--verde);border:1px solid var(--verde);color:#fff">Lo tomó → pasar a alquiler</button>
+        <button onclick="cotizRegistrarContacto(${p.id})" style="${btn};background:none;border:1px solid var(--border2);color:var(--txt)">Lo sigue viendo · +${DIAS_RECORDAR_COTIZ} días</button>
+        <button onclick="abrirModalNoCerro(${p.id})" style="${btn};background:none;border:1px solid var(--border2);color:var(--txt2)">No cerró</button>
       </div>
     </div>
   </div>`;
@@ -3692,35 +3923,65 @@ function renderSeguimientoCotiz(){
   caja.style.display = hayAlgo ? 'block' : 'none';
   if(!hayAlgo) return;
 
+  // El "aviso a los 5 días": si hay cotizaciones atrasadas, el desplegable se abre
+  // solo la primera vez que entrás a Inicio. Una pastilla roja se pasa por alto; una
+  // lista abierta en la cara, no. Una sola vez por sesión: si lo cerrás, queda cerrado.
+  const tit = caja.querySelector('.dc-title');
+  if(tit) tit.textContent = vencidas.length
+    ? `Cotizaciones para seguir — ${vencidas.length} para llamar`
+    : 'Cotizaciones para seguir';
+  if(vencidas.length && !segCotizYaSaludo){
+    segCotizYaSaludo = true;
+    if(!dashCollapseOpen.segcotiz) toggleDashCollapse('segcotiz');
+  }
+
   // Las marcas que quedaron de antes se olvidan si esa cotización ya no está en la
   // lista (se convirtió en alquiler, o la sacó otro desde otra computadora).
   const idsVivos = new Set([...vencidas, ...esperando, ...recientes].map(p=>p.id));
   [...cotizTildadas].forEach(id=>{ if(!idsVivos.has(id)) cotizTildadas.delete(id); });
 
-  const titulo = (txt, n, color, primero) => `<div style="font-size:.68rem;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.05em;margin:${primero?'.2rem':'1rem'} 0 .4rem">${txt} · ${n}</div>`;
+  // Si la pila que estaba abierta se vacio (llamaste a todas las atrasadas), se abre
+  // sola la siguiente que tenga algo. Si la cerraste vos a mano se respeta cerrada.
+  const pilas = {vencidas, esperando, recientes};
+  if(cotizSecAbierta && !pilas[cotizSecAbierta].length){
+    cotizSecAbierta = ['vencidas','esperando','recientes'].find(k=>pilas[k].length) || '';
+  }
+
+  // Cada pila es un desplegable: titulo + cuantas hay + flechita. El cuerpo se
+  // dibuja siempre (asi los tildes no se pierden al plegar) pero se esconde.
+  const bloque = (clave, txt, lista, color, urgente) => {
+    if(!lista.length) return '';
+    const abierto = cotizSecAbierta===clave;
+    return `<button onclick="toggleCotizSec('${clave}')" style="width:100%;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:.45rem .6rem;margin:.6rem 0 0;cursor:pointer;text-align:left">
+        <span style="flex:1;min-width:0;font-size:.68rem;font-weight:700;color:${color};text-transform:uppercase;letter-spacing:.05em;overflow-wrap:anywhere">${txt}</span>
+        <span style="background:${color};color:#fff;border-radius:10px;padding:1px 7px;font-size:.7rem;font-weight:700;flex-shrink:0">${lista.length}</span>
+        <span style="color:var(--txt3);font-size:.8rem;flex-shrink:0">${abierto?'▾':'▸'}</span>
+      </button>
+      <div style="display:${abierto?'block':'none'};margin-top:.45rem">${lista.map(p=>cotizTarjeta(p, urgente)).join('')}</div>`;
+  };
   let h = `<div id="cotiz-barra-tildadas" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:.45rem .6rem;margin-bottom:.5rem;position:sticky;top:0;z-index:3">
       <span id="cotiz-tildadas-texto" style="font-size:.8rem;font-weight:700;color:var(--txt)"></span>
       <span style="flex:1"></span>
       <button onclick="cotizTildarTodas()" class="btn-lim" style="padding:4px 9px;font-size:.73rem">Marcar todas</button>
-      <button onclick="cotizSacarTildadas()" class="btn-lim" style="padding:4px 9px;font-size:.73rem;color:var(--rojo);border-color:var(--rojo)">Sacar de la lista</button>
+      <button onclick="cotizSacarTildadas()" class="btn-lim" style="padding:4px 9px;font-size:.73rem;color:var(--rojo);border-color:var(--rojo)">No cerraron</button>
     </div>`;
 
-  if(vencidas.length){
-    h += titulo(`Hay que llamar — ${DIAS_RECORDAR_COTIZ} días o más`, vencidas.length, '#c62828', true);
-    h += vencidas.map(p=>cotizTarjeta(p, true)).join('');
-  }
-  if(esperando.length){
-    h += titulo('Ya los llamaste', esperando.length, 'var(--txt3)', !vencidas.length);
-    h += esperando.map(p=>cotizTarjeta(p, false)).join('');
-  }
-  if(recientes.length){
-    h += titulo('Recién cotizadas', recientes.length, 'var(--txt3)', !vencidas.length && !esperando.length);
-    h += recientes.map(p=>cotizTarjeta(p, false)).join('');
-  }
-  if(!vencidas.length){
-    h = `<p style="color:var(--txt3);font-size:.8rem;margin:0 0 .5rem">Ninguna para llamar hoy. Vuelven a aparecer a los ${DIAS_RECORDAR_COTIZ} días.</p>` + h;
-  }
-  h += `<div style="font-size:.72rem;color:var(--txt3);margin-top:.7rem;line-height:1.5">Tildá y "Sacar de la lista" las que ya no vas a seguir — no se borran, quedan en el historial. "Lo confirmó" la pasa a alquiler.</div>`;
+  h += bloque('vencidas',  `Hay que llamar — ${DIAS_RECORDAR_COTIZ} días o más`, vencidas,  '#c62828', true);
+  h += bloque('esperando', 'Ya los llamaste',  esperando, '#607d8b', false);
+  h += bloque('recientes', 'Enviadas hace poco', recientes, '#607d8b', false);
+  const encabezado = vencidas.length
+    ? `<p style="font-size:.82rem;color:#c62828;font-weight:700;margin:0 0 .5rem">Hace ${DIAS_RECORDAR_COTIZ} días o más que cotizaste ${vencidas.length===1?'esto':'estas '+vencidas.length} y no volviste a hablar. Llamalos y marcá qué te dijeron.</p>`
+    : `<p style="color:var(--txt3);font-size:.8rem;margin:0 0 .5rem">Ninguna para llamar hoy. Vuelven a aparecer a los ${DIAS_RECORDAR_COTIZ} días.</p>`;
+  h = encabezado + h;
+  // El circuito explicado en dos renglones. Es la parte que mas cuesta recordar:
+  // que no hay que borrar nada y que cada boton tiene un destino distinto.
+  h += `<div style="font-size:.72rem;color:var(--txt3);margin-top:.9rem;line-height:1.6;border-top:1px solid var(--border);padding-top:.6rem">
+      <b style="color:var(--txt2)">Cómo funciona:</b> a los ${DIAS_RECORDAR_COTIZ} días de cotizar, la cotización aparece acá arriba en rojo.
+      Llamás y marcás: <b>Lo tomó</b> la pasa a alquiler · <b>Lo sigue viendo</b> la vuelve a traer en ${DIAS_RECORDAR_COTIZ} días ·
+      <b>No cerró</b> te pide el motivo y la archiva en
+      <a href="javascript:void(0)" onclick="goTo('nocerrados')" style="color:var(--verde);font-weight:700">Alquileres no cerrados</a>.
+      No se borra nada nunca.
+    </div>`;
   document.getElementById('dash-segcotiz-container').innerHTML = h;
   // La barra se dibuja escondida: recién aparece cuando hay algo tildado. Y como el
   // innerHTML de arriba la rehace de cero, hay que volver a poner el contador.
@@ -4708,7 +4969,7 @@ function guardarNuevoClienteSolEspera(){
   if(!nombre){ alert('Ingresá el nombre del cliente'); return; }
   const id=Date.now();
   const tel=document.getElementById('solespera-telefono').value.trim();
-  const nuevo={id, nombre, dir:'', ciudad:'', cuit:'', tel, email:''};
+  const nuevo={id, nombre:aMayusCliente(nombre), dir:'', ciudad:'', cuit:'', tel:aMayusCliente(tel), email:''};
   CLIENTES.unshift(nuevo);
   marcarAccionUndo(`Crear cliente nuevo "${nombre}"`, 'alquileres');
   guardar();
@@ -5260,7 +5521,7 @@ function volverAMiVista(){
 // a una pantalla, y para esconder un grupo entero si el rol no ve ninguna de
 // sus pantallas (a taller, por ejemplo, no tiene que quedarle "Gastos" vacío).
 const GRUPOS_NAV = {
-  'g-alquileres': ['cotizador','alquileres','calendario','rivadavia'],
+  'g-alquileres': ['cotizador','alquileres','solicitudes','nocerrados','calendario','rivadavia'],
   'g-flota':      ['equipos','control'],
   'g-gastos':     ['impuestos','pagoprov']
 };
@@ -5569,7 +5830,7 @@ function logout(){
   if(btnVer){ btnVer.innerHTML=ICONO_OJO; btnVer.title='Mostrar la contraseña'; btnVer.setAttribute('aria-label','Mostrar la contraseña'); }
   document.getElementById('auth-err').style.display='none';
 }
-const TITLES={home:'Inicio',calendario:'Calendario',cotizador:'Cotizador',equipos:'Equipos',histmaq:'Historial de la máquina',clientes:'Clientes',alquileres:'Alquileres',solicitudes:'Solicitudes',control:'Control de Máquinas',reportes:'Reportes',precios:'Lista de precios',facturacion:'Facturación',pagoprov:'Pago a Proveedores',rivadavia:'Planilla Rivadavia',impuestos:'Impuestos y Servicios'};
+const TITLES={home:'Inicio',calendario:'Calendario',cotizador:'Cotizador',equipos:'Equipos',histmaq:'Historial de la máquina',clientes:'Clientes',alquileres:'Alquileres',solicitudes:'Solicitudes',nocerrados:'Alquileres no cerrados',control:'Control de Máquinas',reportes:'Reportes',precios:'Lista de precios',facturacion:'Facturación',pagoprov:'Pago a Proveedores',rivadavia:'Planilla Rivadavia',impuestos:'Impuestos y Servicios'};
 let pantallaActualNombre='home';
 // Vuelve a dibujar la pantalla actual sin cerrar el sidebar ni tocar
 // la navegación; se usa cuando llegan cambios de otro dispositivo.
@@ -5584,6 +5845,7 @@ function refrescarPantallaActual(){
   if(s==='reportes')renderReportes();
   if(s==='clientes' && typeof renderCl==='function')renderCl();
   if(s==='alquileres' && typeof renderAlq==='function')renderAlq();
+  if(s==='nocerrados' && typeof renderNoCerrados==='function')renderNoCerrados();
   if(s==='facturacion')renderFacturacion();
   if(s==='pagoprov' && typeof renderPagoProv==='function')renderPagoProv();
   if(s==='rivadavia' && typeof renderRivadavia==='function')renderRivadavia();
@@ -5591,6 +5853,10 @@ function refrescarPantallaActual(){
 function goTo(s){
   // Facturación no tiene acceso a Reportes por el momento.
   if(s==='reportes' && ROL_ACTUAL==='facturacion') s='home';
+  // Quién cotizó a quién y por cuánto no se le muestra a taller, igual que el
+  // seguimiento de cotizaciones en Inicio. El botón ya está escondido; esto es por si
+  // se llega de otra forma (un enlace viejo, la consola).
+  if(s==='nocerrados' && ROL_ACTUAL==='taller') s='home';
   pantallaActualNombre=s;
   document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('#sidebar nav button').forEach(x=>x.classList.remove('active'));
@@ -5623,6 +5889,7 @@ function goTo(s){
   if(s==='reportes')renderReportes();
   if(s==='precios')renderPrecios();
   if(s==='solicitudes')renderSolicitudes();
+  if(s==='nocerrados')renderNoCerrados();
   actualizarFranjaTaller();
   if(s==='facturacion')renderFacturacion();
   if(s==='pagoprov')renderPagoProv();
@@ -6868,7 +7135,10 @@ function guardarNuevoCliente(){
   const nombre=document.getElementById('ncl-nombre').value.trim();
   if(!nombre){alert('Ingresá al menos el nombre');return;}
   const id=Date.now();
-  const nuevo={id,nombre,dir:document.getElementById('ncl-dir').value.trim(),ciudad:document.getElementById('ncl-ciudad').value.trim(),cuit:document.getElementById('ncl-cuit').value.trim(),tel:document.getElementById('ncl-tel').value.trim(),email:document.getElementById('ncl-email').value.trim()};
+  const v=id=>document.getElementById(id).value;
+  const nuevo={id, nombre:aMayusCliente(nombre), dir:aMayusCliente(v('ncl-dir')),
+    ciudad:aMayusCliente(v('ncl-ciudad')), cuit:aMayusCliente(v('ncl-cuit')),
+    tel:aMayusCliente(v('ncl-tel')), email:aMinusEmail(v('ncl-email'))};
   CLIENTES.unshift(nuevo); guardar(); cancelarNuevoCliente(); elegirCliente(id);
 }
 document.addEventListener('click',e=>{ if(!e.target.closest('#cot-cl-buscar')&&!e.target.closest('#cot-cl-dropdown')) document.getElementById('cot-cl-dropdown').style.display='none'; });
@@ -6883,12 +7153,27 @@ function setPerModo(modo){
   document.getElementById('per-dias-bloque').style.display=modo==='dias'?'flex':'none';
   document.getElementById('per-fechas-bloque').style.display=modo==='fechas'?'flex':'none';
   document.getElementById('per-fechas-resumen').style.display='none';
+  // Al pasar a "por fechas", si no hay nada cargado se arranca en hoy: es lo que se
+  // cotiza el 99% de las veces y evita tener que abrir el calendario para lo de siempre.
+  if(modo==='fechas'){
+    const d=document.getElementById('cot-fecha-desde');
+    if(d && !d.value) d.value=hoyISO();
+  }
   cotizar();
 }
 function calcDiasDesde(){
   const desde=document.getElementById('cot-fecha-desde').value;
   let hasta=document.getElementById('cot-fecha-hasta').value;
   const res=document.getElementById('per-fechas-resumen');
+  // Fecha imposible (el caso del año de 5 cifras): se avisa y no se calcula nada, en
+  // vez de mostrar "NaN días" como pasaba en Alquileres. Ver fechaValidaApp.
+  const mala = (desde && !fechaValidaApp(desde)) ? desde : ((hasta && !fechaValidaApp(hasta)) ? hasta : null);
+  if(mala){
+    res.innerHTML = `<span style="color:var(--rojo)">⚠ Esa fecha no es válida: ${porQueLaFechaEstaMal(mala)}.</span>`;
+    res.style.display='block';
+    fechaDesdeStr=''; fechaHastaStr='';
+    return;
+  }
   if(desde&&hasta&&hasta>=desde){
     let dias=Math.round((new Date(hasta+'T00:00:00')-new Date(desde+'T00:00:00'))/86400000)+1;
     if(ROL_ACTUAL==='taller' && dias>TOPE_DIAS_TALLER){
@@ -7648,6 +7933,12 @@ function limpiar(){
   document.getElementById('per-dias-bloque').style.display='flex';
   document.getElementById('per-fechas-bloque').style.display='none';
   document.getElementById('per-fechas-resumen').style.display='none';
+  // Las fechas se limpiaban solo "por dentro" (fechaDesdeStr/fechaHastaStr), pero los
+  // campos de pantalla se quedaban con los de la cotización anterior: al cotizar algo
+  // nuevo aparecía el inicio de la vez pasada. Ahora "desde" arranca en hoy y "hasta"
+  // en blanco, para que se elija.
+  document.getElementById('cot-fecha-desde').value = hoyISO();
+  document.getElementById('cot-fecha-hasta').value = '';
   document.getElementById('cot-localidad-box').style.display='none';
   document.getElementById('cot-localidad').value='';
   document.getElementById('cot-obs').value=OBS_COT_POR_DEFECTO;
@@ -9802,14 +10093,14 @@ async function editarCategoriaEq(id){
 let eqFichaId=null;
 let eqFichaTab='check';
 
-function abrirFichaEq(id, tabInicial){
+// Cada ventana muestra UNA sola cosa. 'hist' y 'tecnica' ya no existen: el historial
+// de services esta en la hoja de la maquina y la ficha tecnica se saco.
+const EQ_FICHA_TITULOS = {check:'Checklist', fotos:'Fotos del equipo', prob:'Problemas'};
+
+function abrirFichaEq(id, modo){
   eqFichaId=id;
-  eqFichaTab=tabInicial||'check';
+  eqFichaTab = EQ_FICHA_TITULOS[modo] ? modo : 'check';
   incidenciaEditandoId=null;
-  document.getElementById('eq-ficha-tab-check').classList.toggle('sel', eqFichaTab==='check');
-  document.getElementById('eq-ficha-tab-prob').classList.toggle('sel', eqFichaTab==='prob');
-  document.getElementById('eq-ficha-tab-hist').classList.toggle('sel', eqFichaTab==='hist');
-  document.getElementById('eq-ficha-tab-tecnica').classList.toggle('sel', eqFichaTab==='tecnica');
   renderEqFichaHeader(id);
   renderEqFichaCont();
   document.getElementById('modal-eq-ficha').style.display='flex';
@@ -9828,6 +10119,11 @@ function renderEqFichaHeader(id){
     ` · <a href="javascript:void(0)" onclick="editEq(${id})" style="color:var(--verde);font-weight:700">Cambiar estado</a>`+
     ` · <a href="javascript:void(0)" onclick="verAgendaDeMaquinas(${id})" style="color:var(--verde);font-weight:700">Ver su agenda</a>`+
     (ROL_ACTUAL==='admin' ? ` · <a href="javascript:void(0)" onclick="editarCategoriaEq(${id})" style="color:var(--verde);font-weight:700">Cambiar categoría</a>` : '');
+  const btnHoja=document.getElementById('eq-ficha-btn-hoja');
+  if(btnHoja){
+    const yaEstoyAhi = histMaqId===id && document.getElementById('screen-histmaq').classList.contains('active');
+    btnHoja.style.display = yaEstoyAhi ? 'none' : '';
+  }
   // Quién está esperando este TIPO de equipo (ver SOLICITUDES_ESPERA) — para que no haga
   // falta ir a buscarlo aparte a la pantalla de Alquileres antes de cambiar el estado.
   const contSol=document.getElementById('eq-ficha-solicitudes');
@@ -9843,56 +10139,66 @@ function renderEqFichaHeader(id){
       : '';
   }
 }
-function setEqFichaTab(t){
-  eqFichaTab=t;
-  document.getElementById('eq-ficha-tab-check').classList.toggle('sel', t==='check');
-  document.getElementById('eq-ficha-tab-prob').classList.toggle('sel', t==='prob');
-  document.getElementById('eq-ficha-tab-hist').classList.toggle('sel', t==='hist');
-  document.getElementById('eq-ficha-tab-tecnica').classList.toggle('sel', t==='tecnica');
-  renderEqFichaCont();
-}
+function setEqFichaTab(t){ eqFichaTab = EQ_FICHA_TITULOS[t] ? t : 'check'; renderEqFichaCont(); }
 function renderEqFichaCont(){
-  if(eqFichaTab==='check') renderEqFichaCheck();
+  const tit=document.getElementById('eq-ficha-modo');
+  if(tit) tit.textContent = EQ_FICHA_TITULOS[eqFichaTab] || '';
+  if(eqFichaTab==='fotos') renderEqFichaFotos();
   else if(eqFichaTab==='prob') renderEqFichaProb();
-  else if(eqFichaTab==='tecnica') renderEqFichaTecnica();
-  else renderEqFichaHist();
+  else renderEqFichaCheck();
 }
 
-// -- Ficha técnica (PDF o imagen) --
-// Es UNA por TIPO de equipo (modelo), no por unidad física — todas las unidades del
-// mismo modelo (ej. "Genie GS-3246 #1/#2/#3") comparten la misma ficha, así que
-// subirla o reemplazarla desde cualquiera de ellas actualiza las demás también.
-function renderEqFichaTecnica(){
+/* -- FOTOS DEL EQUIPO (ventana aparte) ------------------------------------
+   Estaban arriba del checklist. Cada vez que entrabas a tildar cuatro cosas te
+   comias una pared de fotos primero. Ahora viven en su propia ventana: se
+   cargan cuando hay algo que cargar y el resto del tiempo no se ven.
+   Las fotos se guardan solas apenas se suben (no hay boton Guardar aca). */
+function renderEqFichaFotos(){
   const id=eqFichaId;
-  const eq=EQUIPOS.find(e=>e.id===id); if(!eq) return;
-  const tipo=eq.tipo;
-  const hermanas = EQUIPOS.filter(e=>e.tipo===tipo && e.id!==id).map(e=>e.nombre);
-  const f = FICHAS_TECNICAS[tipo];
-  const fmtFecha=ts=>ts?new Date(ts).toLocaleDateString('es-AR'):'';
-  let h='';
-  if(hermanas.length){
-    h += `<div style="font-size:.72rem;color:var(--txt3);margin-bottom:.8rem">Esta ficha es compartida por todas las unidades de este modelo (${hermanas.join(', ')}).</div>`;
-  }
-  if(f){
-    h += `<div style="background:var(--verde-light);border-radius:8px;padding:10px 12px;margin-bottom:.8rem">
-      <div style="font-size:.85rem;color:var(--txt)">${f.nombreArchivo}</div>
-      <div style="font-size:.72rem;color:var(--txt3);margin-top:2px">${fmtBytes(f.tamano||0)} · actualizada ${fmtFecha(f.actualizadoEn)}${f.actualizadoPor?' por '+f.actualizadoPor:''}</div>
-    </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:.5rem">
-      <button onclick="verFichaTecnica('${tipo}')" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Ver ficha</button>
-      <button onclick="descargarFichaTecnica('${tipo}')" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">⬇️ Descargar</button>
-    </div>
-    <button onclick="compartirFichaTecnica('${tipo}')" class="btn-nuevo" style="width:100%;padding:8px;font-size:.8rem;margin-bottom:.5rem">Enviar por WhatsApp</button>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:.5rem">
-      <button onclick="document.getElementById('eqf-ficha-input').click()" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Reemplazar</button>
-    </div>
-    <button onclick="eliminarFichaTecnica('${tipo}').then(()=>renderEqFichaCont())" class="btn-lim" style="width:100%;padding:8px;font-size:.8rem;color:var(--rojo)">✕ Quitar ficha</button>`;
-  } else {
-    h += `<button onclick="document.getElementById('eqf-ficha-input').click()" class="btn-nuevo" style="width:100%;padding:10px;font-size:.85rem">⬆️ Subir ficha técnica (PDF o imagen)</button>`;
-  }
-  h += `<input type="file" id="eqf-ficha-input" accept="application/pdf,image/*" style="display:none" onchange="subirFichaTecnica('${tipo}', this.files[0]).then(()=>renderEqFichaCont())">`;
-  document.getElementById('eq-ficha-cont').innerHTML = h;
+  const data=EQ_CHECKLIST[id] || {fotosGenerales:{}, fotosExtra:[]};
+  const generales=data.fotosGenerales||{};
+  const fotosExtra=data.fotosExtra||[];
+
+  let h=`<div style="font-size:.74rem;color:var(--txt3);margin-bottom:.9rem;line-height:1.45">Tocá un recuadro para sacar o elegir la foto. Se guardan solas.</div>`;
+
+  h+=`<div class="flabel" style="margin-bottom:6px">Fotos generales del equipo</div>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1.1rem">`;
+  h+=FOTO_SLOTS.map(s=>{
+    const url=generales[s.key];
+    return `<div style="width:84px;text-align:center">
+      <label style="display:block;cursor:pointer;">
+        <div style="width:84px;height:84px;border-radius:8px;border:1px dashed var(--border2);background:${url?`center/cover no-repeat url('${url}')`:'var(--bg3)'};display:flex;align-items:center;justify-content:center;color:var(--txt3);font-size:1.3rem;">${url?'':'+'}</div>
+        <input type="file" accept="image/*" style="display:none" onchange="setFotoGeneralChecklist('${s.key}', this)">
+      </label>
+      <div style="font-size:.68rem;color:var(--txt2);margin-top:3px;line-height:1.2">${s.label}</div>
+      ${url?`<button type="button" onclick="quitarFotoGeneralChecklist('${s.key}')" style="font-size:.68rem;color:var(--rojo);background:none;border:none;cursor:pointer;padding:0">quitar</button>`:''}
+    </div>`;
+  }).join('');
+  h+=`</div>`;
+
+  h+=`<div class="flabel" style="margin-bottom:6px">Fotos adicionales (algo puntual a destacar)</div>`;
+  h+=`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1rem;align-items:flex-start">`;
+  h+=fotosExtra.map(f=>`<div style="position:relative"><img src="${f.url}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--border2)"><button type="button" onclick="quitarFotoExtraChecklist('${f.id}')" style="position:absolute;top:-6px;right:-6px;background:var(--rojo);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:.65rem;cursor:pointer;line-height:1;">✕</button></div>`).join('');
+  h+=`<label style="width:60px;height:60px;border-radius:8px;border:1px dashed var(--border2);display:flex;align-items:center;justify-content:center;color:var(--verde);font-size:1.3rem;cursor:pointer;">
+    +
+    <input type="file" accept="image/*" multiple style="display:none" onchange="agregarFotoExtraChecklist(this)">
+  </label>`;
+  h+=`</div>`;
+
+  document.getElementById('eq-ficha-cont').innerHTML=h;
 }
+// Cuantas fotos tiene cargadas: se muestra en el boton de la hoja de la maquina
+// para saber si hay algo adentro sin tener que abrir.
+function cuantasFotosEq(id){
+  const d=EQ_CHECKLIST[id]; if(!d) return 0;
+  return Object.keys(d.fotosGenerales||{}).length + (d.fotosExtra||[]).length;
+}
+
+/* La FICHA TÉCNICA (el PDF del modelo) se sacó de la app por pedido de Mateo:
+   no la usaba y sumaba una solapa mas en cada ventana. Los archivos que ya
+   estaban subidos siguen guardados en FICHAS_TECNICAS y las funciones de abajo
+   (subir/ver/descargar/compartir/eliminarFichaTecnica) quedan sin usar, para
+   poder volver a enchufar la pantalla si algun dia hace falta. */
 
 // -- Checklist actualizado --
 function renderEqFichaCheck(){
@@ -9906,32 +10212,11 @@ function renderEqFichaCheck(){
   </div>`;
   h+=`<div style="margin-bottom:.9rem"><label class="flabel">Responsable (quién lo cargó)</label><input type="text" id="eqf-actualizadopor" value="${data.actualizadoPor||(ROL_ACTUAL==='taller'?TALLER_RESPONSABLE:nombreUsuarioActual())}" placeholder="Nombre"></div>`;
 
-  // Fotos generales (ángulos fijos)
-  h+=`<div class="flabel" style="margin-bottom:6px">Fotos generales del equipo</div>`;
-  h+=`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:.6rem">`;
-  h+=FOTO_SLOTS.map(s=>{
-    const url=(data.fotosGenerales||{})[s.key];
-    return `<div style="width:84px;text-align:center">
-      <label style="display:block;cursor:pointer;">
-        <div style="width:84px;height:84px;border-radius:8px;border:1px dashed var(--border2);background:${url?`center/cover no-repeat url('${url}')`:'var(--bg3)'};display:flex;align-items:center;justify-content:center;color:var(--txt3);font-size:1.3rem;">${url?'':''}</div>
-        <input type="file" accept="image/*" style="display:none" onchange="setFotoGeneralChecklist('${s.key}', this)">
-      </label>
-      <div style="font-size:.68rem;color:var(--txt2);margin-top:3px;line-height:1.2">${s.label}</div>
-      ${url?`<button type="button" onclick="quitarFotoGeneralChecklist('${s.key}')" style="font-size:.68rem;color:var(--rojo);background:none;border:none;cursor:pointer;padding:0">quitar</button>`:''}
-    </div>`;
-  }).join('');
-  h+=`</div>`;
-
-  // Fotos extra (algo puntual para agregar)
-  const fotosExtra=data.fotosExtra||[];
-  h+=`<div class="flabel" style="margin-bottom:6px">Fotos adicionales (algo puntual a destacar)</div>`;
-  h+=`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:1rem;align-items:flex-start">`;
-  h+=fotosExtra.map(f=>`<div style="position:relative"><img src="${f.url}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid var(--border2)"><button type="button" onclick="quitarFotoExtraChecklist('${f.id}')" style="position:absolute;top:-6px;right:-6px;background:var(--rojo);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:.65rem;cursor:pointer;line-height:1;">✕</button></div>`).join('');
-  h+=`<label style="width:60px;height:60px;border-radius:8px;border:1px dashed var(--border2);display:flex;align-items:center;justify-content:center;color:var(--verde);font-size:1.3rem;cursor:pointer;">
-    +
-    <input type="file" accept="image/*" multiple style="display:none" onchange="agregarFotoExtraChecklist(this)">
-  </label>`;
-  h+=`</div>`;
+  // Las fotos se fueron a su propia ventana (ver renderEqFichaFotos): acá quedaba
+  // una pared de imágenes antes de llegar a lo único que se viene a hacer, tildar.
+  // Igual se avisa si hay cargadas, para saber que existen sin tener que ir a mirar.
+  const nFotos = cuantasFotosEq(id);
+  h+=`<button onclick="setEqFichaTab('fotos')" class="btn-lim" style="width:100%;padding:8px;font-size:.8rem;margin-bottom:.9rem">${nFotos?`Ver las ${nFotos} foto${nFotos!==1?'s':''} del equipo`:'Cargar fotos del equipo'}</button>`;
 
   // Checklist tildado
   h+=CHECKLIST_ITEMS.map(it=>{
@@ -9949,8 +10234,8 @@ function renderEqFichaCheck(){
       </div>
     </div>`;
   }).join('');
+  // El "Cerrar" ya está abajo de todo en la ventana: no hace falta otro acá.
   h+=`<button onclick="guardarChecklistEq()" class="btn-nuevo" style="width:100%;padding:10px;margin-top:.5rem">Guardar checklist</button>`;
-  h+=`<button onclick="cerrarFichaEq()" class="btn-lim" style="width:100%;padding:10px;margin-top:.5rem">Listo, cerrar</button>`;
   document.getElementById('eq-ficha-cont').innerHTML=h;
 }
 function toggleEqfNota(key){
@@ -9996,14 +10281,15 @@ async function setFotoGeneralChecklist(slotKey, inputEl){
   }catch(e){ console.error('Error procesando foto', e); }
   inputEl.value='';
   guardarEqChecklist();
-  renderEqFichaCheck();
+  // Las fotos ahora viven en su ventana: se redibuja esa, no el checklist.
+  renderEqFichaFotos();
 }
 function quitarFotoGeneralChecklist(slotKey){
   const id=eqFichaId;
   asegurarEqChecklist(id);
   delete EQ_CHECKLIST[id].fotosGenerales[slotKey];
   guardarEqChecklist();
-  renderEqFichaCheck();
+  renderEqFichaFotos();
 }
 async function agregarFotoExtraChecklist(inputEl){
   const id=eqFichaId;
@@ -10017,14 +10303,14 @@ async function agregarFotoExtraChecklist(inputEl){
   }
   inputEl.value='';
   guardarEqChecklist();
-  renderEqFichaCheck();
+  renderEqFichaFotos();
 }
 function quitarFotoExtraChecklist(fotoId){
   const id=eqFichaId;
   asegurarEqChecklist(id);
   EQ_CHECKLIST[id].fotosExtra=EQ_CHECKLIST[id].fotosExtra.filter(f=>String(f.id)!==String(fotoId));
   guardarEqChecklist();
-  renderEqFichaCheck();
+  renderEqFichaFotos();
 }
 function guardarChecklistEq(){
   const id=eqFichaId;
@@ -10358,31 +10644,16 @@ function mostrarFormServicioHoja(){
    la oficina (ver esTallerVista en todo este bloque).
    ═══════════════════════════════════════════════════════════════════════════ */
 let histMaqId = null;
-let histMaqFiltro = 'todo';   // todo | servicios | problemas
 let histMaqAnio = 'todos';
 
 function verHistorialMaquina(eqId){
   histMaqId = eqId;
-  histMaqFiltro = 'todo';
   histMaqAnio = 'todos';
   cerrarFichaEq();
   goTo('histmaq');
   renderHistorialMaquina();
 }
-function setHistMaqFiltro(f){ histMaqFiltro=f; renderHistorialMaquina(); }
 function setHistMaqAnio(a){ histMaqAnio=a; renderHistorialMaquina(); }
-
-// Junta services y problemas en una sola lista ordenada por fecha.
-function eventosDeLaMaquina(eqId){
-  const out=[];
-  (EQ_SERVICIOS||[]).filter(s=>s.equipoId===eqId).forEach(s=>{
-    out.push({clase:'servicio', fecha:s.fecha, dato:s});
-  });
-  (EQ_INCIDENCIAS||[]).filter(i=>i.equipoId===eqId).forEach(i=>{
-    out.push({clase:'problema', fecha:i.fecha, dato:i});
-  });
-  return out.sort((a,b)=>String(b.fecha||'').localeCompare(String(a.fecha||'')));
-}
 
 function renderHistorialMaquina(){
   const cont=document.getElementById('histmaq-cont');
@@ -10392,16 +10663,19 @@ function renderHistorialMaquina(){
   const veCostos = !esTallerVista();
   const fmtF=str=>{ if(!str) return '—'; const[y,m,d]=String(str).split('-'); return d?`${d}/${m}/${y}`:str; };
 
-  let eventos = eventosDeLaMaquina(histMaqId);
-  const anios = [...new Set(eventos.map(e=>String(e.fecha||'').slice(0,4)).filter(Boolean))].sort().reverse();
-  if(histMaqAnio!=='todos') eventos = eventos.filter(e=>String(e.fecha||'').startsWith(histMaqAnio));
-  if(histMaqFiltro==='servicios') eventos = eventos.filter(e=>e.clase==='servicio');
-  if(histMaqFiltro==='problemas') eventos = eventos.filter(e=>e.clase==='problema');
+  // Acá abajo van SOLO los services. Los problemas tienen su propia ventana (el botón
+  // de arriba): tenerlos además mezclados en esta lista era la misma info dos veces,
+  // y por eso tambien se fueron los botones Todo / Services / Problemas.
+  let eventos = (EQ_SERVICIOS||[]).filter(s=>s.equipoId===histMaqId)
+    .sort((a,b)=>String(b.fecha||'').localeCompare(String(a.fecha||'')));
+  const anios = [...new Set(eventos.map(s=>String(s.fecha||'').slice(0,4)).filter(Boolean))].sort().reverse();
+  if(histMaqAnio!=='todos') eventos = eventos.filter(s=>String(s.fecha||'').startsWith(histMaqAnio));
 
   // Resumen de arriba: lo que uno quiere saber antes de leer el detalle.
   const servicios = (EQ_SERVICIOS||[]).filter(s=>s.equipoId===histMaqId);
   const problemas = (EQ_INCIDENCIAS||[]).filter(i=>i.equipoId===histMaqId);
   const abiertos = problemas.filter(i=>i.estado==='abierta').length;
+  const fotos = cuantasFotosEq(histMaqId);
   const ultimoServ = servicios.slice().sort((a,b)=>String(b.fecha||'').localeCompare(String(a.fecha||'')))[0];
   const gastoTotal = servicios.reduce((s,x)=>s+(Number(x.costo)||0),0);
   // El próximo service sale del último registro que lo haya dejado anotado.
@@ -10428,7 +10702,7 @@ function renderHistorialMaquina(){
       <button onclick="mostrarFormServicioHoja()" id="histmaq-btn-nuevo" class="btn-nuevo" style="padding:7px 13px;font-size:.78rem">+ Cargar un service</button>
       <button onclick="abrirFichaEq(${eq.id},'prob')" class="btn-lim" style="padding:7px 13px;font-size:.78rem${abiertos?';border-color:var(--rojo);color:var(--rojo)':''}">Reportar / ver problemas${abiertos?' ('+abiertos+')':''}</button>
       <button onclick="abrirFichaEq(${eq.id},'check')" class="btn-lim" style="padding:7px 13px;font-size:.78rem">Checklist</button>
-      <button onclick="abrirFichaEq(${eq.id},'tecnica')" class="btn-lim" style="padding:7px 13px;font-size:.78rem">Ficha técnica</button>
+      <button onclick="abrirFichaEq(${eq.id},'fotos')" class="btn-lim" style="padding:7px 13px;font-size:.78rem">Fotos${fotos?' ('+fotos+')':''}</button>
     </div>
     ${formServicioHTML('hm')}
 
@@ -10447,11 +10721,7 @@ function renderHistorialMaquina(){
     </div>`;
   }
 
-  h+=`<div class="rb-group" style="margin-bottom:.7rem">
-      <button class="rb ${histMaqFiltro==='todo'?'sel':''}" onclick="setHistMaqFiltro('todo')">Todo</button>
-      <button class="rb ${histMaqFiltro==='servicios'?'sel':''}" onclick="setHistMaqFiltro('servicios')">Services</button>
-      <button class="rb ${histMaqFiltro==='problemas'?'sel':''}" onclick="setHistMaqFiltro('problemas')">Problemas</button>
-    </div>`;
+  h+=`<div style="font-size:.68rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.05em;margin:.3rem 0 .5rem">Services cargados</div>`;
   if(anios.length>1){
     h+=`<div class="rb-group" style="margin-bottom:1rem">
       <button class="rb ${histMaqAnio==='todos'?'sel':''}" onclick="setHistMaqAnio('todos')">Todos los años</button>
@@ -10460,78 +10730,36 @@ function renderHistorialMaquina(){
   }
 
   if(!eventos.length){
-    h+='<p style="color:var(--txt3);font-size:.88rem;padding:1.5rem 0;text-align:center">No hay nada cargado todavía con ese filtro.</p>';
+    h+=`<p style="color:var(--txt3);font-size:.88rem;padding:1.5rem 0;text-align:center">${histMaqAnio==='todos'?'Todavía no hay services cargados para esta máquina.':'No hay services cargados en '+histMaqAnio+'.'}</p>`;
     cont.innerHTML=h;
     return;
   }
 
-  h += eventos.map(ev=>{
-    const d=ev.dato;
-    if(ev.clase==='servicio'){
-      return `<div style="border:1px solid var(--border);border-left:3px solid var(--verde);border-radius:9px;padding:.75rem .9rem;margin-bottom:.6rem;background:var(--bg2)">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
-          <span style="font-weight:700;font-size:.92rem">${d.tipo||'Service'}</span>
-          <span style="font-size:.8rem;color:var(--txt2);white-space:nowrap">${fmtF(d.fecha)}${d.horas?' · '+d.horas+' hs':''}</span>
-        </div>
-        ${d.descripcion?`<div class="multilinea" style="font-size:.86rem;color:var(--txt);margin-top:.35rem;line-height:1.5">${d.descripcion}</div>`:''}
-        ${d.repuestos?`<div style="font-size:.8rem;color:var(--txt2);margin-top:.35rem"><b style="color:var(--txt3);font-size:.72rem;text-transform:uppercase">Repuestos</b> · ${d.repuestos}</div>`:''}
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:.45rem;flex-wrap:wrap">
-          <span style="font-size:.76rem;color:var(--txt3)">${d.hechoPor?'Lo hizo '+d.hechoPor:''}${d.hechoPor&&d.cargadoPor&&d.cargadoPor!==d.hechoPor?' · cargó '+d.cargadoPor:''}</span>
-          ${(veCostos && Number(d.costo)>0)?`<span style="font-size:.86rem;font-weight:700;color:var(--txt)">${fmt(d.costo)}</span>`:''}
-        </div>
-      </div>`;
-    }
-    const resuelta = d.estado==='resuelta';
-    const color = resuelta ? 'var(--txt3)' : 'var(--rojo)';
-    return `<div style="border:1px solid var(--border);border-left:3px solid ${color};border-radius:9px;padding:.75rem .9rem;margin-bottom:.6rem;background:var(--bg2)">
+  h += eventos.map(d=>{
+    // La ✕ es la única forma de borrar un service mal cargado: antes vivía en la
+    // solapa "Historial de servicios" de la ficha chica, que ya no existe.
+    return `<div style="border:1px solid var(--border);border-left:3px solid var(--verde);border-radius:9px;padding:.75rem .9rem;margin-bottom:.6rem;background:var(--bg2)">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
-        <span style="font-weight:700;font-size:.92rem;color:${color}">⚠ Problema${d.urgencia?' · '+d.urgencia:''}${resuelta?' (resuelto)':''}</span>
-        <span style="font-size:.8rem;color:var(--txt2);white-space:nowrap">${fmtF(d.fecha)}</span>
+        <span style="font-weight:700;font-size:.92rem">${d.tipo||'Service'}</span>
+        <span style="display:flex;align-items:baseline;gap:8px;white-space:nowrap">
+          <span style="font-size:.8rem;color:var(--txt2)">${fmtF(d.fecha)}${d.horas?' · '+d.horas+' hs':''}</span>
+          <button type="button" onclick="eliminarServicioEq(${d.id})" title="Eliminar este service" style="background:none;border:none;color:var(--txt3);cursor:pointer;font-size:.85rem;padding:0 2px">✕</button>
+        </span>
       </div>
       ${d.descripcion?`<div class="multilinea" style="font-size:.86rem;color:var(--txt);margin-top:.35rem;line-height:1.5">${d.descripcion}</div>`:''}
-      ${d.reportadoPor?`<div style="font-size:.76rem;color:var(--txt3);margin-top:.3rem">Lo reportó ${d.reportadoPor}</div>`:''}
-      ${d.resolucion?`<div style="margin-top:.45rem;padding-top:.45rem;border-top:1px dashed var(--border2)">
-        <div style="font-size:.72rem;font-weight:700;color:var(--verde);text-transform:uppercase">Se resolvió el ${fmtF(d.resolucion.fecha)}</div>
-        <div class="multilinea" style="font-size:.85rem;color:var(--txt);margin-top:.2rem;line-height:1.5">${d.resolucion.descripcion||''}</div>
-        ${d.resolucion.resueltoPor?`<div style="font-size:.76rem;color:var(--txt3);margin-top:.2rem">Lo arregló ${d.resolucion.resueltoPor}</div>`:''}
-      </div>`:''}
+      ${d.repuestos?`<div style="font-size:.8rem;color:var(--txt2);margin-top:.35rem"><b style="color:var(--txt3);font-size:.72rem;text-transform:uppercase">Repuestos</b> · ${d.repuestos}</div>`:''}
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:.45rem;flex-wrap:wrap">
+        <span style="font-size:.76rem;color:var(--txt3)">${d.hechoPor?'Lo hizo '+d.hechoPor:''}${d.hechoPor&&d.cargadoPor&&d.cargadoPor!==d.hechoPor?' · cargó '+d.cargadoPor:''}</span>
+        ${(veCostos && Number(d.costo)>0)?`<span style="font-size:.86rem;font-weight:700;color:var(--txt)">${fmt(d.costo)}</span>`:''}
+      </div>
     </div>`;
   }).join('');
 
   cont.innerHTML=h;
 }
 
-// -- Historial (servicios + alquileres) --
-function renderEqFichaHist(){
-  const id=eqFichaId;
-  const fmtFecha=str=>{ if(!str) return '—'; const d=new Date(str); return isNaN(d)?str:d.toLocaleDateString('es-AR'); };
-  // Solo servicios/mantenimiento acá — los alquileres del equipo ya se ven en Reportes,
-  // no hace falta duplicarlos en esta ficha (esto es historial de SERVICIOS, no de uso).
-  const eventos=EQ_SERVICIOS.filter(s=>s.equipoId===id).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
-
-  let h=`<button onclick="mostrarFormServicio()" id="eqf-btn-nuevo-servicio" style="width:100%;background:none;border:1px dashed var(--border2);color:var(--verde);border-radius:8px;padding:8px;font-size:.82rem;font-weight:700;cursor:pointer;margin-bottom:.8rem;">+ Agregar registro de servicio</button>`;
-  // El formulario es el mismo que el de la hoja de la maquina: se arma en
-  // formServicioHTML() para que no se vayan separando con el tiempo.
-  h+=formServicioHTML('f');
-
-  if(!eventos.length){
-    h+='<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:1rem">Todavía no hay registros de servicio para este equipo.</p>';
-  } else {
-    h+=eventos.map(s=>`<div class="eq-item" style="cursor:default;flex-direction:column;align-items:flex-start;gap:2px">
-          <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-            <span style="font-size:.85rem;font-weight:700">${s.tipo}</span>
-            <button type="button" onclick="eliminarServicioEq(${s.id})" style="background:none;border:none;color:var(--rojo);cursor:pointer;font-size:.85rem">✕</button>
-          </div>
-          <div style="font-size:.78rem;color:var(--txt2)">${fmtFecha(s.fecha)}${s.horas?' · '+s.horas+' hs':''}</div>
-          ${s.descripcion?`<div style="font-size:.8rem;color:var(--txt)">${s.descripcion}</div>`:''}
-        </div>`).join('');
-  }
-  document.getElementById('eq-ficha-cont').innerHTML=h;
-}
-function mostrarFormServicio(){
-  document.getElementById('f-form-servicio').style.display='block';
-  document.getElementById('eqf-btn-nuevo-servicio').style.display='none';
-}
+// El historial de services se ve en la hoja de la máquina y en ningún lado más.
+// Antes estaba también como solapa acá adentro: la misma lista dos veces.
 function cancelarFormServicio(pfx){
   pfx = pfx || 'f';
   const form=document.getElementById(`${pfx}-form-servicio`);
@@ -10566,13 +10794,17 @@ function guardarServicioEq(pfx){
   });
   marcarAccionUndo(`Cargar ${tipo} de ${(EQUIPOS.find(e=>e.id===eqId)||{}).nombre||'un equipo'}`, 'equipos');
   guardarEqServicios();
-  if(pfx==='hm') renderHistorialMaquina(); else renderEqFichaHist();
+  renderHistorialMaquina();
 }
 async function eliminarServicioEq(id){
   if(!(await confirmSiNo('¿Eliminar este registro de servicio?',{si:'Eliminar',no:'Cancelar'})))return;
-  EQ_SERVICIOS=EQ_SERVICIOS.filter(s=>s.id!==id);
+  const s=(EQ_SERVICIOS||[]).find(x=>x.id===id);
+  EQ_SERVICIOS=EQ_SERVICIOS.filter(x=>x.id!==id);
+  // Con Deshacer se recupera si fue sin querer: borrar un service es un dato menos
+  // en el historial de la máquina y no hay de dónde sacarlo después.
+  marcarAccionUndo(`Eliminar ${s&&s.tipo?s.tipo:'un service'} de ${(EQUIPOS.find(e=>e.id===(s&&s.equipoId))||{}).nombre||'un equipo'}`, 'equipos');
   guardarEqServicios();
-  renderEqFichaHist();
+  renderHistorialMaquina();
 }
 
 // ── CONTRATO + CHECKLIST DE SALIDA / ENTRADA ────────────────────
@@ -10943,34 +11175,90 @@ function renderCl(){
 // hacian prompt(...)||'' y, como Cancelar devuelve null, el ||'' lo convertia en texto
 // vacio y la carga seguia igual. Si el nombre estaba mal escrito, cancelar no servia
 // de nada: el cliente se creaba lo mismo.
-function nuevoCl(){
-  const nombre=prompt('Nombre / Razón social:');
-  if(nombre===null) return;
-  if(!nombre.trim()){ alert('Hace falta el nombre para crear el cliente.'); return; }
-  const ciudad=prompt('Ciudad:',''); if(ciudad===null) return;
-  const tel=prompt('Teléfono:',''); if(tel===null) return;
-  const cuit=prompt('CUIT:',''); if(cuit===null) return;
-  const email=prompt('Email:',''); if(email===null) return;
-  const id=Date.now();
-  CLIENTES.unshift({id,nombre:nombre.trim(),dir:'',ciudad:ciudad.trim(),cuit:cuit.trim(),tel:tel.trim(),email:email.trim()});
-  marcarAccionUndo(`Crear cliente "${nombre.trim()}"`, 'clientes');
-  guardar();renderCl();
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOS DATOS DEL CLIENTE VAN EN MAYÚSCULA
+
+   El mismo cliente cargado tres veces terminaba como "Molfino", "MOLFINO" y
+   "molfino hnos", y después en los listados y en el buscador parecían distintos.
+   Unificar al guardar evita tener que acordarse de escribir en mayúscula.
+
+   El EMAIL queda afuera a propósito: en mayúscula se lee mal y algunos servidores
+   de correo distinguen mayúsculas en la parte de antes del arroba. Ahí al revés,
+   se pasa a minúscula, que es lo seguro.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function aMayusCliente(txt){
+  return String(txt||'').trim().toUpperCase();
 }
-// Igual que arriba, y ademas: antes cancelar en Ciudad/Teléfono/CUIT/Email BORRABA el
-// dato que ya tenia el cliente (quedaba ''). Ahora no se toca nada hasta que estan los
-// cinco pasos: o se guardan todos los cambios, o no se guarda ninguno.
-function editCl(id){
-  const c=CLIENTES.find(x=>x.id===id);if(!c)return;
-  const nombre=prompt('Nombre:',c.nombre); if(nombre===null) return;
-  if(!nombre.trim()){ alert('El cliente tiene que tener nombre.'); return; }
-  const ciudad=prompt('Ciudad:',c.ciudad||''); if(ciudad===null) return;
-  const tel=prompt('Teléfono:',c.tel||''); if(tel===null) return;
-  const cuit=prompt('CUIT:',c.cuit||''); if(cuit===null) return;
-  const email=prompt('Email:',c.email||''); if(email===null) return;
-  c.nombre=nombre.trim(); c.ciudad=ciudad.trim(); c.tel=tel.trim();
-  c.cuit=cuit.trim(); c.email=email.trim();
-  marcarAccionUndo(`Editar cliente "${c.nombre}"`, 'clientes');
-  guardar();renderCl();
+function aMinusEmail(txt){
+  return String(txt||'').trim().toLowerCase();
+}
+/* Pasa a mayúscula el VALOR mientras se escribe (el CSS solo cambia cómo se ve).
+   Se engancha una sola vez a todo el documento, así cualquier campo con class="mayus"
+   que se agregue después queda cubierto sin tener que acordarse de nada.
+   Conserva la posición del cursor: sin esto, corregir una letra del medio mandaba el
+   cursor al final en cada tecla. */
+function mayusMientrasEscribe(input){
+  if(!input) return;
+  const pos = input.selectionStart, fin = input.selectionEnd;
+  const arriba = String(input.value||'').toUpperCase();
+  if(input.value !== arriba){
+    input.value = arriba;
+    try{ input.setSelectionRange(pos, fin); }catch(e){}
+  }
+}
+document.addEventListener('input', e=>{
+  const el = e.target;
+  if(el && el.classList && el.classList.contains('mayus')) mayusMientrasEscribe(el);
+}, true);
+
+/* ── ALTA Y EDICION DE CLIENTE ────────────────────────────────────────────
+   Esto eran cinco prompt() seguidos. El cuadrito del navegador no se puede
+   tocar, asi que ahi no habia forma de forzar la mayuscula: cada uno cargaba
+   como se le ocurria y la base quedaba despareja. Ahora abre el formulario de
+   modal-cliente, que tiene class="mayus" en todos los campos menos el email.
+   Se guarda todo junto o no se guarda nada (antes, cancelar en el paso 3 te
+   dejaba el cliente a medio editar). */
+let clienteEditandoId = null;
+
+function nuevoCl(){ abrirModalCliente(null); }
+function editCl(id){ abrirModalCliente(id); }
+
+function abrirModalCliente(id){
+  const c = id ? CLIENTES.find(x=>x.id===id) : null;
+  if(id && !c) return;
+  clienteEditandoId = c ? c.id : null;
+  document.getElementById('mcl-titulo').textContent = c ? 'Editar cliente' : 'Nuevo cliente';
+  const poner=(campo,val)=>{ document.getElementById('mcl-'+campo).value = val||''; };
+  poner('nombre', c&&c.nombre); poner('dir', c&&c.dir); poner('ciudad', c&&c.ciudad);
+  poner('cuit', c&&c.cuit);     poner('tel', c&&c.tel); poner('email', c&&c.email);
+  document.getElementById('modal-cliente').style.display='flex';
+  document.getElementById('mcl-nombre').focus();
+}
+function cerrarModalCliente(){
+  document.getElementById('modal-cliente').style.display='none';
+  clienteEditandoId = null;
+}
+function guardarModalCliente(){
+  const v = campo => document.getElementById('mcl-'+campo).value;
+  const nombre = aMayusCliente(v('nombre'));
+  if(!nombre){ alert('Hace falta el nombre para guardar el cliente.'); document.getElementById('mcl-nombre').focus(); return; }
+  // aMayusCliente ya recorta los espacios de los costados. El email va en
+  // minuscula: en mayuscula se lee mal y algunos servidores lo rebotan.
+  const datos = {
+    nombre, dir: aMayusCliente(v('dir')), ciudad: aMayusCliente(v('ciudad')),
+    cuit: aMayusCliente(v('cuit')), tel: aMayusCliente(v('tel')), email: aMinusEmail(v('email'))
+  };
+  if(clienteEditandoId){
+    const c = CLIENTES.find(x=>x.id===clienteEditandoId);
+    if(!c){ cerrarModalCliente(); return; }
+    Object.assign(c, datos);
+    marcarAccionUndo(`Editar cliente "${c.nombre}"`, 'clientes');
+  }else{
+    CLIENTES.unshift(Object.assign({id: Date.now()}, datos));
+    marcarAccionUndo(`Crear cliente "${nombre}"`, 'clientes');
+  }
+  cerrarModalCliente();
+  guardar(); renderCl();
 }
 async function elimCl(id){
   if(ROL_ACTUAL==='taller')return;
@@ -11441,7 +11729,7 @@ function renderHistorialPresupuestos(filtro){
     // — si no, parecería que sigue en seguimiento y nunca va a sonar.
     const fuera = !convertido && p.segArchivada;
     const lineaSeg = fuera
-      ? `<div style="font-size:.74rem;color:var(--txt3);margin-top:3px">Fuera de la lista de seguimiento</div>`
+      ? `<div style="font-size:.74rem;color:var(--txt3);margin-top:3px">No cerró${p.segMotivo?' · '+p.segMotivo:''} — está en Alquileres no cerrados</div>`
       : (!convertido && p.segUltimoContacto)
       ? `<div style="font-size:.74rem;color:var(--txt3);margin-top:3px">Último llamado hace ${cotizDiasSinTocar(p)} día${cotizDiasSinTocar(p)!==1?'s':''}${p.segContactos?' · '+p.segContactos+' llamada'+(p.segContactos!==1?'s':''):''}</div>`
       : '';
@@ -16785,7 +17073,8 @@ async function limpiarCtrl(){
 function cerrarCtrl(){ document.getElementById('modal-ctrl').style.display='none'; ctrlEditId=null; }
 
 // ── REPORTES ───────────────────────────────────────
-let repTab='ventas';
+// Arranca en Máquinas: el rendimiento de los equipos es lo que se mira primero.
+let repTab='maquinas';
 function setRepTab(t){
   repTab=t;
   // "historial" ya no existe como solapa: cada una de las otras ES el historial,
@@ -17228,7 +17517,24 @@ function renderRepVentas(){
   const granTotal=lista.reduce((s,x)=>s+x.total,0);
   const totalAlq=lista.reduce((s,x)=>s+x.cantidad,0);
 
-  return orden +
+  /* Alquileres que todavía no arrancaron pero ya cuentan acá (están cargados y
+     marcados como facturados o "sin factura"). Es la explicación de algo que
+     desconcierta: con "Todo" aparecen más alquileres que con "15 días", porque una
+     ventana de días hacia atrás no puede incluir algo que todavía no pasó. Sin este
+     aviso parece que el filtro los está borrando. */
+  const hoyRep = hoyISO();
+  const futuros = !repPeriodo
+    ? Object.values(repClientesDetalle).flat().filter(x=>x.a.inicio && x.a.inicio > hoyRep)
+    : [];
+  const avisoFuturos = futuros.length
+    ? `<div style="background:rgba(229,168,59,.14);border-left:3px solid #e5a83b;border-radius:0 8px 8px 0;padding:8px 12px;margin-bottom:.8rem;font-size:.79rem;color:#8a6216;line-height:1.5">
+         Incluye <b>${futuros.length} alquiler${futuros.length!==1?'es':''} que todavía no arrancó${futuros.length!==1?'n':''}</b>
+         (${futuros.slice(0,3).map(x=>x.a.cliente+' · '+x.a.inicio.split('-').reverse().join('/')).join(' · ')}${futuros.length>3?' y más':''}).
+         Por eso con "Todo" ves más alquileres que eligiendo una cantidad de días: una ventana hacia atrás no alcanza a lo que todavía no pasó.
+       </div>`
+    : '';
+
+  return orden + avisoFuturos +
     `<div style="margin-bottom:.8rem;font-size:.85rem;color:var(--txt2)">
       <b style="color:var(--txt);font-size:1.05rem">${fmt(granTotal)}</b> ·
       ${totalAlq} alquiler${totalAlq!==1?'es':''} · ${lista.length} cliente${lista.length!==1?'s':''}
