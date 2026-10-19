@@ -915,6 +915,17 @@ if ('serviceWorker' in navigator) {
         <div class="dash-collapse-body" id="dash-fechasrotas-container" style="display:none"></div>
       </div>
 
+      <!-- HOJAS DE MANTENIMIENTO POR VENCER. Valen 3 meses y sin ellas las empresas no
+           dejan entrar la máquina. Avisa 15 días antes. Ver renderMantenimientoAVencer. -->
+      <div class="dash-collapse" id="dc-mantvence" style="border-color:#e5a83b;display:none">
+        <button class="dash-collapse-header" id="dch-mantvence" onclick="toggleDashCollapse('mantvence')" style="color:#b57d10">
+          <span class="dc-title">Hojas de mantenimiento por vencer</span>
+          <span class="dc-badge" id="dc-badge-mantvence" style="background:#e5a83b;color:#fff"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-mantvence-container" style="display:none"></div>
+      </div>
+
       <!-- HORÓMETROS SIN ACTUALIZAR. Máquinas que volvieron al depósito y nadie cargó
            las horas. Lo ve taller también: son ellos los que están al lado de la
            máquina y los que pueden resolverlo en 10 segundos. Ver renderHorasPendientes. -->
@@ -2882,7 +2893,8 @@ const SB_CONFIGS = [
   { clave:'DOLAR_REF',        get:()=>DOLAR_REF,        set:v=>DOLAR_REF=v },
   { clave:'PRECIOS_USD_OVERRIDE', get:()=>PRECIOS_USD_OVERRIDE, set:v=>PRECIOS_USD_OVERRIDE=v },
   { clave:'DESTINOS_KM',      get:()=>DESTINOS_KM,      set:v=>DESTINOS_KM=v },
-  { clave:'CONTRATO_CFG',     get:()=>CONTRATO_CFG,     set:v=>CONTRATO_CFG=v }
+  { clave:'CONTRATO_CFG',     get:()=>CONTRATO_CFG,     set:v=>CONTRATO_CFG=v },
+  { clave:'EQ_MANTENIMIENTO', get:()=>EQ_MANTENIMIENTO, set:v=>EQ_MANTENIMIENTO=v }
 ];
 
 // ── Foto de lo ultimo que sabemos que quedo guardado ──────────────────────
@@ -2981,7 +2993,8 @@ function estadoCompleto(){
     SOLICITUDES_LARGAS: typeof SOLICITUDES_LARGAS!=='undefined'?SOLICITUDES_LARGAS:[],
     SOLICITUDES_ESPERA: typeof SOLICITUDES_ESPERA!=='undefined'?SOLICITUDES_ESPERA:[],
     FICHAS_TECNICAS: typeof FICHAS_TECNICAS!=='undefined'?FICHAS_TECNICAS:{},
-    CONTRATO_CFG: typeof CONTRATO_CFG!=='undefined'?CONTRATO_CFG:{}
+    CONTRATO_CFG: typeof CONTRATO_CFG!=='undefined'?CONTRATO_CFG:{},
+    EQ_MANTENIMIENTO: typeof EQ_MANTENIMIENTO!=='undefined'?EQ_MANTENIMIENTO:{}
   };
 }
 
@@ -3065,7 +3078,9 @@ function aplicarEstadoRemoto(estado, esSincroTiempoReal){
   if(estado.SOLICITUDES_ESPERA) SOLICITUDES_ESPERA = estado.SOLICITUDES_ESPERA;
   if(estado.FICHAS_TECNICAS) FICHAS_TECNICAS = estado.FICHAS_TECNICAS;
   if(estado.CONTRATO_CFG) CONTRATO_CFG = estado.CONTRATO_CFG;
+  if(estado.EQ_MANTENIMIENTO) EQ_MANTENIMIENTO = estado.EQ_MANTENIMIENTO;
   localStorage.setItem('rtz_contrato_cfg', JSON.stringify(CONTRATO_CFG));
+  localStorage.setItem('rtz_eqmantenimiento', JSON.stringify(EQ_MANTENIMIENTO));
   localStorage.setItem('rtz_fichas', JSON.stringify(FICHAS_TECNICAS));
   localStorage.setItem('rtz_precios_override', JSON.stringify(PRECIOS_OVERRIDE));
   localStorage.setItem('rtz_fletes_override', JSON.stringify(FLETES_OVERRIDE));
@@ -3883,6 +3898,39 @@ function renderCobroPendiente(){
     }).join('');
 }
 
+// ── Hojas de mantenimiento por vencer ─────────────────────────────────────
+// Lo ve taller también: son ellos los que revisan la máquina y vuelven a cargarla.
+function renderMantenimientoAVencer(){
+  const caja = document.getElementById('dc-mantvence');
+  if(!caja) return;
+  const lista = equiposConMantenimientoAVencer()
+    .sort((a,b)=>estadoMantenimiento(a.id).dias - estadoMantenimiento(b.id).dias);
+  badgeDash('dc-badge-mantvence', lista.length);
+  caja.style.display = lista.length ? 'block' : 'none';
+  if(!lista.length) return;
+  const fmtF = s => { if(!s) return ''; const[y,m,d]=String(s).split('-'); return d?`${d}/${m}/${y.slice(2)}`:s; };
+  document.getElementById('dash-mantvence-container').innerHTML =
+    `<p style="font-size:.8rem;color:var(--txt2);margin:0 0 .6rem;line-height:1.5">
+       La hoja de mantenimiento vale ${MANT_MESES_VIGENCIA} meses. Sin ella al día, las empresas pueden
+       no dejar entrar la máquina. Revisala y volvé a cargarla: se renueva por otros ${MANT_MESES_VIGENCIA} meses.
+     </p>` +
+    lista.map(eq=>{
+      const st = estadoMantenimiento(eq.id);
+      const col = st.estado==='vencida' ? 'var(--rojo)' : '#e5a83b';
+      const txt = st.estado==='vencida'
+        ? `Venció el ${fmtF(st.vence)} — hace ${Math.abs(st.dias)} día${Math.abs(st.dias)!==1?'s':''}`
+        : `Vence el ${fmtF(st.vence)} — ${st.dias===0?'hoy':'en '+st.dias+' día'+(st.dias!==1?'s':'')}`;
+      return `<div style="display:flex;gap:9px;align-items:center;padding:.55rem .7rem;border:1px solid var(--border);border-left:3px solid ${col};border-radius:8px;margin-bottom:.35rem;background:var(--bg2)">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:.88rem;overflow-wrap:anywhere">${eq.nombre}</div>
+          <div style="font-size:.76rem;color:${st.estado==='vencida'?'var(--rojo)':'var(--txt2)'};font-weight:${st.estado==='vencida'?'700':'400'}">${txt}</div>
+        </div>
+        <button onclick="abrirHojaMantenimiento(${eq.id})" class="btn-nuevo" style="padding:5px 11px;font-size:.74rem;flex-shrink:0">Renovar</button>
+      </div>`;
+    }).join('');
+}
+function abrirHojaMantenimiento(eqId){ abrirFichaEq(eqId, 'mant'); }
+
 // ── Horómetros sin actualizar ─────────────────────────────────────────────
 // Lo ve taller también: son los que tienen la máquina adelante. Se carga desde acá
 // mismo sin salir de Inicio.
@@ -4186,7 +4234,7 @@ async function deshacerUltimaAccion(refrescar){
 // Colecciones que son listas de registros con "id" propio.
 const CLAVES_ARRAY_POR_ID = ['EQUIPOS','CLIENTES','ALQUILERES','PAGOS','PAGOS_PROVEEDORES','PRESUPUESTOS','EQ_SERVICIOS','EQ_INCIDENCIAS','PLANILLA_RIV','SOLICITUDES_LARGAS','SOLICITUDES_ESPERA'];
 // Colecciones que son objetos sueltos, indexados por alguna otra clave (id de equipo, de alquiler, etc.).
-const CLAVES_OBJETO = ['CTRL_DATA','EQ_CHECKLIST','CONTRATOS','PRECIOS_OVERRIDE','FLETES_OVERRIDE','FICHAS_TECNICAS'];
+const CLAVES_OBJETO = ['CTRL_DATA','EQ_CHECKLIST','CONTRATOS','PRECIOS_OVERRIDE','FLETES_OVERRIDE','FICHAS_TECNICAS','EQ_MANTENIMIENTO'];
 
 // Combina una lista tipo [{id,...}] en base a lo que había antes (base,
 // el último estado que esta pestaña sabe que quedó guardado en la nube),
@@ -6026,6 +6074,120 @@ const FOTO_SLOTS = [
   {key:'derecho', label:'Costado derecho'},
   {key:'joystick', label:'Joystick / panel de control'},
 ];
+/* ═══════════════════════════════════════════════════════════════════════════
+   HOJA DE MANTENIMIENTO
+
+   Es el certificado que piden las empresas para dejar entrar la máquina y que se
+   carga en sus plataformas. Hasta ahora se hacía a mano en Word, con los datos
+   copiados de un PDF viejo.
+
+   OJO: no es el checklist del contrato (ese va en el camión con el equipo, por
+   alquiler, y tiene fotos). Este es por MÁQUINA y vale 3 meses.
+
+   Los valores son texto libre a propósito: en el documento original dicen cosas
+   como "NO HAY", "A NIVEL" o "EN BUENAS CONDICIONES", y cada empresa está
+   acostumbrada a leer eso. El desplegable de sugerencias ahorra tipear sin
+   obligar a elegir.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const MANT_MESES_VIGENCIA = 3;
+const MANT_VALORES = ['BUENO','EN BUENAS CONDICIONES','CORRECTA','A NIVEL','NO HAY','REGULAR','SE CAMBIÓ','N/A'];
+
+const MANT_SECC_COMUNES = [
+  {titulo:'Inspección General', items:[
+    {key:'fugas',    label:'Revisión de fugas de fluidos', def:'NO HAY'},
+    {key:'bateria',  label:'Estado de la batería',          def:'CORRECTA'}
+  ]},
+  {titulo:'Sistema Hidráulico', items:[
+    {key:'mangueras',label:'Revisión de mangueras y conexiones', def:'BUENO'},
+    {key:'aceite',   label:'Nivel de aceite hidráulico',         def:'A NIVEL'},
+    {key:'cilindros',label:'Estado de los cilindros hidráulicos',def:'BUENO'}
+  ]},
+  {titulo:'Sistema Eléctrico', items:[
+    {key:'luces',    label:'Funcionamiento de luces y señalización', def:'BUENO'},
+    {key:'cableado', label:'Estado del cableado',                    def:'BUENO'},
+    {key:'tablero',  label:'Verificación del tablero',               def:'EN BUENAS CONDICIONES'}
+  ]}
+];
+const MANT_PLATAFORMA = [
+  ...MANT_SECC_COMUNES,
+  {titulo:'Chasis y Estructura', items:[
+    {key:'neumaticos', label:'Revisión del estado de los neumáticos', def:'BUENO'},
+    {key:'limpieza',   label:'Limpieza general de la máquina',        def:'EN BUENAS CONDICIONES'},
+    {key:'ejes',       label:'Seguro de ejes extendidos',             def:'BUENO'},
+    {key:'protecc',    label:'Protecciones de plataformas',           def:'BUENO'},
+    {key:'cilEstr',    label:'Estado de cilindros',                   def:'BUENO'}
+  ]},
+  {titulo:'Canastillo', items:[
+    {key:'rejPiso',    label:'Rejillas de piso',     def:'BUENO'},
+    {key:'rejLat',     label:'Rejillas laterales',   def:'BUENO'},
+    {key:'perfiles',   label:'Perfiles de soporte',  def:'BUENO'},
+    {key:'barandas',   label:'Barandas',             def:'EN BUENAS CONDICIONES'}
+  ]},
+  {titulo:'Módulo comando', items:[
+    {key:'joystick',   label:'Joystick retroceso/avanzar/levante/dirección', def:'BUENO'},
+    {key:'alarmas',    label:'Alarmas disnivel/desplazamiento',              def:'EN BUENAS CONDICIONES'}
+  ]}
+];
+const MANT_AUTOELEVADOR = [
+  ...MANT_SECC_COMUNES,
+  {titulo:'Chasis y Estructura', items:[
+    {key:'neumaticos', label:'Revisión del estado de los neumáticos', def:'BUENO'},
+    {key:'limpieza',   label:'Limpieza general de la máquina',        def:'EN BUENAS CONDICIONES'},
+    {key:'contrapeso', label:'Contrapeso y anclajes',                 def:'BUENO'}
+  ]},
+  {titulo:'Mástil y uñas', items:[
+    {key:'mastil',     label:'Estado del mástil',            def:'BUENO'},
+    {key:'cadenas',    label:'Cadenas y rodillos',           def:'BUENO'},
+    {key:'unias',      label:'Uñas / horquillas',            def:'BUENO'},
+    {key:'cilMastil',  label:'Cilindros de elevación e inclinación', def:'BUENO'}
+  ]},
+  {titulo:'Puesto de mando', items:[
+    {key:'palancas',   label:'Palancas de mando y dirección',   def:'BUENO'},
+    {key:'alarmaRet',  label:'Alarma de retroceso y bocina',    def:'EN BUENAS CONDICIONES'},
+    {key:'techo',      label:'Techo protector del operador',    def:'BUENO'}
+  ]}
+];
+function seccionesMantenimiento(eq){
+  const meta = equipoMeta(eq);
+  return meta.categoria==='autoelevador' ? MANT_AUTOELEVADOR : MANT_PLATAFORMA;
+}
+function itemsMantenimiento(eq){
+  return seccionesMantenimiento(eq).flatMap(s=>s.items);
+}
+// Las hojas cargadas. { [equipoId]: {fecha, horas, items:{key:valor}, obs, cargadoPor, actualizadoEn} }
+let EQ_MANTENIMIENTO = JSON.parse(localStorage.getItem('rtz_eqmantenimiento') || '{}');
+function guardarEqMantenimiento(){
+  localStorage.setItem('rtz_eqmantenimiento', JSON.stringify(EQ_MANTENIMIENTO));
+  sincronizarFirebase();
+}
+// Sumar meses sin que el 31 se desborde al mes siguiente (31/1 + 1 mes = 28/2, no 3/3).
+function sumarMesesISO(iso, n){
+  if(!iso || !fechaValidaApp(iso)) return '';
+  const [y,m,d] = iso.split('-').map(Number);
+  const base = new Date(y, m-1+n, 1);
+  const ultimo = new Date(base.getFullYear(), base.getMonth()+1, 0).getDate();
+  base.setDate(Math.min(d, ultimo));
+  return fechaISOLocal(base);
+}
+function vencimientoMantenimiento(fecha){ return sumarMesesISO(fecha, MANT_MESES_VIGENCIA); }
+// Cuántos días faltan (negativo = ya venció). null si no hay hoja.
+function estadoMantenimiento(eqId){
+  const h = EQ_MANTENIMIENTO[eqId];
+  if(!h || !h.fecha) return {estado:'sin', vence:'', dias:null};
+  const vence = vencimientoMantenimiento(h.fecha);
+  if(!vence) return {estado:'sin', vence:'', dias:null};
+  const dias = Math.round((new Date(vence+'T00:00:00') - new Date(hoyISO()+'T00:00:00'))/86400000);
+  if(dias < 0)  return {estado:'vencida',  vence, dias};
+  if(dias <= 15) return {estado:'porvencer', vence, dias};
+  return {estado:'vigente', vence, dias};
+}
+function equiposConMantenimientoAVencer(){
+  return (EQUIPOS||[]).filter(e=>{
+    const s = estadoMantenimiento(e.id);
+    return s.estado==='vencida' || s.estado==='porvencer';
+  });
+}
+
 const CHECKLIST_ITEMS = [
   {key:'ladoDer', label:'Lado derecho exterior'},
   {key:'ladoIzq', label:'Lado izquierdo exterior'},
@@ -6638,6 +6800,7 @@ function renderDashboard(){
 
   renderCobroPendiente();
   renderAvisoFechasRotas();
+  renderMantenimientoAVencer();
   renderHorasPendientes();
   renderSeguimientoCotiz();
 
@@ -6860,10 +7023,10 @@ function renderDashboard(){
 }
 
 // ── Ventanas rebatibles del dashboard ──────────────────────────
-const dashCollapseIds={horaspend:'horaspend',paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',cobropend:'cobropend',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
+const dashCollapseIds={mantvence:'mantvence',horaspend:'horaspend',paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',cobropend:'cobropend',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
 // Todas arrancan CERRADAS, salvo "Vencidos y vence hoy" en Impuestos y Servicios, que
 // arranca ABIERTA a propósito para que un impuesto vencido nunca pase desapercibido.
-let dashCollapseOpen={horaspend:true,paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,cobropend:true,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
+let dashCollapseOpen={mantvence:true,horaspend:true,paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,cobropend:true,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
 function applyDashCollapseState(key){
   const id=dashCollapseIds[key];
   const header=document.getElementById('dch-'+id);
@@ -6879,7 +7042,7 @@ function applyDashCollapseState(key){
 // OJO: solo los del Inicio. Los de Impuestos y Pago a Proveedores viven en otras
 // pantallas y ahi conviene poder tener varios abiertos a la vez (por eso "impVencHoy"
 // arranca abierto a proposito).
-const ACORDEON_INICIO = ['cobropend','fechasrotas','horaspend','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
+const ACORDEON_INICIO = ['cobropend','fechasrotas','mantvence','horaspend','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
   'solEspera','solicitudes','segcotiz','presuptaller','contratosListos','alqHoy','alqSemana','cargadoHoy'];
 function toggleDashCollapse(key){
   dashCollapseOpen[key]=!dashCollapseOpen[key];
@@ -10392,7 +10555,7 @@ let eqFichaTab='check';
 
 // Cada ventana muestra UNA sola cosa. 'hist' y 'tecnica' ya no existen: el historial
 // de services esta en la hoja de la maquina y la ficha tecnica se saco.
-const EQ_FICHA_TITULOS = {check:'Checklist', fotos:'Fotos del equipo', prob:'Problemas', datos:'Datos de la máquina'};
+const EQ_FICHA_TITULOS = {mant:'Hoja de mantenimiento', fotos:'Fotos del equipo', prob:'Problemas', datos:'Datos de la máquina'};
 
 function abrirFichaEq(id, modo){
   eqFichaId=id;
@@ -10443,7 +10606,169 @@ function renderEqFichaCont(){
   if(eqFichaTab==='fotos') renderEqFichaFotos();
   else if(eqFichaTab==='prob') renderEqFichaProb();
   else if(eqFichaTab==='datos') renderEqFichaDatos();
-  else renderEqFichaCheck();
+  else renderEqFichaMantenimiento();
+}
+
+/* -- HOJA DE MANTENIMIENTO (la que se les manda a las empresas) -----------
+   Reemplazó al checklist de 14 ítems que vivía acá: ese seguía siendo el del
+   contrato, que sale en papel con el camión, y tenerlo dos veces solo hacía que
+   nadie supiera cuál completar. Ver el bloque HOJA DE MANTENIMIENTO arriba. */
+function renderEqFichaMantenimiento(){
+  const eq=EQUIPOS.find(e=>e.id===eqFichaId); if(!eq) return;
+  const h0 = EQ_MANTENIMIENTO[eq.id] || {};
+  const items = h0.items || {};
+  const st = estadoMantenimiento(eq.id);
+  const fmtF = s => { if(!s) return '—'; const[y,m,d]=String(s).split('-'); return d?`${d}/${m}/${y}`:s; };
+  const horasEq = horasDeEquipo(eq.id);
+  const faltanDatos = !eq.marca || !eq.modelo || !eq.nSerie;
+
+  const COL = {sin:'var(--txt3)', vigente:'var(--verde)', porvencer:'#b57d10', vencida:'var(--rojo)'}[st.estado];
+  const TXT = {
+    sin:'Todavía no se cargó ninguna hoja para esta máquina.',
+    vigente:`Vigente hasta el ${fmtF(st.vence)} · quedan ${st.dias} días`,
+    porvencer:`Vence el ${fmtF(st.vence)} — ${st.dias===0?'vence hoy':'quedan '+st.dias+' días'}. Volvé a cargarla y se renueva por ${MANT_MESES_VIGENCIA} meses.`,
+    vencida:`VENCIDA el ${fmtF(st.vence)} — hace ${Math.abs(st.dias)} días. Volvé a cargarla y se renueva por ${MANT_MESES_VIGENCIA} meses.`
+  }[st.estado];
+
+  let h=`<div style="background:${COL}18;border-left:3px solid ${COL};border-radius:0 8px 8px 0;padding:.55rem .75rem;margin-bottom:.9rem;font-size:.8rem;color:var(--txt);line-height:1.45">${TXT}</div>`;
+
+  if(faltanDatos){
+    h+=`<div style="background:#e5a83b18;border:1px solid #e5a83b55;border-radius:8px;padding:.55rem .75rem;margin-bottom:.9rem;font-size:.78rem;color:var(--txt);line-height:1.45">
+        Faltan la marca, el modelo o el N° de serie: la hoja sale incompleta.
+        <a href="javascript:void(0)" onclick="setEqFichaTab('datos')" style="color:var(--verde);font-weight:700">Cargarlos ahora</a>
+      </div>`;
+  }
+
+  h+=`<div class="row2" style="margin-bottom:.5rem">
+      <div><label class="flabel">Fecha de la revisión</label><input type="date" id="mant-fecha" min="2020-01-01" max="2100-12-31" value="${h0.fecha||hoyISO()}" onchange="refrescarVenceMant()"></div>
+      <div><label class="flabel">Horas de uso</label><input type="number" id="mant-horas" value="${h0.horas!==undefined&&h0.horas!==''?h0.horas:(horasEq!==null?horasEq:'')}" placeholder="hs"></div>
+    </div>
+    <div style="font-size:.72rem;color:var(--txt3);margin-bottom:.7rem">Vence el <b id="mant-vence">${fmtF(vencimientoMantenimiento(h0.fecha||hoyISO()))}</b> (${MANT_MESES_VIGENCIA} meses)${horasEq!==null?` · el horómetro de la máquina marca ${horasEq} hs`:''}</div>
+    <div style="margin-bottom:1rem"><label class="flabel">Quién la hizo</label><input type="text" class="mayus" id="mant-por" value="${String(h0.cargadoPor||(ROL_ACTUAL==='taller'?TALLER_RESPONSABLE:nombreUsuarioActual())||'').replace(/"/g,'&quot;')}" placeholder="Nombre"></div>`;
+
+  h+=`<datalist id="mant-sugeridos">${MANT_VALORES.map(v=>`<option value="${v}">`).join('')}</datalist>`;
+
+  seccionesMantenimiento(eq).forEach((sec,i)=>{
+    h+=`<div style="font-size:.74rem;font-weight:700;color:var(--verde);margin:${i?'1rem':'.2rem'} 0 .4rem">${i+1}. ${sec.titulo}</div>`;
+    h+=sec.items.map(it=>{
+      const val = items[it.key]!==undefined ? items[it.key] : it.def;
+      return `<div style="margin-bottom:.45rem">
+        <label class="flabel" style="text-transform:none;letter-spacing:0;font-size:.74rem">${it.label}</label>
+        <input type="text" class="mayus" id="mant-${it.key}" list="mant-sugeridos" value="${String(val||'').replace(/"/g,'&quot;')}">
+      </div>`;
+    }).join('');
+  });
+
+  h+=`<div style="margin:1rem 0 .3rem"><label class="flabel">Observaciones (opcional)</label><textarea id="mant-obs" rows="2" placeholder="Lo que haga falta aclarar">${String(h0.obs||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</textarea></div>`;
+  h+=`<button onclick="guardarHojaMantenimiento()" class="btn-nuevo" style="width:100%;padding:10px;margin-top:.5rem">Guardar hoja${h0.fecha?' (renueva '+MANT_MESES_VIGENCIA+' meses)':''}</button>`;
+  h+=`<button onclick="descargarHojaMantenimiento(${eq.id})" class="btn-cop" style="width:100%;margin-top:.5rem">Descargar / Imprimir la hoja</button>`;
+  if(h0.actualizadoEn){
+    h+=`<div style="font-size:.72rem;color:var(--txt3);margin-top:.6rem;text-align:center">Última carga: ${fmtF(h0.fecha)}${h0.cargadoPor?' por '+h0.cargadoPor:''}</div>`;
+  }
+  document.getElementById('eq-ficha-cont').innerHTML=h;
+}
+/* El archivo que se les manda a las empresas. Mismo camino que el resto de los
+   PDF de la app: se arma un HTML, se abre en una ventana y el navegador lo manda
+   a imprimir — desde ahí "Guardar como PDF". No hace falta ninguna librería.
+   El formato copia el documento que ya venían usando, para que en las plataformas
+   de las empresas lo reciban igual que siempre. */
+function descargarHojaMantenimiento(eqId){
+  const eq=EQUIPOS.find(e=>e.id===eqId); if(!eq) return;
+  const h0 = EQ_MANTENIMIENTO[eqId];
+  if(!h0 || !h0.fecha){ alert('Primero cargá la hoja de esta máquina y guardala.'); return; }
+  const fmtF = s => { if(!s) return '-'; const[y,m,d]=String(s).split('-'); return `${Number(d)}/${Number(m)}/${y}`; };
+  const esc = t => String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const nombreMaq = [eq.marca, eq.modelo].filter(Boolean).join(' ') || eq.nombre;
+
+  let secciones='';
+  seccionesMantenimiento(eq).forEach((sec,i)=>{
+    secciones += `<div class="sec">${i+1}. ${esc(sec.titulo)}</div>`;
+    secciones += sec.items.map(it=>{
+      const val = (h0.items||{})[it.key] || '';
+      return `<div class="li"><span class="cb">[&nbsp;]</span><span class="lb">${esc(it.label)}:</span><span class="pt"></span><span class="vl">${esc(val)}</span></div>`;
+    }).join('');
+  });
+
+  const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Check List de Mantenimiento - ${esc(eq.nombre)}</title>
+  <style>
+    @page { margin: 14mm 16mm; }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:11px;background:#fff;}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    .logo{text-align:left;margin-bottom:6px;}
+    .logo img{height:54px;}
+    hr.top{border:none;border-top:2px solid #3da820;margin:4px 0 14px;}
+    h1{font-size:13px;color:#2e7d32;margin-bottom:8px;}
+    .cab div{font-size:10.5px;font-weight:700;line-height:1.75;}
+    .cab span{font-weight:400;}
+    .sec{font-size:11.5px;font-weight:700;color:#2e7d32;margin:13px 0 4px;}
+    .li{display:flex;align-items:baseline;font-size:10px;line-height:1.85;}
+    .cb{flex:0 0 auto;margin-right:4px;}
+    .lb{flex:0 0 auto;}
+    .pt{flex:1 1 auto;border-bottom:1px solid #222;margin:0 4px;transform:translateY(-2px);}
+    .vl{flex:0 0 auto;font-weight:700;}
+    .obs{margin-top:16px;font-size:10px;}
+    .obs b{color:#2e7d32;}
+    .firma{margin-top:34px;display:flex;gap:50px;}
+    .firma div{flex:1;border-top:1px solid #222;padding-top:4px;font-size:9.5px;text-align:center;color:#444;}
+  </style></head><body>
+    <div class="logo"><img src="${LOGO_B64}"></div>
+    <hr class="top">
+    <h1>Check List de Mantenimiento</h1>
+    <div class="cab">
+      <div>Fecha: <span>${fmtF(h0.fecha)}</span></div>
+      <div>Fecha de vencimiento: <span>${fmtF(vencimientoMantenimiento(h0.fecha))}</span></div>
+      <div>Nombre/Código de la Máquina: <span>${esc(nombreMaq)}</span></div>
+      <div>Horas de uso de la Máquina: <span>${esc(h0.horas||'-')} hs</span></div>
+      <div>Nº de serie: <span>${esc(eq.nSerie||'-')}</span></div>
+      <div>Nº de Chasis: <span>${esc(eq.nChasis||'-')}</span></div>
+    </div>
+    ${secciones}
+    ${h0.obs?`<div class="obs"><b>Observaciones:</b> ${esc(h0.obs)}</div>`:''}
+    <div class="firma">
+      <div>${esc(h0.cargadoPor||'Responsable de mantenimiento')}</div>
+      <div>RENTAZ S.A.</div>
+    </div>
+  </body></html>`;
+
+  const blob = new Blob([html], {type:'text/html'});
+  const url = URL.createObjectURL(blob);
+  const w = window.open(url, '_blank', 'width=820,height=1050');
+  if(!w){ alert('El navegador bloqueó la ventana. Permitile abrir ventanas emergentes a esta página y probá de nuevo.'); URL.revokeObjectURL(url); return; }
+  setTimeout(()=>{ w.print(); URL.revokeObjectURL(url); }, 700);
+}
+
+function refrescarVenceMant(){
+  const f=document.getElementById('mant-fecha'); const v=document.getElementById('mant-vence');
+  if(!f||!v) return;
+  const venc = vencimientoMantenimiento(f.value);
+  if(!venc){ v.textContent='—'; return; }
+  const [y,m,d]=venc.split('-'); v.textContent=`${d}/${m}/${y}`;
+}
+function guardarHojaMantenimiento(){
+  const eq=EQUIPOS.find(e=>e.id===eqFichaId); if(!eq) return;
+  const fecha=document.getElementById('mant-fecha').value;
+  if(!fechaValidaApp(fecha)){ alert(`Esa fecha no es válida: ${porQueLaFechaEstaMal(fecha)}.`); return; }
+  const items={};
+  itemsMantenimiento(eq).forEach(it=>{
+    const el=document.getElementById('mant-'+it.key);
+    items[it.key] = el ? String(el.value||'').trim().toUpperCase() : '';
+  });
+  const horas = String(document.getElementById('mant-horas').value||'').trim();
+  EQ_MANTENIMIENTO[eq.id] = {
+    fecha, horas, items,
+    obs: document.getElementById('mant-obs').value.trim(),
+    cargadoPor: String(document.getElementById('mant-por').value||'').trim().toUpperCase(),
+    actualizadoEn: Date.now()
+  };
+  // La hoja es también una lectura del horómetro: que no queden dos números.
+  if(horas!=='' && !isNaN(Number(horas))) guardarHorasEquipo(eq.id, Number(horas), fecha, EQ_MANTENIMIENTO[eq.id].cargadoPor);
+  marcarAccionUndo(`Cargar la hoja de mantenimiento de "${eq.nombre}"`, 'equipos');
+  guardarEqMantenimiento();
+  renderDashboard();
+  const venc = vencimientoMantenimiento(fecha).split('-').reverse().join('/');
+  alert(`Hoja guardada. Vale hasta el ${venc}.`);
+  renderEqFichaMantenimiento();
 }
 
 /* -- DATOS DE LA MÁQUINA --------------------------------------------------
@@ -10548,50 +10873,12 @@ function cuantasFotosEq(id){
    (subir/ver/descargar/compartir/eliminarFichaTecnica) quedan sin usar, para
    poder volver a enchufar la pantalla si algun dia hace falta. */
 
-// -- Checklist actualizado --
-function renderEqFichaCheck(){
-  const id=eqFichaId;
-  const data=EQ_CHECKLIST[id] || {items:{}, fotosGenerales:{}, fotosExtra:[], horas:'', fecha:'', actualizadoEn:null, actualizadoPor:''};
-  const fmtFecha=ts=>ts?new Date(ts).toLocaleDateString('es-AR')+' '+new Date(ts).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}):'—';
-  let h=`<div style="font-size:.72rem;color:var(--txt3);margin-bottom:.8rem">Última actualización: ${fmtFecha(data.actualizadoEn)}${data.actualizadoPor?' · por '+data.actualizadoPor:''}</div>`;
-  h+=`<div class="row2" style="margin-bottom:.5rem">
-    <div><label class="flabel">Fecha</label><input type="date" id="eqf-fecha" value="${data.fecha||hoyISO()}"></div>
-    <div><label class="flabel">Horómetro actual</label><input type="number" id="eqf-horas" value="${data.horas||''}" placeholder="hs"></div>
-  </div>`;
-  h+=`<div style="margin-bottom:.9rem"><label class="flabel">Responsable (quién lo cargó)</label><input type="text" id="eqf-actualizadopor" value="${data.actualizadoPor||(ROL_ACTUAL==='taller'?TALLER_RESPONSABLE:nombreUsuarioActual())}" placeholder="Nombre"></div>`;
+/* El checklist de 14 ítems que vivía acá se sacó: era el MISMO que el del contrato,
+   que sale en papel con el camión por cada alquiler. Tenerlo dos veces hacía que
+   nadie supiera cuál había que completar. En su lugar está la hoja de mantenimiento
+   (renderEqFichaMantenimiento). Lo que ya estaba tildado sigue guardado en
+   EQ_CHECKLIST — de ahí salen también las fotos y el horómetro, que no se tocaron. */
 
-  // Las fotos se fueron a su propia ventana (ver renderEqFichaFotos): acá quedaba
-  // una pared de imágenes antes de llegar a lo único que se viene a hacer, tildar.
-  // Igual se avisa si hay cargadas, para saber que existen sin tener que ir a mirar.
-  const nFotos = cuantasFotosEq(id);
-  h+=`<button onclick="setEqFichaTab('fotos')" class="btn-lim" style="width:100%;padding:8px;font-size:.8rem;margin-bottom:.9rem">${nFotos?`Ver las ${nFotos} foto${nFotos!==1?'s':''} del equipo`:'Cargar fotos del equipo'}</button>`;
-
-  // Checklist tildado
-  h+=CHECKLIST_ITEMS.map(it=>{
-    const val=data.items[it.key]||{ok:true,nota:''};
-    return `<div style="border:1px solid var(--border);border-radius:8px;padding:.55rem .7rem;margin-bottom:.5rem">
-      <label style="display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer">
-        <span style="font-size:.85rem;font-weight:700;color:var(--txt)">${it.label}</span>
-        <span style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:${val.ok?'var(--verde)':'var(--rojo)'};font-weight:700">
-          <input type="checkbox" id="eqf-ok-${it.key}" ${val.ok?'checked':''} onchange="toggleEqfNota('${it.key}')" style="width:auto">
-          ${val.ok?'OK':'Observación'}
-        </span>
-      </label>
-      <div id="eqf-nota-box-${it.key}" style="display:${val.ok?'none':'block'};margin-top:6px">
-        <textarea id="eqf-nota-${it.key}" rows="2" placeholder="Una observación por renglón">${(val.nota||'').replace(/&/g,'&amp;').replace(/</g,'&lt;')}</textarea>
-      </div>
-    </div>`;
-  }).join('');
-  // El "Cerrar" ya está abajo de todo en la ventana: no hace falta otro acá.
-  h+=`<button onclick="guardarChecklistEq()" class="btn-nuevo" style="width:100%;padding:10px;margin-top:.5rem">Guardar checklist</button>`;
-  document.getElementById('eq-ficha-cont').innerHTML=h;
-}
-function toggleEqfNota(key){
-  const ok=document.getElementById('eqf-ok-'+key).checked;
-  document.getElementById('eqf-nota-box-'+key).style.display = ok ? 'none' : 'block';
-  const badge=document.getElementById('eqf-ok-'+key).closest('span');
-  if(badge){ badge.style.color = ok?'var(--verde)':'var(--rojo)'; badge.lastChild.textContent = ok?'OK':'Observación'; }
-}
 function resizeImagenArchivo(file, maxDim, calidad){
   return new Promise((resolve, reject)=>{
     const reader=new FileReader();
@@ -10660,25 +10947,6 @@ function quitarFotoExtraChecklist(fotoId){
   guardarEqChecklist();
   renderEqFichaFotos();
 }
-function guardarChecklistEq(){
-  const id=eqFichaId;
-  asegurarEqChecklist(id);
-  const items={};
-  CHECKLIST_ITEMS.forEach(it=>{
-    const ok=document.getElementById('eqf-ok-'+it.key).checked;
-    const notaEl=document.getElementById('eqf-nota-'+it.key);
-    items[it.key]={ok, nota: notaEl ? notaEl.value.trim() : ''};
-  });
-  EQ_CHECKLIST[id].items=items;
-  EQ_CHECKLIST[id].fecha=document.getElementById('eqf-fecha').value;
-  EQ_CHECKLIST[id].horas=document.getElementById('eqf-horas').value;
-  EQ_CHECKLIST[id].actualizadoPor=document.getElementById('eqf-actualizadopor').value.trim();
-  EQ_CHECKLIST[id].actualizadoEn=Date.now();
-  guardarEqChecklist();
-  alert('Checklist actualizado guardado');
-  renderEqFichaCheck();
-}
-
 // -- Problemas (reportes de taller: se abren, avisan a oficina, se cierran) --
 function renderEqFichaProb(){
   const id=eqFichaId;
@@ -11026,6 +11294,10 @@ function renderHistorialMaquina(){
   const fotos = cuantasFotosEq(histMaqId);
   // Sin marca/modelo/serie la hoja de mantenimiento sale incompleta: se avisa en el botón.
   const faltanDatos = !eq.marca || !eq.modelo || !eq.nSerie;
+  // Y el estado de la hoja, en el botón: vencida o por vencer tiene que verse sin entrar.
+  const stMant = estadoMantenimiento(histMaqId);
+  const colorMant = {vencida:'var(--rojo)', porvencer:'#b57d10', sin:'#b57d10', vigente:''}[stMant.estado];
+  const avisoMant = {vencida:' ⚠ vencida', porvencer:' ⚠ vence en '+stMant.dias+'d', sin:' ⚠ sin cargar', vigente:''}[stMant.estado];
   const ultimoServ = servicios.slice().sort((a,b)=>String(b.fecha||'').localeCompare(String(a.fecha||'')))[0];
   const gastoTotal = servicios.reduce((s,x)=>s+(Number(x.costo)||0),0);
   // El próximo service sale del último registro que lo haya dejado anotado.
@@ -11051,7 +11323,7 @@ function renderHistorialMaquina(){
     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:.8rem">
       <button onclick="mostrarFormServicioHoja()" id="histmaq-btn-nuevo" class="btn-nuevo" style="padding:7px 13px;font-size:.78rem">+ Cargar un service</button>
       <button onclick="abrirFichaEq(${eq.id},'prob')" class="btn-lim" style="padding:7px 13px;font-size:.78rem${abiertos?';border-color:var(--rojo);color:var(--rojo)':''}">Reportar / ver problemas${abiertos?' ('+abiertos+')':''}</button>
-      <button onclick="abrirFichaEq(${eq.id},'check')" class="btn-lim" style="padding:7px 13px;font-size:.78rem">Checklist</button>
+      <button onclick="abrirFichaEq(${eq.id},'mant')" class="btn-lim" style="padding:7px 13px;font-size:.78rem${colorMant?';border-color:'+colorMant+';color:'+colorMant:''}">Hoja de mantenimiento${avisoMant}</button>
       <button onclick="abrirFichaEq(${eq.id},'fotos')" class="btn-lim" style="padding:7px 13px;font-size:.78rem">Fotos${fotos?' ('+fotos+')':''}</button>
       <button onclick="abrirFichaEq(${eq.id},'datos')" class="btn-lim" style="padding:7px 13px;font-size:.78rem${faltanDatos?';border-color:#e5a83b;color:#b57d10':''}">Datos${faltanDatos?' ⚠':''}</button>
     </div>
