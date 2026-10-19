@@ -2868,7 +2868,8 @@ const SB_CONFIGS = [
   { clave:'FICHAS_TECNICAS',  get:()=>FICHAS_TECNICAS,  set:v=>FICHAS_TECNICAS=v },
   { clave:'DOLAR_REF',        get:()=>DOLAR_REF,        set:v=>DOLAR_REF=v },
   { clave:'PRECIOS_USD_OVERRIDE', get:()=>PRECIOS_USD_OVERRIDE, set:v=>PRECIOS_USD_OVERRIDE=v },
-  { clave:'DESTINOS_KM',      get:()=>DESTINOS_KM,      set:v=>DESTINOS_KM=v }
+  { clave:'DESTINOS_KM',      get:()=>DESTINOS_KM,      set:v=>DESTINOS_KM=v },
+  { clave:'CONTRATO_CFG',     get:()=>CONTRATO_CFG,     set:v=>CONTRATO_CFG=v }
 ];
 
 // ── Foto de lo ultimo que sabemos que quedo guardado ──────────────────────
@@ -2966,7 +2967,8 @@ function estadoCompleto(){
     FLETES_OVERRIDE: typeof FLETES_OVERRIDE!=='undefined'?FLETES_OVERRIDE:{},
     SOLICITUDES_LARGAS: typeof SOLICITUDES_LARGAS!=='undefined'?SOLICITUDES_LARGAS:[],
     SOLICITUDES_ESPERA: typeof SOLICITUDES_ESPERA!=='undefined'?SOLICITUDES_ESPERA:[],
-    FICHAS_TECNICAS: typeof FICHAS_TECNICAS!=='undefined'?FICHAS_TECNICAS:{}
+    FICHAS_TECNICAS: typeof FICHAS_TECNICAS!=='undefined'?FICHAS_TECNICAS:{},
+    CONTRATO_CFG: typeof CONTRATO_CFG!=='undefined'?CONTRATO_CFG:{}
   };
 }
 
@@ -3049,6 +3051,8 @@ function aplicarEstadoRemoto(estado, esSincroTiempoReal){
   if(estado.SOLICITUDES_LARGAS) SOLICITUDES_LARGAS = estado.SOLICITUDES_LARGAS;
   if(estado.SOLICITUDES_ESPERA) SOLICITUDES_ESPERA = estado.SOLICITUDES_ESPERA;
   if(estado.FICHAS_TECNICAS) FICHAS_TECNICAS = estado.FICHAS_TECNICAS;
+  if(estado.CONTRATO_CFG) CONTRATO_CFG = estado.CONTRATO_CFG;
+  localStorage.setItem('rtz_contrato_cfg', JSON.stringify(CONTRATO_CFG));
   localStorage.setItem('rtz_fichas', JSON.stringify(FICHAS_TECNICAS));
   localStorage.setItem('rtz_precios_override', JSON.stringify(PRECIOS_OVERRIDE));
   localStorage.setItem('rtz_fletes_override', JSON.stringify(FLETES_OVERRIDE));
@@ -6114,10 +6118,63 @@ function guardarPlanillaRiv(){ localStorage.setItem('rtz_planilla_riv', JSON.str
 // ── CONTRATO + CHECKLIST DE SALIDA/ENTRADA (por alquiler) ──────
 let CONTRATOS = JSON.parse(localStorage.getItem('rtz_contratos') || '{}'); // { [alquilerId]: {numero, checklistSalida, checklistEntrada} }
 function guardarContratos(){ localStorage.setItem('rtz_contratos', JSON.stringify(CONTRATOS)); sincronizarFirebase(); }
+/* ── NUMERACIÓN DE CONTRATOS ───────────────────────────────────────────────
+   El 12893 fue un arranque a ojo del día que se armó esto, así que los números
+   que viene dando la app no son los de los contratos de verdad.
+
+   Es un CONTADOR, no un "el más alto + 1". Esa era la forma obvia y está mal:
+   si quedó un contrato fantasma numerado 13031 y el número real que sigue es el
+   4512, el fantasma le gana para siempre y nunca se puede bajar la numeración.
+   Con un contador, "próximo" es lo que diga Mateo y listo; avanza de a uno cada
+   vez que un contrato se guarda de verdad. */
+let CONTRATO_CFG = JSON.parse(localStorage.getItem('rtz_contrato_cfg') || 'null') || {proximo:null, fijadoPor:'', fijadoEn:null};
+function guardarContratoCfg(){
+  localStorage.setItem('rtz_contrato_cfg', JSON.stringify(CONTRATO_CFG));
+  sincronizarFirebase();
+}
 function nextContratoNumero(){
+  const prox = parseInt(CONTRATO_CFG && CONTRATO_CFG.proximo);
+  if(!isNaN(prox) && prox > 0) return String(prox);
+  // Todavía sin configurar: sigue como venía, para no cambiar nada sin aviso.
   let max=12893;
   Object.values(CONTRATOS).forEach(c=>{ const n=parseInt(c.numero); if(!isNaN(n)&&n>max) max=n; });
   return String(max+1);
+}
+// El contador avanza cuando un contrato se guarda con su número, no cuando se abre
+// la ventana: abrir un contrato y cerrarlo sin guardar no tiene que quemar un número.
+function avanzarNumeracionContratos(numeroUsado){
+  const n = parseInt(numeroUsado);
+  if(isNaN(n) || n<=0) return;
+  const prox = parseInt(CONTRATO_CFG && CONTRATO_CFG.proximo);
+  if(isNaN(prox)) return;            // sin configurar, no se toca nada
+  if(n < prox) return;               // corrigieron uno viejo: el contador no retrocede
+  CONTRATO_CFG.proximo = n + 1;
+  guardarContratoCfg();
+}
+// Solo oficina: si taller puede mover la numeración, se desordena la carpeta de
+// contratos y no hay forma de saber quién lo hizo.
+async function ajustarNumeracionContratos(){
+  if(ROL_ACTUAL==='taller'){ alert('La numeración la ajusta la oficina.'); return; }
+  const actual = nextContratoNumero();
+  const txt = prompt(
+    `NUMERACIÓN DE CONTRATOS\n\nHoy la app le pondría el ${actual} al próximo contrato.\n\n` +
+    `Escribí el número REAL que le toca al próximo. De ahí en adelante numera sola, de a uno.`,
+    actual);
+  if(txt===null) return;
+  const n = parseInt(String(txt).replace(/\D/g,''));
+  if(isNaN(n) || n<=0){ alert('Eso no es un número de contrato.'); return; }
+  const usados = Object.values(CONTRATOS).map(c=>parseInt(c.numero)).filter(x=>!isNaN(x));
+  if(usados.includes(n)){
+    if(!(await confirmSiNo(`El ${n} ya figura en un contrato cargado.\n\n¿Lo usás igual? Van a quedar dos con el mismo número.`,
+      {si:'Usarlo igual', no:'Cancelar'}))) return;
+  }
+  CONTRATO_CFG = {proximo:n, fijadoPor:nombreUsuarioActual(), fijadoEn:Date.now()};
+  guardarContratoCfg();
+  // El contrato que está abierto todavía no se guardó: se le pone el número nuevo.
+  const c = CONTRATOS[contratoAlqId];
+  if(c && !c.numeroConfirmado) c.numero = nextContratoNumero();
+  if(document.getElementById('modal-contrato').style.display==='flex') renderContratoCont();
+  alert(`Listo. El próximo contrato va a ser el ${n}.`);
 }
 
 function guardarPagos(){
@@ -11067,7 +11124,14 @@ function contratoInfoBlockHTML(a, c){
   const cl=CLIENTES.find(x=>x.id===a.clienteId);
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
   const hermanos=a.grupoId?ALQUILERES.filter(x=>x.grupoId===a.grupoId):[a];
-  let h=`<div style="margin-bottom:.7rem"><label class="flabel">N° de contrato</label><input type="text" id="ctr-numero" value="${c.numero}"></div>`;
+  let h=`<div style="margin-bottom:.7rem">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <label class="flabel">N° de contrato</label>
+        ${ROL_ACTUAL!=='taller'?`<a href="javascript:void(0)" onclick="ajustarNumeracionContratos()" style="font-size:.72rem;color:var(--verde);font-weight:700">Ajustar numeración</a>`:''}
+      </div>
+      <input type="text" id="ctr-numero" value="${c.numero}">
+      ${CONTRATO_CFG && CONTRATO_CFG.proximo ? '' : `<div style="font-size:.71rem;color:#b57d10;margin-top:3px;line-height:1.4">Este número lo viene inventando la app. Cargá el real una vez con "Ajustar numeración" y después sigue sola.</div>`}
+    </div>`;
   h+=`<div style="font-size:.85rem;color:var(--txt);line-height:1.9;background:var(--bg3);border-radius:8px;padding:.7rem .9rem;margin-bottom:1rem">
     <b>LOCATARIA:</b> ${cl?cl.nombre:a.cliente}<br>
     ${cl&&cl.dir?`<b>Domicilio:</b> ${cl.dir}${cl.ciudad?', '+cl.ciudad:''}<br>`:''}
@@ -11105,7 +11169,12 @@ function renderContratoChecklist(tipo){
     <div><label class="flabel">Hora</label><input type="time" id="ctrf-hora" value="${data.hora||''}"></div>
   </div>`;
   h+=`<div style="margin-bottom:.5rem"><label class="flabel">Responsable (quién lo cargó)</label><input type="text" id="ctrf-responsable" value="${data.responsable||(ROL_ACTUAL==='taller'?TALLER_RESPONSABLE:nombreUsuarioActual())}" placeholder="Nombre"></div>`;
-  h+=`<div style="margin-bottom:.9rem"><label class="flabel">Horómetro</label><input type="number" id="ctrf-horas" value="${data.horas||''}" placeholder="hs"></div>`;
+  // La última lectura conocida, a la vista: así se nota un dedazo (156 donde iban 1560)
+  // antes de guardarlo, y se sabe cuántas horas trabajó la máquina en este alquiler.
+  const horasEq = a ? horasDeEquipo(a.equipoId) : null;
+  h+=`<div style="margin-bottom:.9rem"><label class="flabel">Horómetro</label><input type="number" id="ctrf-horas" value="${data.horas||''}" placeholder="hs">
+      ${horasEq!==null?`<div style="font-size:.71rem;color:var(--txt3);margin-top:3px">Última lectura de esta máquina: ${horasEq} hs. Lo que cargues acá pasa a ser el horómetro del equipo.</div>`:''}
+    </div>`;
 
   h+=`<div class="flabel" style="margin-bottom:6px">Fotos generales del equipo</div>`;
   h+=`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:.6rem">`;
@@ -11218,6 +11287,28 @@ function quitarFotoExtraContrato(tipo, fotoId){
   guardarContratos();
   renderContratoChecklist(tipo);
 }
+/* El horómetro que carga taller en el checklist del contrato (al salir y al volver)
+   pasa a ser EL horómetro de esa máquina. Antes quedaba guardado solo adentro del
+   contrato y la hoja del equipo seguía con la lectura vieja — dos números distintos
+   para lo mismo.
+
+   Solo pisa el de la máquina si esta lectura es MÁS NUEVA. Si no, corregir un
+   contrato de hace tres meses retrocedería el horómetro de hoy. */
+function volcarHorasDelContrato(tipo, data){
+  if(!data) return;
+  const a = ALQUILERES.find(x=>x.id===contratoAlqId);
+  if(!a || !a.equipoId) return;
+  const txt = String(data.horas==null?'':data.horas).trim();
+  if(txt==='') return;
+  const n = Number(txt);
+  if(isNaN(n) || n<0) return;
+  const fecha = data.fecha || hoyISO();
+  if(!fechaValidaApp(fecha)) return;
+  const previa = EQ_CHECKLIST[a.equipoId] || {};
+  if(previa.fecha && fechaValidaApp(previa.fecha) && fecha < previa.fecha) return;
+  guardarHorasEquipo(a.equipoId, n, fecha, data.responsable || nombreUsuarioActual());
+}
+
 async function guardarChecklistContrato(tipo){
   const c=asegurarContrato(contratoAlqId);
   const campo = tipo==='salida' ? 'checklistSalida' : 'checklistEntrada';
@@ -11238,7 +11329,13 @@ async function guardarChecklistContrato(tipo){
   c[campo].horas=document.getElementById('ctrf-horas').value;
   c[campo].guardadoEn=Date.now();
   c[campo].guardadoPor=nombreUsuarioActual();
+  // Que el contrato marque el número del cartel. El horómetro ya no se queda acá
+  // adentro: el de la máquina y el del contrato eran dos números separados que nunca
+  // se hablaban, y la hoja de mantenimiento se hacía con el viejo.
+  c.numeroConfirmado = true;
+  if(tipo==='salida') avanzarNumeracionContratos(c.numero);
   guardarContratos();
+  volcarHorasDelContrato(tipo, c[campo]);
   renderContratoChecklist(tipo);
   renderDashboard();
 
