@@ -902,6 +902,18 @@ if ('serviceWorker' in navigator) {
         <div class="dash-collapse-body" id="dash-fechasrotas-container" style="display:none"></div>
       </div>
 
+      <!-- HORÓMETROS SIN ACTUALIZAR. Máquinas que volvieron al depósito y nadie cargó
+           las horas. Lo ve taller también: son ellos los que están al lado de la
+           máquina y los que pueden resolverlo en 10 segundos. Ver renderHorasPendientes. -->
+      <div class="dash-collapse" id="dc-horaspend" style="border-color:#e5a83b;display:none">
+        <button class="dash-collapse-header" id="dch-horaspend" onclick="toggleDashCollapse('horaspend')" style="color:#b57d10">
+          <span class="dc-title">Hor&oacute;metros sin actualizar</span>
+          <span class="dc-badge" id="dc-badge-horaspend" style="background:#e5a83b;color:#fff"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-horaspend-container" style="display:none"></div>
+      </div>
+
       <!-- SEGUIMIENTO DE COTIZACIONES. Todas las cotizaciones pasadas que todavía no se
            ganaron ni se dieron por perdidas, agrupadas por qué hay que hacer con cada una.
            El número de la pastilla cuenta SOLO las que hay que llamar hoy; las que están
@@ -2419,6 +2431,30 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
   </div>
 
   <!-- Agregar equipo nuevo a la flota -->
+  <!-- HORAS DEL HORÓMETRO
+       Se pide cuando taller marca que el equipo volvió. Es el único momento en que
+       alguien está parado al lado de la máquina con el tablero a la vista; si no se
+       pide acá, las horas quedan con lo último que anotó alguien hace meses y la hoja
+       de mantenimiento sale con un dato inventado. Se puede saltear, pero queda
+       anotado y aparece el aviso en Inicio. -->
+  <div id="modal-horometro" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:430;align-items:center;justify-content:center;">
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:400px;max-width:92vw;">
+      <div style="font-size:1rem;font-weight:700;color:var(--txt);margin-bottom:.3rem">Horas del hor&oacute;metro</div>
+      <div id="horom-equipo" style="font-size:.84rem;color:var(--txt2);margin-bottom:.9rem"></div>
+      <div id="horom-anterior" style="font-size:.78rem;color:var(--txt3);background:var(--bg3);border-radius:7px;padding:.45rem .6rem;margin-bottom:.8rem"></div>
+      <div style="margin-bottom:.4rem">
+        <label class="flabel">&iquest;Cu&aacute;ntas horas marca ahora?</label>
+        <input type="number" id="horom-valor" inputmode="numeric" placeholder="hs" style="font-size:1.1rem;font-weight:700">
+      </div>
+      <div id="horom-error" style="display:none;font-size:.78rem;color:var(--rojo);font-weight:700;margin-bottom:.6rem"></div>
+      <div style="display:flex;gap:8px;margin-top:.9rem">
+        <button id="horom-guardar" class="btn-nuevo" style="flex:1;padding:.7rem">Guardar horas</button>
+      </div>
+      <button id="horom-saltear" class="btn-lim" style="width:100%;padding:8px;margin-top:.5rem;font-size:.8rem">No las puedo ver ahora</button>
+      <div style="font-size:.72rem;color:var(--txt3);line-height:1.45;margin-top:.7rem">Si las salte&aacute;s, la m&aacute;quina queda marcada en Inicio como "hor&oacute;metro sin actualizar" hasta que alguien las cargue.</div>
+    </div>
+  </div>
+
   <!-- POR QUÉ NO CERRÓ
        Sacar una cotización de la lista sin decir por qué no sirve de nada: a fin de mes
        no se sabe si se caen por precio, por disponibilidad o porque nadie volvió a
@@ -3828,6 +3864,44 @@ function renderCobroPendiente(){
         </div>
       </div>`;
     }).join('');
+}
+
+// ── Horómetros sin actualizar ─────────────────────────────────────────────
+// Lo ve taller también: son los que tienen la máquina adelante. Se carga desde acá
+// mismo sin salir de Inicio.
+function renderHorasPendientes(){
+  const caja = document.getElementById('dc-horaspend');
+  if(!caja) return;
+  const lista = equiposConHorasPendientes();
+  badgeDash('dc-badge-horaspend', lista.length);
+  caja.style.display = lista.length ? 'block' : 'none';
+  if(!lista.length) return;
+  const fmtF = s => { if(!s) return ''; const[y,m,d]=String(s).split('-'); return d?`${d}/${m}/${y.slice(2)}`:s; };
+  document.getElementById('dash-horaspend-container').innerHTML =
+    `<p style="font-size:.8rem;color:var(--txt2);margin:0 0 .6rem;line-height:1.5">
+       Estas máquinas volvieron al depósito y nadie anotó las horas. Mientras falten, la
+       hoja de mantenimiento sale con la lectura vieja.
+     </p>` +
+    lista.map(eq=>{
+      const d = EQ_CHECKLIST[eq.id] || {};
+      const previo = horasDeEquipo(eq.id);
+      return `<div style="display:flex;gap:9px;align-items:center;padding:.55rem .7rem;border:1px solid var(--border);border-left:3px solid #e5a83b;border-radius:8px;margin-bottom:.35rem;background:var(--bg2)">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:.88rem;overflow-wrap:anywhere">${eq.nombre}</div>
+          <div style="font-size:.76rem;color:var(--txt2)">Volvió el ${fmtF(d.horasPendienteDesde)}${previo!==null?` · la última lectura es de ${previo} hs`:' · nunca se cargaron horas'}</div>
+        </div>
+        <button onclick="cargarHorasDesdeInicio(${eq.id})" class="btn-nuevo" style="padding:5px 11px;font-size:.74rem;flex-shrink:0">Cargar horas</button>
+      </div>`;
+    }).join('');
+}
+async function cargarHorasDesdeInicio(eqId){
+  const eq=(EQUIPOS||[]).find(e=>e.id===eqId); if(!eq) return;
+  const d = EQ_CHECKLIST[eqId] || {};
+  const horas = await pedirHorasHorometro(eq, d.horasPendienteDesde);
+  if(horas===null) return;
+  guardarHorasEquipo(eqId, horas, d.horasPendienteDesde || hoyISO());
+  marcarAccionUndo(`Cargar ${horas} hs de "${eq.nombre}"`, 'home');
+  renderDashboard();
 }
 
 // ── Alquileres con la fecha mal cargada ───────────────────────────────────
@@ -6457,6 +6531,7 @@ function renderDashboard(){
 
   renderCobroPendiente();
   renderAvisoFechasRotas();
+  renderHorasPendientes();
   renderSeguimientoCotiz();
 
   // Cotizaciones pasadas por taller: mientras no se conviertan en alquiler (estadoConv
@@ -6678,10 +6753,10 @@ function renderDashboard(){
 }
 
 // ── Ventanas rebatibles del dashboard ──────────────────────────
-const dashCollapseIds={paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',cobropend:'cobropend',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
+const dashCollapseIds={horaspend:'horaspend',paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',cobropend:'cobropend',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
 // Todas arrancan CERRADAS, salvo "Vencidos y vence hoy" en Impuestos y Servicios, que
 // arranca ABIERTA a propósito para que un impuesto vencido nunca pase desapercibido.
-let dashCollapseOpen={paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,cobropend:true,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
+let dashCollapseOpen={horaspend:true,paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,cobropend:true,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
 function applyDashCollapseState(key){
   const id=dashCollapseIds[key];
   const header=document.getElementById('dch-'+id);
@@ -6697,7 +6772,7 @@ function applyDashCollapseState(key){
 // OJO: solo los del Inicio. Los de Impuestos y Pago a Proveedores viven en otras
 // pantallas y ahi conviene poder tener varios abiertos a la vez (por eso "impVencHoy"
 // arranca abierto a proposito).
-const ACORDEON_INICIO = ['cobropend','fechasrotas','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
+const ACORDEON_INICIO = ['cobropend','fechasrotas','horaspend','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
   'solEspera','solicitudes','segcotiz','presuptaller','contratosListos','alqHoy','alqSemana','cargadoHoy'];
 function toggleDashCollapse(key){
   dashCollapseOpen[key]=!dashCollapseOpen[key];
@@ -9549,6 +9624,88 @@ function confirmSiNo(mensaje, opts){
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   EL HORÓMETRO
+
+   Las horas de cada máquina son el dato que piden las empresas en la hoja de
+   mantenimiento, y hasta ahora se cargaban solo si alguien se acordaba de abrir
+   el checklist. Resultado: lecturas de hace meses.
+
+   El único momento en que alguien está parado al lado de la máquina con el
+   tablero encendido es cuando vuelve al depósito. Así que se piden ahí, en
+   marcarVueltaDeTaller. Se pueden saltear (puede estar de noche, o la batería
+   baja), pero entonces queda anotado y sale el aviso en Inicio.
+
+   Viven en EQ_CHECKLIST[equipoId]: .horas (el número), .fecha (de cuándo es esa
+   lectura), .horasPor (quién la cargó) y .horasPendienteDesde (si se salteó).
+   ═══════════════════════════════════════════════════════════════════════════ */
+function horasDeEquipo(eqId){
+  const d = EQ_CHECKLIST[eqId];
+  if(!d || d.horas==='' || d.horas===null || d.horas===undefined) return null;
+  const n = Number(d.horas);
+  return isNaN(n) ? null : n;
+}
+function guardarHorasEquipo(eqId, horas, fecha, quien){
+  asegurarEqChecklist(eqId);
+  EQ_CHECKLIST[eqId].horas = String(horas);
+  EQ_CHECKLIST[eqId].fecha = fecha || hoyISO();
+  EQ_CHECKLIST[eqId].horasPor = quien || nombreUsuarioActual();
+  EQ_CHECKLIST[eqId].horasEn = Date.now();
+  EQ_CHECKLIST[eqId].horasPendienteDesde = null;
+  guardarEqChecklist();
+}
+// Las que volvieron y nadie cargó las horas. Es lo que alimenta el aviso de Inicio.
+function equiposConHorasPendientes(){
+  return (EQUIPOS||[]).filter(e=>{
+    const d = EQ_CHECKLIST[e.id];
+    return d && d.horasPendienteDesde;
+  });
+}
+
+// Devuelve el número de horas, o null si lo saltearon / cerraron.
+function pedirHorasHorometro(eq, fechaVuelta){
+  return new Promise(resolve=>{
+    const anterior = horasDeEquipo(eq.id);
+    const d = EQ_CHECKLIST[eq.id] || {};
+    const fmtF = s => { if(!s) return ''; const[y,m,dd]=String(s).split('-'); return dd?`${dd}/${m}/${y}`:s; };
+    document.getElementById('horom-equipo').textContent = eq.nombre;
+    document.getElementById('horom-anterior').textContent = anterior!==null
+      ? `Última lectura: ${anterior} hs${d.fecha?' el '+fmtF(d.fecha):''}${d.horasPor?' · '+d.horasPor:''}`
+      : 'Nunca se cargaron horas para esta máquina.';
+    const inp = document.getElementById('horom-valor');
+    const err = document.getElementById('horom-error');
+    inp.value=''; err.style.display='none';
+    const btnG = document.getElementById('horom-guardar');
+    const btnS = document.getElementById('horom-saltear');
+    document.getElementById('modal-horometro').style.display='flex';
+    setTimeout(()=>inp.focus(), 50);
+
+    const cerrar = res => {
+      document.getElementById('modal-horometro').style.display='none';
+      btnG.onclick=null; btnS.onclick=null; inp.onkeydown=null;
+      resolve(res);
+    };
+    const intentarGuardar = async () => {
+      const txt = String(inp.value).trim();
+      if(txt===''){ err.textContent='Poné cuántas horas marca, o tocá "No las puedo ver ahora".'; err.style.display='block'; inp.focus(); return; }
+      const n = Number(txt);
+      if(isNaN(n) || n<0){ err.textContent='Eso no es un número de horas.'; err.style.display='block'; inp.focus(); return; }
+      // Un horómetro no baja. Si el número es menor que el anterior casi siempre es un
+      // dedazo — pero puede ser real (se cambió el tablero), así que se pregunta.
+      if(anterior!==null && n < anterior){
+        const sigue = await confirmSiNo(
+          `Antes marcaba ${anterior} hs y ahora ponés ${n} hs.\n\nUn horómetro no baja solo. ¿Está bien ese número?`,
+          {si:'Sí, es correcto', no:'No, lo corrijo'});
+        if(!sigue){ inp.focus(); inp.select(); return; }
+      }
+      cerrar(n);
+    };
+    btnG.onclick = intentarGuardar;
+    btnS.onclick = () => cerrar(null);
+    inp.onkeydown = e => { if(e.key==='Enter'){ e.preventDefault(); intentarGuardar(); } };
+  });
+}
+
 // ── FECHAS REALES DE SALIDA Y DE VUELTA ────────────────────────────────────
 // Marcar la salida o la vuelta estampaba SIEMPRE el día de hoy, sin preguntar. En la
 // práctica nadie marca en el momento: se marca al otro día, o el lunes lo del viernes.
@@ -10095,7 +10252,7 @@ let eqFichaTab='check';
 
 // Cada ventana muestra UNA sola cosa. 'hist' y 'tecnica' ya no existen: el historial
 // de services esta en la hoja de la maquina y la ficha tecnica se saco.
-const EQ_FICHA_TITULOS = {check:'Checklist', fotos:'Fotos del equipo', prob:'Problemas'};
+const EQ_FICHA_TITULOS = {check:'Checklist', fotos:'Fotos del equipo', prob:'Problemas', datos:'Datos de la máquina'};
 
 function abrirFichaEq(id, modo){
   eqFichaId=id;
@@ -10145,7 +10302,58 @@ function renderEqFichaCont(){
   if(tit) tit.textContent = EQ_FICHA_TITULOS[eqFichaTab] || '';
   if(eqFichaTab==='fotos') renderEqFichaFotos();
   else if(eqFichaTab==='prob') renderEqFichaProb();
+  else if(eqFichaTab==='datos') renderEqFichaDatos();
   else renderEqFichaCheck();
+}
+
+/* -- DATOS DE LA MÁQUINA --------------------------------------------------
+   Marca, modelo, año, N° de serie y N° de chasis. Se cargan una sola vez por
+   máquina y son los que van en el encabezado de la hoja de mantenimiento que
+   se les manda a las empresas. Hasta ahora no estaban en ningún lado: había
+   que ir a buscarlos a un PDF viejo cada vez. */
+const DATOS_EQUIPO = [
+  {key:'marca',   label:'Marca',          ph:'ALO'},
+  {key:'modelo',  label:'Modelo',         ph:'LIFT 140W'},
+  {key:'anio',    label:'Año',            ph:'2019'},
+  {key:'nSerie',  label:'N° de serie',    ph:'03311500031'},
+  {key:'nChasis', label:'N° de chasis',   ph:'Si no tiene, dejalo vacío'}
+];
+function renderEqFichaDatos(){
+  const eq=EQUIPOS.find(e=>e.id===eqFichaId); if(!eq) return;
+  const horas = horasDeEquipo(eq.id);
+  const d = EQ_CHECKLIST[eq.id] || {};
+  const fmtF = s => { if(!s) return ''; const[y,m,dd]=String(s).split('-'); return dd?`${dd}/${m}/${y}`:s; };
+  let h=`<div style="font-size:.74rem;color:var(--txt3);margin-bottom:.9rem;line-height:1.45">Estos datos salen impresos en la hoja de mantenimiento. Se cargan una vez y quedan.</div>`;
+  h+=DATOS_EQUIPO.map(c=>
+    `<div style="margin-bottom:.6rem"><label class="flabel">${c.label}</label><input type="text" class="mayus" id="eqd-${c.key}" value="${String(eq[c.key]||'').replace(/"/g,'&quot;')}" placeholder="${c.ph}"></div>`
+  ).join('');
+  h+=`<div style="background:var(--bg3);border-radius:8px;padding:.55rem .7rem;margin:.9rem 0;font-size:.8rem;color:var(--txt2)">
+      <b style="color:var(--txt)">Horómetro:</b> ${horas!==null?horas+' hs':'sin cargar'}${d.fecha?' · lectura del '+fmtF(d.fecha):''}${d.horasPor?' · '+d.horasPor:''}
+      ${d.horasPendienteDesde?'<div style="color:#b57d10;font-weight:700;margin-top:3px">Volvió el '+fmtF(d.horasPendienteDesde)+' y quedó sin anotar.</div>':''}
+      <button onclick="cargarHorasDeEstaFicha()" class="btn-lim" style="width:100%;padding:6px;font-size:.78rem;margin-top:.5rem">Cargar la lectura de hoy</button>
+    </div>`;
+  h+=`<button onclick="guardarDatosEq()" class="btn-nuevo" style="width:100%;padding:10px;margin-top:.3rem">Guardar datos</button>`;
+  document.getElementById('eq-ficha-cont').innerHTML=h;
+}
+function guardarDatosEq(){
+  const eq=EQUIPOS.find(e=>e.id===eqFichaId); if(!eq) return;
+  DATOS_EQUIPO.forEach(c=>{
+    const el=document.getElementById('eqd-'+c.key);
+    if(el) eq[c.key] = String(el.value||'').trim().toUpperCase();
+  });
+  marcarAccionUndo(`Editar los datos de "${eq.nombre}"`, 'equipos');
+  guardar(); renderEq();
+  alert('Datos guardados.');
+  renderEqFichaDatos();
+}
+async function cargarHorasDeEstaFicha(){
+  const eq=EQUIPOS.find(e=>e.id===eqFichaId); if(!eq) return;
+  const horas = await pedirHorasHorometro(eq, hoyISO());
+  if(horas===null) return;
+  guardarHorasEquipo(eq.id, horas, hoyISO());
+  marcarAccionUndo(`Cargar ${horas} hs de "${eq.nombre}"`, 'equipos');
+  renderEqFichaDatos();
+  renderDashboard();
 }
 
 /* -- FOTOS DEL EQUIPO (ventana aparte) ------------------------------------
@@ -10676,6 +10884,8 @@ function renderHistorialMaquina(){
   const problemas = (EQ_INCIDENCIAS||[]).filter(i=>i.equipoId===histMaqId);
   const abiertos = problemas.filter(i=>i.estado==='abierta').length;
   const fotos = cuantasFotosEq(histMaqId);
+  // Sin marca/modelo/serie la hoja de mantenimiento sale incompleta: se avisa en el botón.
+  const faltanDatos = !eq.marca || !eq.modelo || !eq.nSerie;
   const ultimoServ = servicios.slice().sort((a,b)=>String(b.fecha||'').localeCompare(String(a.fecha||'')))[0];
   const gastoTotal = servicios.reduce((s,x)=>s+(Number(x.costo)||0),0);
   // El próximo service sale del último registro que lo haya dejado anotado.
@@ -10703,6 +10913,7 @@ function renderHistorialMaquina(){
       <button onclick="abrirFichaEq(${eq.id},'prob')" class="btn-lim" style="padding:7px 13px;font-size:.78rem${abiertos?';border-color:var(--rojo);color:var(--rojo)':''}">Reportar / ver problemas${abiertos?' ('+abiertos+')':''}</button>
       <button onclick="abrirFichaEq(${eq.id},'check')" class="btn-lim" style="padding:7px 13px;font-size:.78rem">Checklist</button>
       <button onclick="abrirFichaEq(${eq.id},'fotos')" class="btn-lim" style="padding:7px 13px;font-size:.78rem">Fotos${fotos?' ('+fotos+')':''}</button>
+      <button onclick="abrirFichaEq(${eq.id},'datos')" class="btn-lim" style="padding:7px 13px;font-size:.78rem${faltanDatos?';border-color:#e5a83b;color:#b57d10':''}">Datos${faltanDatos?' ⚠':''}</button>
     </div>
     ${formServicioHTML('hm')}
 
@@ -15811,6 +16022,20 @@ async function marcarVueltaDeTaller(id){
   a.retiroFisicoFecha=fecha;
   a.retiroFisicoHora = (fecha===hoyISO()) ? new Date().toTimeString().slice(0,5) : '';
   a.retiroFisicoPor = (ROL_ACTUAL==='taller' ? TALLER_RESPONSABLE : nombreUsuarioActual()) || 'Taller';
+
+  // Antes de cerrar: las horas del horómetro. Es el único momento en que hay alguien
+  // parado al lado de la máquina — ver el bloque EL HORÓMETRO.
+  const eq = (EQUIPOS||[]).find(e=>e.id===a.equipoId);
+  if(eq){
+    const horas = await pedirHorasHorometro(eq, fecha);
+    if(horas!==null){
+      guardarHorasEquipo(eq.id, horas, fecha, a.retiroFisicoPor);
+    }else{
+      asegurarEqChecklist(eq.id);
+      EQ_CHECKLIST[eq.id].horasPendienteDesde = fecha;
+      guardarEqChecklist();
+    }
+  }
 
   const volvioAntes = a.fin && fechaValidaApp(a.fin) && fecha < a.fin;
   if(a.abierto || volvioAntes){
