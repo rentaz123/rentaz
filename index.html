@@ -919,7 +919,7 @@ if ('serviceWorker' in navigator) {
            o está en la obra o está en el galpón. Ver alquileresQueNoOcupanLaMaquina. -->
       <div class="dash-collapse" id="dc-libreocupada" style="border-color:var(--rojo);display:none">
         <button class="dash-collapse-header" id="dch-libreocupada" onclick="toggleDashCollapse('libreocupada')" style="color:var(--rojo)">
-          <span class="dc-title">M&aacute;quinas que figuran libres pero est&aacute;n alquiladas</span>
+          <span class="dc-title">Alquileres que quedaron sin cerrar</span>
           <span class="dc-badge" id="dc-badge-libreocupada" style="background:var(--rojo);color:#fff"></span>
           <span class="dc-arrow">▾</span>
         </button>
@@ -3919,10 +3919,49 @@ function renderCobroPendiente(){
    contradicción, y desde afuera no se puede saber cuál pasó. Esto las busca una
    por una y dice el motivo en cada caso, con el botón para arreglarlo cuando se
    puede arreglar solo. */
+/* Dos alquileres vivos en la misma máquina al mismo tiempo.
+
+   Pasa cuando un alquiler se carga como ABIERTO (sin fecha de fin) y nadie lo
+   cierra: para la app sigue corriendo para siempre. La máquina vuelve, se
+   alquila a otro, y quedan los dos encima. El viejo no se ve en ningún lado
+   —la pantalla de Equipos muestra uno solo— pero sigue sumando días sin
+   facturar y ensucia los reportes.
+
+   El culpable es SIEMPRE el más viejo, no el nuevo: el nuevo es el que está de
+   verdad en la obra. (Fue el caso del autoelevador de Molfino del 1/10.) */
+function alquileresPisadosEnLaMismaMaquina(){
+  const hoy = hoyISO();
+  const porEquipo = {};
+  (ALQUILERES||[]).forEach(a=>{
+    if(a.modoHoras || a.pausado || a.entregaPendiente) return;
+    if(!alqEstaActivoHoy(a, hoy)) return;
+    (porEquipo[a.equipoId] = porEquipo[a.equipoId] || []).push(a);
+  });
+  const out = [];
+  Object.keys(porEquipo).forEach(eqId=>{
+    const lista = porEquipo[eqId];
+    if(lista.length < 2) return;
+    lista.sort((x,y)=>String(x.inicio||'').localeCompare(String(y.inicio||'')));
+    const eq = (EQUIPOS||[]).find(e=>String(e.id)===String(eqId));
+    if(!eq) return;
+    const elQueEstaDeVerdad = lista[lista.length-1];
+    // Todos menos el último son fantasmas que quedaron abiertos.
+    lista.slice(0, -1).forEach(a=>out.push({a, eq, elQueEstaDeVerdad}));
+  });
+  return out;
+}
+
 function alquileresQueNoOcupanLaMaquina(){
   const hoy = hoyISO();
   const out = [];
+  // Los que ya salen como "alquiler viejo sin cerrar" no se repiten acá abajo: es
+  // el mismo problema contado dos veces, y desde el otro lado se culpa al nuevo.
+  const pisados = alquileresPisadosEnLaMismaMaquina();
+  const yaReportados = new Set(pisados.map(x=>x.a.id));
+  const equiposPisados = new Set(pisados.map(x=>String(x.eq.id)));
   (ALQUILERES||[]).forEach(a=>{
+    if(yaReportados.has(a.id)) return;
+    if(equiposPisados.has(String(a.equipoId))) return;
     if(a.modoHoras) return;            // van y vuelven al toque, nunca ocupan
     if(a.pausado) return;              // está libre a propósito
     if(!a.inicio || a.inicio > hoy) return;   // todavía no arrancó
@@ -3964,23 +4003,44 @@ function renderMaquinasLibresConAlquiler(){
   if(!caja) return;
   // Es un tema de datos de la oficina, igual que las fechas rotas.
   if(esTallerVista()){ caja.style.display='none'; return; }
+  const pisados = alquileresPisadosEnLaMismaMaquina();
   const lista = alquileresQueNoOcupanLaMaquina();
-  badgeDash('dc-badge-libreocupada', lista.length);
-  caja.style.display = lista.length ? 'block' : 'none';
-  if(!lista.length) return;
-  document.getElementById('dash-libreocupada-container').innerHTML =
-    `<p style="font-size:.8rem;color:var(--txt2);margin:0 0 .6rem;line-height:1.5">
-       Estos alquileres están corriendo pero su máquina figura libre. Mientras siga así,
-       la máquina se puede prometer a otro cliente por error.
-     </p>` +
-    lista.map(({a, eq, motivo, arreglo})=>
-      `<div style="display:flex;gap:9px;align-items:flex-start;padding:.55rem .7rem;border:1px solid var(--rojo)33;border-left:3px solid var(--rojo);border-radius:8px;margin-bottom:.35rem;background:var(--bg2)">
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:.88rem;overflow-wrap:anywhere">${eq.nombre} · ${a.cliente||''}</div>
-          <div style="font-size:.76rem;color:var(--rojo);font-weight:700;margin-top:2px;line-height:1.4">${motivo}</div>
-        </div>
-        ${arreglo}
-      </div>`).join('');
+  const total = pisados.length + lista.length;
+  badgeDash('dc-badge-libreocupada', total);
+  caja.style.display = total ? 'block' : 'none';
+  if(!total) return;
+  const fmtD = s => { if(!s) return ''; const[y,m,d]=String(s).split('-'); return d?`${d}/${m}/${y.slice(2)}`:s; };
+  const fila = (titulo, detalle, arreglo) =>
+    `<div style="display:flex;gap:9px;align-items:flex-start;padding:.55rem .7rem;border:1px solid var(--rojo)33;border-left:3px solid var(--rojo);border-radius:8px;margin-bottom:.35rem;background:var(--bg2)">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:.88rem;overflow-wrap:anywhere">${titulo}</div>
+        <div style="font-size:.76rem;color:var(--rojo);font-weight:700;margin-top:2px;line-height:1.4">${detalle}</div>
+      </div>
+      ${arreglo||''}
+    </div>`;
+
+  let h = '';
+  if(pisados.length){
+    h += `<p style="font-size:.8rem;color:var(--txt2);margin:0 0 .6rem;line-height:1.5">
+        Estos alquileres quedaron <b>abiertos y sin cerrar</b>: la máquina ya volvió y se
+        alquiló a otro cliente, pero para la app el viejo sigue corriendo. Mientras tanto
+        suma días sin facturar y ensucia el rendimiento del equipo. Cerralos con la fecha
+        real en que volvió la máquina.
+      </p>`;
+    h += pisados.map(({a, eq, elQueEstaDeVerdad})=>fila(
+      `${eq.nombre} · ${a.cliente||''}`,
+      `Abierto desde el ${fmtD(a.inicio)} y nunca se cerró. La máquina está hoy con ${elQueEstaDeVerdad.cliente} (desde el ${fmtD(elQueEstaDeVerdad.inicio)}).`,
+      `<button onclick="abrirModalCerrarAbierto(${a.id})" class="btn-nuevo" style="padding:5px 11px;font-size:.74rem;flex-shrink:0">Cerrarlo</button>`
+    )).join('');
+  }
+  if(lista.length){
+    h += `<p style="font-size:.8rem;color:var(--txt2);margin:${pisados.length?'.9rem':'0'} 0 .6rem;line-height:1.5">
+        Estos alquileres están corriendo pero su máquina figura libre. Mientras siga así,
+        la máquina se puede prometer a otro cliente por error.
+      </p>`;
+    h += lista.map(({a, eq, motivo, arreglo})=>fila(`${eq.nombre} · ${a.cliente||''}`, motivo, arreglo)).join('');
+  }
+  document.getElementById('dash-libreocupada-container').innerHTML = h;
 }
 
 // ── Hojas de mantenimiento por vencer ─────────────────────────────────────
@@ -12875,7 +12935,26 @@ function finBloqueoAlq(a){
     const horaRetiroReal = a.retiroFisicoHora || a.horaRetiro || '00:00';
     return horaRetiroReal > '12:00' ? a.retiradoAnticipado : menosUnDia(a.retiradoAnticipado);
   }
-  if(a.abierto) return a.fin;
+  /* ESTO ERA UN BUG, y de los caros: decía "if(a.abierto) return a.fin".
+     En un alquiler ABIERTO, a.fin NO es hasta cuándo está ocupada la máquina: es
+     hasta dónde se facturó. El de Molfino del autoelevador tenía fin 02/10 y la
+     máquina nunca volvió, así que del 03/10 en adelante figuraba libre y la app
+     dejó cargarle encima el alquiler de MAHLE del 16/10. Dos clientes en la misma
+     máquina, sin un solo aviso.
+     Un abierto ocupa hasta que la máquina VUELVE. Si no volvió, no tiene fin:
+     devolvemos null y alquilerSuperpuesto lo toma como "bloquea para siempre".
+     Es el mismo criterio que ya usaba alqFinEfectivo para el estado del equipo —
+     las dos cuentas se contradecían entre ellas. */
+  if(a.abierto){
+    if(a.retiroFisicoFecha) return a.retiroFisicoFecha;   // ya volvió: libera desde ahí
+    // Si YA ARRANCÓ y la máquina no volvió, está en lo del cliente ahora mismo:
+    // bloquea sin límite. Esto es lo que faltaba.
+    if(a.inicio && a.inicio <= hoyISO()) return null;
+    // Si todavía no arrancó, su "fin" es una estimación y una reserva para después
+    // puede ser perfectamente válida: se deja cargar con el aviso ámbar
+    // ("Se puede cargar, pero ojo") que ya existe más abajo en validarChoqueEquipos.
+    return a.fin;
+  }
   // Cierre normal por fecha pactada: va la MISMA regla del mediodía que ya se usa para
   // facturar y para el retiro anticipado. Sin esto la app se contradecía sola — al alquiler
   // del Brazo Snorkel #2 a MOLFINO del 23 al 24/09 con retiro 08:00 le facturaba sólo hasta
@@ -12915,6 +12994,10 @@ function alquilerSuperpuesto(eqId, desde, hasta, excludeAlqId, horaRetiroNuevo){
     if(a.modoHoras) return false; // los alquileres por hora (uso corto) no ocupan el equipo, no bloquean otras reservas
     if(a.pausado) return false; // pausado (ver pausarAlq): no se está usando, no bloquea otras reservas
     const finBloqueo = finBloqueoAlq(a);
+    // null = no tiene fin (abierto y la máquina todavía no volvió): ocupa desde su
+    // inicio hacia adelante sin límite. Antes esto se comparaba igual que una fecha
+    // y JavaScript lo resolvía a su manera, en silencio y mal.
+    if(finBloqueo === null || finBloqueo === undefined) return !(finNuevo < a.inicio);
     return !(finNuevo < a.inicio || desde > finBloqueo);
   }) || null;
 }
@@ -13065,11 +13148,17 @@ function actualizarDisponibilidadAlq(excludeAlqId){
               if(fb < conflicto.fin) notaMediodia = ` — se retira a las ${conflicto.horaRetiro||'08:00'}, antes del mediodía, así que ese día el equipo ya vuelve a estar disponible`;
             }
             const libres=equiposLibresEquivalentes(row.eqId, desde, hasta, excl);
+            // Para un abierto, "al ${fin}" es mentira: ese fin es hasta dónde se
+            // facturó, no hasta cuándo está ocupada. Decirlo así hacía parecer que
+            // la máquina se liberaba esa fecha.
+            const cuando = conflicto.abierto && !conflicto.retiroFisicoFecha
+              ? `desde el ${fmtD(conflicto.inicio)}, <b>sin fecha de retorno</b>`
+              : `del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}`;
             return `⚠ <b>${nombreElegido}</b> ya está alquilado a <b>${conflicto.cliente}</b>
-              del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}.<br>
+              ${cuando}.<br>
               <span style="font-weight:400">${desdeCuandoLibre
                 ? `Queda libre <b>desde el ${desdeCuandoLibre}</b>${notaMediodia} — si lo cargás desde esa fecha en adelante, entra sin problema.`
-                : 'Es un alquiler abierto, todavía sin fecha de retorno, así que no se puede reservar para después.'}</span>
+                : 'Es un alquiler abierto y la máquina todavía no volvió, así que ocupa el equipo hasta que se cierre. Si ya volvió, cerrá ese alquiler con la fecha real y después cargá este.'}</span>
               ${libres.length
                 ? `<div style="margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.35);font-weight:400">
                      Para esas mismas fechas <b>sí está libre</b>: ${libres.map(n=>`<b>${n}</b>`).join(' · ')}</div>`
