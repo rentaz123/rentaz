@@ -1586,6 +1586,7 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
         <button class="flt-btn" onclick="filtEq('disponible',this)">Disponibles</button>
         <button class="flt-btn" onclick="filtEq('alquilado',this)">Alquilados</button>
         <button class="flt-btn" onclick="filtEq('taller',this)">Fuera de servicio</button>
+        <button class="flt-btn" onclick="filtEq('baja',this)">Dadas de baja</button>
       </div>
       <div id="lista-eq"></div>
     </div>
@@ -3666,8 +3667,6 @@ function cotizacionesAgrupadas(){
 // estaba abierto. Arranca en "hay que llamar", que es la unica que pide accion.
 // Vive en memoria nomas: es como esta mirando la pantalla ahora, no un dato.
 let cotizSecAbierta = 'vencidas';
-// Para que el desplegable se abra solo UNA vez por sesión cuando hay atrasadas.
-let segCotizYaSaludo = false;
 function toggleCotizSec(cual){
   cotizSecAbierta = (cotizSecAbierta===cual) ? '' : cual;
   renderSeguimientoCotiz();
@@ -4154,12 +4153,15 @@ function cotizTarjeta(p, urgente){
     : (dias===0 ? 'cotizada hoy'    : `cotizada hace ${dias} día${dias!==1?'s':''}`);
   const vueltas = p.segContactos ? ` · ${p.segContactos} llamada${p.segContactos!==1?'s':''}` : '';
   const tildada = cotizTildadas.has(p.id);
+  // Esto NO es una urgencia: es un recordatorio de que conviene llamar. Antes iba todo
+  // en rojo (borde, fecha, encabezado) y el panel parecía una alarma de algo roto.
+  // Queda en gris, con la información igual de visible.
   // Renglón compacto, no una tarjeta con botones del ancho de la pantalla: son varias
   // y la idea es barrerlas de un vistazo. El monto va a la derecha, alineado, para
   // poder comparar de arriba a abajo sin leer.
-  const colorFecha = urgente ? '#c62828' : 'var(--txt3)';
+  const colorFecha = urgente ? 'var(--txt2)' : 'var(--txt3)';
   const btn = 'padding:4px 10px;font-size:.73rem;font-weight:700;border-radius:7px;cursor:pointer;white-space:nowrap';
-  return `<div style="display:flex;gap:9px;align-items:flex-start;padding:.55rem .7rem;border:1px solid var(--border);border-left:3px solid ${urgente?'#c62828':'var(--border2)'};border-radius:8px;margin-bottom:.35rem;background:var(--bg2)">
+  return `<div style="display:flex;gap:9px;align-items:flex-start;padding:.55rem .7rem;border:1px solid var(--border);border-left:3px solid var(--border2);border-radius:8px;margin-bottom:.35rem;background:var(--bg2)">
     <input type="checkbox" class="cotiz-tilde" data-id="${p.id}" ${tildada?'checked':''}
            onchange="cotizTildar(${p.id}, this.checked)" title="Marcar para sacar de la lista"
            style="width:16px;height:16px;flex-shrink:0;margin-top:2px;cursor:pointer;accent-color:#00695c">
@@ -4169,7 +4171,7 @@ function cotizTarjeta(p, urgente){
         <span style="font-weight:700;font-size:.84rem;color:var(--txt);white-space:nowrap">${fmt(p.total)}</span>
       </div>
       <div style="font-size:.78rem;color:var(--txt2);margin-top:1px">${p.equipo||''} · ${p.dias} día${p.dias!==1?'s':''}</div>
-      <div style="font-size:.74rem;color:${colorFecha};font-weight:${urgente?'700':'400'};margin-top:1px">${cuando}${vueltas}${p.creadoPor?' · '+p.creadoPor:''}</div>
+      <div style="font-size:.74rem;color:${colorFecha};font-weight:400;margin-top:1px">${cuando}${vueltas}${p.creadoPor?' · '+p.creadoPor:''}</div>
       <!-- Los tres finales posibles, con el nombre de lo que te dijo el cliente y no
            de lo que hace el sistema: así no hay que acordarse de nada. -->
       <div style="font-size:.7rem;color:var(--txt3);margin-top:.5rem">Después de hablarlo, ¿qué te dijo?</div>
@@ -4207,17 +4209,14 @@ function renderSeguimientoCotiz(){
   caja.style.display = hayAlgo ? 'block' : 'none';
   if(!hayAlgo) return;
 
-  // El "aviso a los 5 días": si hay cotizaciones atrasadas, el desplegable se abre
-  // solo la primera vez que entrás a Inicio. Una pastilla roja se pasa por alto; una
-  // lista abierta en la cara, no. Una sola vez por sesión: si lo cerrás, queda cerrado.
+  // Esto es un REGISTRO para no perder cotizaciones, no una urgencia. Antes se abría
+  // solo al entrar y venía todo en rojo: terminaba leyéndose como que algo está roto,
+  // al lado de los avisos que sí son problemas (fechas imposibles, máquinas pisadas).
+  // Ahora queda cerrado, con el número al lado del título, y se abre cuando uno quiere.
   const tit = caja.querySelector('.dc-title');
   if(tit) tit.textContent = vencidas.length
     ? `Cotizaciones para seguir — ${vencidas.length} para llamar`
     : 'Cotizaciones para seguir';
-  if(vencidas.length && !segCotizYaSaludo){
-    segCotizYaSaludo = true;
-    if(!dashCollapseOpen.segcotiz) toggleDashCollapse('segcotiz');
-  }
 
   // Las marcas que quedaron de antes se olvidan si esa cotización ya no está en la
   // lista (se convirtió en alquiler, o la sacó otro desde otra computadora).
@@ -4247,20 +4246,20 @@ function renderSeguimientoCotiz(){
       <span id="cotiz-tildadas-texto" style="font-size:.8rem;font-weight:700;color:var(--txt)"></span>
       <span style="flex:1"></span>
       <button onclick="cotizTildarTodas()" class="btn-lim" style="padding:4px 9px;font-size:.73rem">Marcar todas</button>
-      <button onclick="cotizSacarTildadas()" class="btn-lim" style="padding:4px 9px;font-size:.73rem;color:var(--rojo);border-color:var(--rojo)">No cerraron</button>
+      <button onclick="cotizSacarTildadas()" class="btn-lim" style="padding:4px 9px;font-size:.73rem">No cerraron</button>
     </div>`;
 
-  h += bloque('vencidas',  `Hay que llamar — ${DIAS_RECORDAR_COTIZ} días o más`, vencidas,  '#c62828', true);
-  h += bloque('esperando', 'Ya los llamaste',  esperando, '#607d8b', false);
-  h += bloque('recientes', 'Enviadas hace poco', recientes, '#607d8b', false);
+  h += bloque('vencidas',  `Conviene llamar — ${DIAS_RECORDAR_COTIZ} días o más`, vencidas,  '#607d8b', true);
+  h += bloque('esperando', 'Ya los llamaste',  esperando, '#90a4ae', false);
+  h += bloque('recientes', 'Enviadas hace poco', recientes, '#90a4ae', false);
   const encabezado = vencidas.length
-    ? `<p style="font-size:.82rem;color:#c62828;font-weight:700;margin:0 0 .5rem">Hace ${DIAS_RECORDAR_COTIZ} días o más que cotizaste ${vencidas.length===1?'esto':'estas '+vencidas.length} y no volviste a hablar. Llamalos y marcá qué te dijeron.</p>`
+    ? `<p style="font-size:.8rem;color:var(--txt2);margin:0 0 .5rem">Hace ${DIAS_RECORDAR_COTIZ} días o más que pasaste ${vencidas.length===1?'esta cotización':'estas '+vencidas.length} y no se volvió a hablar.</p>`
     : `<p style="color:var(--txt3);font-size:.8rem;margin:0 0 .5rem">Ninguna para llamar hoy. Vuelven a aparecer a los ${DIAS_RECORDAR_COTIZ} días.</p>`;
   h = encabezado + h;
   // El circuito explicado en dos renglones. Es la parte que mas cuesta recordar:
   // que no hay que borrar nada y que cada boton tiene un destino distinto.
   h += `<div style="font-size:.72rem;color:var(--txt3);margin-top:.9rem;line-height:1.6;border-top:1px solid var(--border);padding-top:.6rem">
-      <b style="color:var(--txt2)">Cómo funciona:</b> a los ${DIAS_RECORDAR_COTIZ} días de cotizar, la cotización aparece acá arriba en rojo.
+      <b style="color:var(--txt2)">Cómo funciona:</b> a los ${DIAS_RECORDAR_COTIZ} días de cotizar, la cotización sube a "Conviene llamar".
       Llamás y marcás: <b>Lo tomó</b> la pasa a alquiler · <b>Lo sigue viendo</b> la vuelve a traer en ${DIAS_RECORDAR_COTIZ} días ·
       <b>No cerró</b> te pide el motivo y la archiva en
       <a href="javascript:void(0)" onclick="goTo('nocerrados')" style="color:var(--verde);font-weight:700">Alquileres no cerrados</a>.
@@ -6327,7 +6326,7 @@ function estadoMantenimiento(eqId){
   return {estado:'vigente', vence, dias};
 }
 function equiposConMantenimientoAVencer(){
-  return (EQUIPOS||[]).filter(e=>{
+  return equiposActivos().filter(e=>{
     const s = estadoMantenimiento(e.id);
     return s.estado==='vencida' || s.estado==='porvencer';
   });
@@ -6648,7 +6647,8 @@ function renderDashboard(){
   actualizarFranjaTaller();
   const admExtraVenc=document.getElementById('dash-admin-extra-venc');
   if(admExtraVenc) admExtraVenc.style.display = ROL_ACTUAL==='taller' ? 'none' : '';
-  const estados=EQUIPOS.map(e=>({e, r:estadoRealEq(e)}));
+  // Las vendidas no cuentan en "total flota" ni en disponibles (ver equipoDeBaja).
+  const estados=equiposActivos().map(e=>({e, r:estadoRealEq(e)}));
   const disp=estados.filter(x=>x.r.estado==='disponible');
   const alq=estados.filter(x=>x.r.estado==='alquilado');
   const tall=estados.filter(x=>x.r.estado==='taller');
@@ -6657,7 +6657,7 @@ function renderDashboard(){
     <div class="stat-card verde" onclick="irAEquipos('alquilado')" title="Ver los equipos alquilados"><div class="num">${alq.length}</div><div class="lbl">Alquilados</div></div>
     <div class="stat-card azul" onclick="irAEquipos('disponible')" title="Ver los equipos disponibles"><div class="num">${disp.length}</div><div class="lbl">Disponibles</div></div>
     <div class="stat-card rojo" onclick="irAEquipos('taller')" title="Ver los equipos fuera de servicio"><div class="num">${tall.length}</div><div class="lbl">Fuera de servicio</div></div>
-    <div class="stat-card gris" onclick="irAEquipos('todos')" title="Ver toda la flota"><div class="num">${EQUIPOS.length}</div><div class="lbl">Total flota</div></div>
+    <div class="stat-card gris" onclick="irAEquipos('todos')" title="Ver toda la flota"><div class="num">${estados.length}</div><div class="lbl">Total flota</div></div>
   `;
 
   // Aviso de máquinas trabadas: alquileres que siguen "en curso" mucho después de
@@ -9583,9 +9583,26 @@ function grupoLabel(m){
 // dentro de cada tipo, por orden de alta (id) — para que una unidad nueva que se suma
 // (ej. una segunda "Alo 60 Mini Plus") aparezca al lado de sus hermanas y no suelta al
 // final, en cualquier lista/select de equipos (Equipos, Alquileres, Control, sustitución).
-function equiposOrdenados(lista){
+/* ── EQUIPOS DADOS DE BAJA (vendidos o fuera de la flota) ──────────────────
+   Una máquina vendida NO se borra. Si se borrara, todos los alquileres, services
+   y reportes que la nombran quedarían apuntando a la nada: el rendimiento de
+   meses pasados cambiaría solo y las facturas viejas no se podrían explicar.
+
+   Lo que se hace es sacarla de todo lo que mira para ADELANTE —lista de equipos,
+   control de máquinas, selector al cargar un alquiler, contador de flota,
+   disponibilidad, avisos de mantenimiento y horómetro— y dejarla intacta en todo
+   lo que mira para ATRÁS. Los reportes salen de los alquileres, no de esta lista,
+   así que el historial no se toca.
+
+   Se puede reactivar desde el filtro "Dadas de baja" en Equipos. */
+function equipoDeBaja(e){ return !!(e && e.baja && e.baja.fecha); }
+function equiposActivos(){ return (EQUIPOS||[]).filter(e=>!equipoDeBaja(e)); }
+
+// incluirBajas: solo lo usa la pantalla de Equipos cuando se pide verlas.
+function equiposOrdenados(lista, incluirBajas){
   const ORDEN_TIPOS = Object.keys(TIPO_META);
-  return [...(lista||EQUIPOS)].sort((a,b)=>{
+  const base = lista || (incluirBajas ? EQUIPOS : equiposActivos());
+  return [...base].sort((a,b)=>{
     const ia = ORDEN_TIPOS.indexOf(a.tipo), ib = ORDEN_TIPOS.indexOf(b.tipo);
     const oa = ia===-1 ? ORDEN_TIPOS.length : ia, ob = ib===-1 ? ORDEN_TIPOS.length : ib;
     if(oa!==ob) return oa-ob;
@@ -10074,7 +10091,7 @@ function guardarHorasEquipo(eqId, horas, fecha, quien){
 }
 // Las que volvieron y nadie cargó las horas. Es lo que alimenta el aviso de Inicio.
 function equiposConHorasPendientes(){
-  return (EQUIPOS||[]).filter(e=>{
+  return equiposActivos().filter(e=>{
     const d = EQ_CHECKLIST[e.id];
     return d && d.horasPendienteDesde;
   });
@@ -10374,6 +10391,21 @@ function irAEquipos(filtro){
 }
 function filtEq(f,btn){filtroEq=f;document.querySelectorAll('.flt-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderEq();}
 function renderEq(){
+  // "Dadas de baja" es el único filtro que muestra las que salieron de la flota: en
+  // el resto no tienen que aparecer ni siquiera en "Todos".
+  const verBajas = filtroEq==='baja';
+  if(verBajas){
+    const bajas = equiposOrdenados(EQUIPOS.filter(equipoDeBaja));
+    const fmtF = s => { if(!s) return ''; const[y,m,d]=String(s).split('-'); return d?`${d}/${m}/${y}`:s; };
+    document.getElementById('lista-eq').innerHTML = bajas.length
+      ? bajas.map(e=>`<div class="eq-item" style="cursor:default;opacity:.85">
+            <div class="eq-dot" style="background:var(--txt3)"></div>
+            <div class="eq-info"><h4>${e.nombre}</h4><p>${e.baja.motivo||'Baja'} · ${fmtF(e.baja.fecha)}${e.baja.por?' · '+e.baja.por:''}</p></div>
+            <button onclick="reactivarEquipo(${e.id})" class="btn-lim" style="width:auto;margin:0;padding:5px 11px;font-size:.74rem;flex-shrink:0">Reactivar</button>
+          </div>`).join('')
+      : '<p style="color:var(--txt3);font-size:.88rem;padding:1.5rem 0;text-align:center">No hay máquinas dadas de baja.</p>';
+    return;
+  }
   const listaConEstado=equiposOrdenados().map(e=>({e, r:estadoRealEq(e)}));
   let lista=listaConEstado.filter(x=>filtroEq==='todos'||x.r.estado===filtroEq);
   // Verde = alquilado (generando plata), azul = libre, rojo = fuera de servicio.
@@ -10968,6 +11000,12 @@ function renderEqFichaDatos(){
       <button onclick="cargarHorasDeEstaFicha()" class="btn-lim" style="width:100%;padding:6px;font-size:.78rem;margin-top:.5rem">Cargar la lectura de hoy</button>
     </div>`;
   h+=`<button onclick="guardarDatosEq()" class="btn-nuevo" style="width:100%;padding:10px;margin-top:.3rem">Guardar datos</button>`;
+  if(ROL_ACTUAL!=='taller'){
+    h+=`<div style="margin-top:1rem;padding-top:.8rem;border-top:1px solid var(--border2)">
+        <button onclick="darDeBajaEquipo(${eq.id})" class="btn-lim" style="width:100%;padding:9px;font-size:.8rem;color:var(--rojo);border-color:var(--rojo)">Dar de baja — se vendió o salió de la flota</button>
+        <div style="font-size:.71rem;color:var(--txt3);line-height:1.45;margin-top:.4rem">Deja de aparecer en Equipos y al cargar alquileres. No se borra nada: el historial y los reportes de meses pasados quedan igual.</div>
+      </div>`;
+  }
   document.getElementById('eq-ficha-cont').innerHTML=h;
 }
 async function guardarDatosEq(){
@@ -10989,6 +11027,62 @@ async function guardarDatosEq(){
   alert('Datos guardados.');
   renderEqFichaDatos();
 }
+/* Dar de baja una máquina que se vendió (o que salió de la flota por lo que sea).
+   No borra nada — ver el bloque EQUIPOS DADOS DE BAJA. */
+const MOTIVOS_BAJA = ['Vendida', 'Dada de baja definitiva', 'Devuelta al proveedor', 'Otro'];
+
+async function darDeBajaEquipo(eqId){
+  const eq=EQUIPOS.find(e=>e.id===eqId); if(!eq) return;
+  if(ROL_ACTUAL==='taller'){ alert('Dar de baja una máquina lo hace la oficina.'); return; }
+
+  // No se puede sacar de la flota una máquina que está en lo de un cliente o que ya
+  // está prometida: el alquiler quedaría apuntando a una máquina que no existe más.
+  const hoy = hoyISO();
+  const vivos = (ALQUILERES||[]).filter(a=>a.equipoId===eqId && a.activo!==false && !a.pausado &&
+    (alqEstaActivoHoy(a, hoy) || (a.inicio && a.inicio > hoy)));
+  if(vivos.length){
+    const det = vivos.slice(0,5).map(a=>`• ${a.cliente||''} — ${a.inicio}${a.abierto?' (abierto)':' al '+a.fin}`).join('\n');
+    alert(`No se puede dar de baja "${eq.nombre}": tiene ${vivos.length} alquiler${vivos.length!==1?'es':''} en curso o reservado${vivos.length!==1?'s':''}.\n\n${det}\n\nCerralos o pasalos a otra máquina primero.`);
+    return;
+  }
+
+  const motivo = prompt(
+    `DAR DE BAJA "${eq.nombre}"\n\n¿Por qué sale de la flota?\nEscribí: ${MOTIVOS_BAJA.join(' / ')}`,
+    MOTIVOS_BAJA[0]);
+  if(motivo===null) return;
+  const txtFecha = prompt('¿Qué día salió de la flota? (día/mes, ej 15/10)\nDejalo vacío para poner hoy.', '');
+  if(txtFecha===null) return;
+  const fecha = txtFecha.trim() ? parseFechaCorta(txtFecha, hoy) : hoy;
+  if(!fecha || !fechaValidaApp(fecha)){ alert('No entendí esa fecha. Probá de nuevo con día/mes, por ejemplo 15/10.'); return; }
+
+  if(!(await confirmSiNo(
+    `"${eq.nombre}" va a salir de la flota el ${fecha.split('-').reverse().join('/')}.\n\n` +
+    `• Deja de aparecer en Equipos, en Control de máquinas y al cargar un alquiler.\n` +
+    `• No se borra nada: sus alquileres, services y reportes de meses pasados quedan igual.\n` +
+    `• Se puede volver a activar cuando quieras.`,
+    {si:'Dar de baja', no:'Cancelar'}))) return;
+
+  eq.baja = {fecha, motivo:String(motivo).trim().toUpperCase(), por:nombreUsuarioActual(), en:Date.now()};
+  // Si quedó marcada "fuera de servicio", se limpia: ya no es parte de la flota.
+  eq.cliente = '';
+  marcarAccionUndo(`Dar de baja "${eq.nombre}"`, 'equipos');
+  guardar();
+  cerrarFichaEq();
+  if(pantallaActualNombre==='histmaq') goTo('equipos');
+  renderEq(); renderDashboard();
+  alert(`"${eq.nombre}" salió de la flota.\n\nPara verla de nuevo: Equipos → filtro "Dadas de baja".`);
+}
+
+async function reactivarEquipo(eqId){
+  const eq=EQUIPOS.find(e=>e.id===eqId); if(!eq) return;
+  if(ROL_ACTUAL==='taller'){ alert('Esto lo hace la oficina.'); return; }
+  if(!(await confirmSiNo(`¿Volver a poner "${eq.nombre}" en la flota?`, {si:'Reactivar', no:'Cancelar'}))) return;
+  eq.baja = null;
+  eq.estado = eq.estado==='alquilado' ? 'disponible' : (eq.estado||'disponible');
+  marcarAccionUndo(`Reactivar "${eq.nombre}"`, 'equipos');
+  guardar(); renderEq(); renderDashboard();
+}
+
 async function cargarHorasDeEstaFicha(){
   const eq=EQUIPOS.find(e=>e.id===eqFichaId); if(!eq) return;
   const horas = await pedirHorasHorometro(eq, hoyISO());
@@ -13010,7 +13104,7 @@ function verAgendaDeMaquinas(eqId){
   const eq=EQUIPOS.find(e=>e.id===eqId);
   if(!eq) return;
   const meta=equipoMeta(eq);
-  const hermanas=EQUIPOS.filter(o=>{
+  const hermanas=equiposActivos().filter(o=>{
     const m=equipoMeta(o);
     return m.categoria===meta.categoria && m.altura===meta.altura;
   });
@@ -13085,7 +13179,7 @@ function equiposLibresEquivalentes(eqId, desde, hasta, excl){
   const eq=EQUIPOS.find(e=>e.id===eqId);
   if(!eq) return [];
   const meta=equipoMeta(eq);
-  return EQUIPOS.filter(otro=>{
+  return equiposActivos().filter(otro=>{
     if(otro.id===eqId) return false;
     if(otro.estado==='taller') return false;
     const m=equipoMeta(otro);
