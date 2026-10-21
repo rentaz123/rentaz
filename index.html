@@ -16698,6 +16698,40 @@ function recalcCerrarAbierto(){
     : `Sigue en ${totalNuevo} día${totalNuevo!==1?'s':''} en total — no hay días nuevos que agregar.`;
   document.getElementById('cerrarab-diasfacturar').value = diasExtra;
 }
+/* ── QUÉ TARIFA SE USA PARA UN TRAMO NUEVO ─────────────────────────────────
+   Cada alquiler guarda congelada la tarifa vigente el día que se cargó
+   (tarifaDiaUsada/SemUsada/MesUsada). Para los tramos que se facturan después se
+   venía usando SIEMPRE esa, sin avisar — la idea era respetar el acuerdo con el
+   cliente. Pero en un alquiler largo que cruza un aumento, eso significa facturar
+   dos meses después a precio viejo sin que nadie se entere: el de BAUZA arrancó el
+   30/09 a $540.000 y la lista de hoy está $576.000.
+
+   Ahora: si la lista NO cambió, no se pregunta nada (el 90% de las veces). Si
+   cambió, se muestran las dos y decide quien factura. */
+async function tarifaParaTramo(a, eq){
+  const actual = eq ? precioTipo(eq.tipo) : null;
+  if(a.tarifaDiaUsada == null){
+    return {p: actual, origen: eq ? `tarifa ACTUAL de la lista de precios de ${eq.nombre} — este alquiler no tiene guardada la tarifa con la que se cotizó` : ''};
+  }
+  const pactada = {dia:a.tarifaDiaUsada, sem:a.tarifaSemUsada, mes:a.tarifaMesUsada};
+  const dif = actual && (
+    (actual.dia||0)!==(pactada.dia||0) ||
+    (actual.sem||0)!==(pactada.sem||0) ||
+    (actual.mes||0)!==(pactada.mes||0));
+  if(!dif) return {p: pactada, origen:'tarifa ya pactada en este alquiler'};
+
+  const fmtD = s => { if(!s) return ''; const[y,m,d]=String(s).split('-'); return d?`${d}/${m}/${y.slice(2)}`:s; };
+  const usarNueva = await confirmSiNo(
+    `La lista de precios cambió desde que se cargó este alquiler.\n\n` +
+    `Pactada el ${fmtD(a.inicio)}:  ${fmt(pactada.dia||0)} por día\n` +
+    `Lista de hoy:  ${fmt(actual.dia||0)} por día\n\n` +
+    `¿Con cuál facturás este tramo?`,
+    {si:'Lista de hoy', no:'La pactada'});
+  return usarNueva
+    ? {p: actual,  origen:'lista de precios de HOY'}
+    : {p: pactada, origen:'tarifa ya pactada en este alquiler'};
+}
+
 // Toma lo confirmado en el modal (fecha, hora, días a facturar) y sigue con la parte de
 // precio (paquete semanal vs. días sueltos) — misma lógica de siempre, sin cambios.
 async function continuarCerrarAlquilerAbierto(){
@@ -16719,13 +16753,9 @@ async function continuarCerrarAlquilerAbierto(){
   let montoExtra=0, tarifa=0, detalleExtra='';
   if(diasAFacturar>0){
     const eq=EQUIPOS.find(e=>e.id===a.equipoId);
-    // Preferimos la tarifa que ya quedó pactada/congelada en este alquiler (la que
-    // realmente se le cobró al cliente) antes que la lista de precios actual, para
-    // seguir cobrando estos días extra al mismo acuerdo — salvo que no esté guardada
-    // (alquileres viejos), donde caemos a la lista de precios vigente hoy.
-    const tieneSnapshot = a.tarifaDiaUsada!=null;
-    const p = tieneSnapshot ? {dia:a.tarifaDiaUsada, sem:a.tarifaSemUsada, mes:a.tarifaMesUsada} : (eq ? precioTipo(eq.tipo) : null);
-    const origenTarifa = tieneSnapshot ? 'tarifa ya pactada en este alquiler' : (eq?`tarifa ACTUAL de la lista de precios de ${eq.nombre} — este alquiler no tiene guardada la tarifa con la que se cotizó`:'');
+    // Qué tarifa se usa — ver tarifaParaTramo: si la lista cambió desde que se cargó
+    // el alquiler, pregunta; si no, sigue con la pactada sin molestar.
+    const {p, origen:origenTarifa} = await tarifaParaTramo(a, eq);
     const comoPaquete = await confirmSiNo(`Vas a facturar ${diasAFacturar} día${diasAFacturar!==1?'s':''}.`, {si:'Paquete semanal', no:'Días sueltos (tarifa diaria)'});
 
     if(comoPaquete && p && p.sem){
@@ -17316,12 +17346,9 @@ async function agregarDiasFacturablesAlq(id, periodo){
   }
 
   const eq=EQUIPOS.find(e=>e.id===a.equipoId);
-  // Preferimos la tarifa ya pactada/congelada en este alquiler antes que la lista de
-  // precios actual, para seguir cobrando estos días extra al mismo acuerdo — salvo
-  // que no esté guardada (alquileres viejos), donde caemos a la lista vigente hoy.
-  const tieneSnapshot = a.tarifaDiaUsada!=null;
-  const p = tieneSnapshot ? {dia:a.tarifaDiaUsada, sem:a.tarifaSemUsada, mes:a.tarifaMesUsada} : (eq ? precioTipo(eq.tipo) : null);
-  const origenTarifa = tieneSnapshot ? 'tarifa ya pactada en este alquiler' : (eq?`tarifa ACTUAL de la lista de precios de ${eq.nombre} — este alquiler no tiene guardada la tarifa con la que se cotizó`:'');
+  // Qué tarifa se usa — ver tarifaParaTramo: si la lista de precios cambió desde que
+  // se cargó el alquiler, pregunta con cuál facturar este tramo.
+  const {p, origen:origenTarifa} = await tarifaParaTramo(a, eq);
 
   let tarifa=0, montoFactura=0, detalle='';
   // Monto cargado a mano en el modal: manda tal cual y no se pregunta nada más sobre el
