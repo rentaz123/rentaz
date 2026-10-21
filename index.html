@@ -9738,7 +9738,10 @@ function guardarEquipoNuevo(){
   // Si ya hay unidades de este tipo sin numerar (ej. una sola "Genie GS-3246 (12m)" sin
   // "#1" todavía), las renombramos con "— #1, #2..." primero — mismo criterio que se usó
   // al sumar la segunda Marketlift S-19 — para que la nueva no se confunda con la vieja.
-  if(existentes.length && !existentes.every(e=>/—\s*#\d+$/.test(e.nombre))){
+  // ...pero NO si alguno fue renombrado a mano (ver renombrarEquipo): ahí los números
+  // son los de verdad de la empresa y renumerarlos solo se los lleva puestos.
+  const hayNombreAMano = existentes.some(e=>e.nombreManual);
+  if(existentes.length && !hayNombreAMano && !existentes.every(e=>/—\s*#\d+$/.test(e.nombre))){
     const base=baseNombreTipo(tipo);
     existentes.forEach((e,i)=>{ e.nombre = `${base} — #${i+1}`; });
   }
@@ -10988,7 +10991,17 @@ function renderEqFichaDatos(){
   const horas = horasDeEquipo(eq.id);
   const d = EQ_CHECKLIST[eq.id] || {};
   const fmtF = s => { if(!s) return ''; const[y,m,dd]=String(s).split('-'); return dd?`${dd}/${m}/${y}`:s; };
-  let h=`<div style="font-size:.74rem;color:var(--txt3);margin-bottom:.9rem;line-height:1.45">Estos datos salen impresos en la hoja de mantenimiento. Se cargan una vez y quedan.</div>`;
+  let h='';
+  if(esMateo()){
+    h+=`<div style="display:flex;align-items:center;gap:8px;background:var(--bg3);border-radius:8px;padding:.5rem .65rem;margin-bottom:.9rem">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.68rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.05em">Nombre de la máquina</div>
+          <div style="font-size:.86rem;font-weight:700;color:var(--txt);overflow-wrap:anywhere">${eq.nombre}</div>
+        </div>
+        <button onclick="renombrarEquipo(${eq.id})" class="btn-lim" style="width:auto;margin:0;padding:5px 11px;font-size:.74rem;flex-shrink:0">Cambiar</button>
+      </div>`;
+  }
+  h+=`<div style="font-size:.74rem;color:var(--txt3);margin-bottom:.9rem;line-height:1.45">Estos datos salen impresos en la hoja de mantenimiento. Se cargan una vez y quedan.</div>`;
   h+=DATOS_EQUIPO.map(c=>
     `<div style="margin-bottom:.6rem"><label class="flabel">${c.label}</label><input type="text" class="mayus" id="eqd-${c.key}" value="${String(eq[c.key]||'').replace(/"/g,'&quot;')}" placeholder="${c.ph}">${
       c.key==='nInterno' ? `<div style="font-size:.71rem;color:var(--txt3);margin-top:3px;line-height:1.4">El número con el que la conocen en el galpón. No tiene nada que ver con el "#${''}1 / #2" del nombre, que lo puso la app para distinguir las iguales.</div>` : ''
@@ -11027,6 +11040,57 @@ async function guardarDatosEq(){
   alert('Datos guardados.');
   renderEqFichaDatos();
 }
+/* ── RENOMBRAR UNA MÁQUINA ─────────────────────────────────────────────────
+   Solo Mateo. El nombre es lo que se ve en los alquileres, los contratos, los
+   reportes y el calendario: si cada uno lo puede cambiar, la misma máquina pasa
+   a llamarse distinto según quién la tocó último.
+
+   OJO con lo que no se ve: cada alquiler y cada problema reportado guardan una
+   COPIA del nombre del momento (equipoNombre). Si se cambia solo el del equipo,
+   los alquileres viejos siguen diciendo el nombre anterior y la app los marca
+   como "dato mal guardado" (ver el aviso de desajuste en validarChoqueEquipos).
+   Por eso el cambio se propaga a todos lados: es la misma máquina física, tiene
+   que llamarse igual en toda la historia. */
+async function renombrarEquipo(eqId){
+  const eq=EQUIPOS.find(e=>e.id===eqId); if(!eq) return;
+  if(!esMateo()){ alert('El nombre de las máquinas lo cambia Mateo.'); return; }
+
+  const nuevo = prompt(
+    `NOMBRE DE LA MÁQUINA\n\nEs el que se ve en alquileres, contratos y reportes.\n` +
+    `Para distinguir unidades iguales conviene dejar el número al final, así: "Genie GS-3246 (12m) — #7".`,
+    eq.nombre);
+  if(nuevo===null) return;
+  const limpio = String(nuevo).trim().replace(/\s+/g,' ');
+  if(!limpio){ alert('El nombre no puede quedar vacío.'); return; }
+  if(limpio === eq.nombre) return;
+
+  const repetido = EQUIPOS.find(o=>o.id!==eqId && String(o.nombre||'').trim().toLowerCase()===limpio.toLowerCase());
+  if(repetido){ alert(`Ya hay otra máquina que se llama "${repetido.nombre}".\n\nPoneles nombres distintos o no se van a poder diferenciar.`); return; }
+
+  const alqs = (ALQUILERES||[]).filter(a=>a.equipoId===eqId);
+  const incs = (EQ_INCIDENCIAS||[]).filter(i=>i.equipoId===eqId);
+  const cuantos = alqs.length + incs.length;
+  if(!(await confirmSiNo(
+    `"${eq.nombre}"\n      pasa a llamarse\n"${limpio}"\n\n` +
+    (cuantos
+      ? `Se actualizan también ${alqs.length} alquiler${alqs.length!==1?'es':''}${incs.length?` y ${incs.length} problema${incs.length!==1?'s':''} reportado${incs.length!==1?'s':''}`:''} que guardan el nombre viejo, para que toda la historia diga lo mismo.`
+      : 'No tiene alquileres cargados todavía.'),
+    {si:'Cambiar el nombre', no:'Cancelar'}))) return;
+
+  eq.nombre = limpio;
+  // Marca que el nombre lo puso una persona: evita que el alta de un equipo nuevo
+  // del mismo tipo renumere a todos los hermanos y se lleve puesta la numeración.
+  eq.nombreManual = true;
+  alqs.forEach(a=>{ a.equipoNombre = limpio; });
+  if(incs.length){ incs.forEach(i=>{ i.equipoNombre = limpio; }); guardarEqIncidencias(); }
+  marcarAccionUndo(`Renombrar máquina a "${limpio}"`, 'equipos');
+  guardar();
+  renderEq(); renderDashboard();
+  if(typeof renderAlq==='function') renderAlq();
+  if(pantallaActualNombre==='histmaq') renderHistorialMaquina();
+  if(document.getElementById('modal-eq-ficha').style.display==='flex'){ renderEqFichaHeader(eqId); renderEqFichaDatos(); }
+}
+
 /* Dar de baja una máquina que se vendió (o que salió de la flota por lo que sea).
    No borra nada — ver el bloque EQUIPOS DADOS DE BAJA. */
 const MOTIVOS_BAJA = ['Vendida', 'Dada de baja definitiva', 'Devuelta al proveedor', 'Otro'];
