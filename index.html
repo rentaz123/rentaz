@@ -10906,6 +10906,7 @@ function descargarHojaMantenimiento(eqId){
       <div>Horas de uso de la Máquina: <span>${esc(h0.horas||'-')} hs</span></div>
       <div>Nº de serie: <span>${esc(eq.nSerie||'-')}</span></div>
       <div>Nº de Chasis: <span>${esc(eq.nChasis||'-')}</span></div>
+      ${eq.dominio?`<div>Dominio: <span>${esc(eq.dominio)}</span></div>`:''}
     </div>
     ${secciones}
     ${h0.obs?`<div class="obs"><b>Observaciones:</b> ${esc(h0.obs)}</div>`:''}
@@ -10972,7 +10973,10 @@ const DATOS_EQUIPO = [
   {key:'modelo',  label:'Modelo',         ph:'LIFT 140W'},
   {key:'anio',    label:'Año',            ph:'2019'},
   {key:'nSerie',  label:'N° de serie',    ph:'03311500031'},
-  {key:'nChasis', label:'N° de chasis',   ph:'Si no tiene, dejalo vacío'}
+  {key:'nChasis', label:'N° de chasis',   ph:'Si no tiene, dejalo vacío'},
+  // Las que andan por la calle (autoelevadores, las montadas sobre camión) tienen
+  // patente, y las empresas la piden en la hoja de mantenimiento junto con la serie.
+  {key:'dominio', label:'Dominio (patente)', ph:'AB 123 CD — si no tiene, vacío'}
 ];
 // Lo que se muestra al lado del nombre cuando el número está cargado.
 function nroInternoEq(eq){
@@ -11650,8 +11654,10 @@ function renderHistorialMaquina(){
   const colEstado={disponible:'var(--azul)',alquilado:'#2e9e52',taller:'var(--rojo)'}[r.estado]||'var(--txt3)';
   const txtEstado={disponible:'Disponible',alquilado:'Alquilada'+(r.cliente?' a '+r.cliente:''),taller:'Fuera de servicio'}[r.estado]||'';
 
+  // El lápiz va pegado al título, que es donde uno busca cambiarle el nombre a algo.
+  // (Estaba solo adentro de "Datos" y ahí no lo encontraba nadie.) Solo Mateo.
   let h=`<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:.1rem">
-      <div class="sec-title" style="margin:0">${eq.nombre}</div>
+      <div class="sec-title" style="margin:0">${eq.nombre}${esMateo()?`<button onclick="renombrarEquipo(${eq.id})" title="Cambiar el nombre de esta máquina" style="background:none;border:none;color:var(--verde);cursor:pointer;font-size:.8rem;font-weight:700;padding:0 0 0 8px;vertical-align:middle">✎ Cambiar nombre</button>`:''}</div>
       <span style="font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:${colEstado};background:${colEstado}18;padding:4px 11px;border-radius:11px;white-space:nowrap">${txtEstado}</span>
     </div>
     <div class="sec-sub">${nroInternoEq(eq)?`<b style="color:var(--txt2)">${nroInternoEq(eq)}</b> · `:''}${grupoLabel(equipoMeta(eq))} · todo lo que se le fue haciendo</div>
