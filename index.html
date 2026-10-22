@@ -778,6 +778,7 @@ if ('serviceWorker' in navigator) {
         <div id="menu-mas">
           <button onclick="cerrarMenuMas();abrirCambiarClave()">Cambiar mi contrase&ntilde;a</button>
           <button id="btn-backup" onclick="cerrarMenuMas();descargarBackup()">Bajar copia ahora</button>
+          <button id="btn-permiso-taller" style="display:none" onclick="cerrarMenuMas();abrirPermisoTaller()">Permiso de taller (alquileres largos)</button>
           <button id="btn-faceid-menu" style="display:none" onclick="cerrarMenuMas();alternarFaceId()">Entrar con Face ID en este celular</button>
           <div style="height:1px;background:var(--border);margin:5px 8px"></div>
           <button onclick="cerrarMenuMas();logout()">Cerrar sesi&oacute;n</button>
@@ -822,6 +823,10 @@ if ('serviceWorker' in navigator) {
         <div style="font-size:.9rem;font-weight:700;color:var(--txt)">+ Cargar una solicitud</div>
         <div style="font-size:.78rem;color:var(--txt2);margin-top:2px">Llam&oacute; un cliente pidiendo un equipo: anot&aacute; los datos y le llega a la oficina.</div>
       </button>
+      <!-- Recordatorio del permiso temporal de taller. Un permiso que se prende "por
+           unos días" y nadie apaga deja de ser temporal. Ver renderAvisoPermisoTaller. -->
+      <div id="dash-permiso-taller"></div>
+
       <!-- Aviso de máquinas trabadas. Se llena solo desde renderDashboard() y queda
            vacío cuando no hay ninguna, así el panel no se ensucia. -->
       <div id="dash-puesta-al-dia"></div>
@@ -2467,6 +2472,38 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
   </div>
 
   <!-- Agregar equipo nuevo a la flota -->
+  <!-- PERMISO TEMPORAL DE TALLER
+       Para cuando Mateo no está: taller puede cargar alquileres largos sin tener que
+       esperar a que él los cargue. Es un permiso que se prende y se apaga desde acá,
+       sin tocar el código ni volver a subir el archivo.
+       Mientras está prendido se ve un cartel en Inicio, para que no quede encendido
+       tres meses después del viaje sin que nadie se acuerde. -->
+  <div id="modal-permiso-taller" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:440;align-items:center;justify-content:center;">
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:420px;max-width:92vw;max-height:90vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.3rem;">
+        <div style="font-size:1rem;font-weight:700;color:var(--txt);">Permiso de taller</div>
+        <button onclick="cerrarPermisoTaller()" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">&#10005;</button>
+      </div>
+      <div style="font-size:.8rem;color:var(--txt2);line-height:1.5;margin-bottom:1rem">
+        Normalmente taller carga alquileres de <b>1 d&iacute;a</b> o abiertos. Para m&aacute;s d&iacute;as te pasan una solicitud.
+        Si no vas a estar, prend&eacute; esto y pueden cargar todo.
+      </div>
+      <label style="display:flex;align-items:center;gap:9px;cursor:pointer;background:var(--bg3);border-radius:8px;padding:.6rem .7rem;margin-bottom:.7rem">
+        <input type="checkbox" id="permtaller-check" onchange="togglePermisoTallerUI()" style="width:18px;height:18px;cursor:pointer;accent-color:var(--verde)">
+        <span style="font-size:.88rem;font-weight:700;color:var(--txt)">Taller puede cargar alquileres largos</span>
+      </label>
+      <div id="permtaller-dias-box" style="display:none;margin-bottom:.9rem">
+        <label class="flabel">Hasta cu&aacute;ntos d&iacute;as</label>
+        <input type="number" id="permtaller-dias" min="1" max="365" value="30">
+      </div>
+      <div id="permtaller-estado" style="font-size:.74rem;color:var(--txt3);line-height:1.45;margin-bottom:.9rem"></div>
+      <div style="display:flex;gap:8px">
+        <button onclick="guardarPermisoTaller()" class="btn-nuevo" style="flex:1;padding:.7rem">Guardar</button>
+        <button onclick="cerrarPermisoTaller()" class="btn-lim" style="flex:1;padding:8px">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
   <!-- HORAS DEL HORÓMETRO
        Se pide cuando taller marca que el equipo volvió. Es el único momento en que
        alguien está parado al lado de la máquina con el tablero a la vista; si no se
@@ -2906,7 +2943,8 @@ const SB_CONFIGS = [
   { clave:'PRECIOS_USD_OVERRIDE', get:()=>PRECIOS_USD_OVERRIDE, set:v=>PRECIOS_USD_OVERRIDE=v },
   { clave:'DESTINOS_KM',      get:()=>DESTINOS_KM,      set:v=>DESTINOS_KM=v },
   { clave:'CONTRATO_CFG',     get:()=>CONTRATO_CFG,     set:v=>CONTRATO_CFG=v },
-  { clave:'EQ_MANTENIMIENTO', get:()=>EQ_MANTENIMIENTO, set:v=>EQ_MANTENIMIENTO=v }
+  { clave:'EQ_MANTENIMIENTO', get:()=>EQ_MANTENIMIENTO, set:v=>EQ_MANTENIMIENTO=v },
+  { clave:'PERMISO_TALLER',   get:()=>PERMISO_TALLER,   set:v=>PERMISO_TALLER=v }
 ];
 
 // ── Foto de lo ultimo que sabemos que quedo guardado ──────────────────────
@@ -3006,7 +3044,8 @@ function estadoCompleto(){
     SOLICITUDES_ESPERA: typeof SOLICITUDES_ESPERA!=='undefined'?SOLICITUDES_ESPERA:[],
     FICHAS_TECNICAS: typeof FICHAS_TECNICAS!=='undefined'?FICHAS_TECNICAS:{},
     CONTRATO_CFG: typeof CONTRATO_CFG!=='undefined'?CONTRATO_CFG:{},
-    EQ_MANTENIMIENTO: typeof EQ_MANTENIMIENTO!=='undefined'?EQ_MANTENIMIENTO:{}
+    EQ_MANTENIMIENTO: typeof EQ_MANTENIMIENTO!=='undefined'?EQ_MANTENIMIENTO:{},
+    PERMISO_TALLER: typeof PERMISO_TALLER!=='undefined'?PERMISO_TALLER:{}
   };
 }
 
@@ -3091,7 +3130,9 @@ function aplicarEstadoRemoto(estado, esSincroTiempoReal){
   if(estado.FICHAS_TECNICAS) FICHAS_TECNICAS = estado.FICHAS_TECNICAS;
   if(estado.CONTRATO_CFG) CONTRATO_CFG = estado.CONTRATO_CFG;
   if(estado.EQ_MANTENIMIENTO) EQ_MANTENIMIENTO = estado.EQ_MANTENIMIENTO;
+  if(estado.PERMISO_TALLER) PERMISO_TALLER = estado.PERMISO_TALLER;
   localStorage.setItem('rtz_contrato_cfg', JSON.stringify(CONTRATO_CFG));
+  localStorage.setItem('rtz_permiso_taller', JSON.stringify(PERMISO_TALLER));
   localStorage.setItem('rtz_eqmantenimiento', JSON.stringify(EQ_MANTENIMIENTO));
   localStorage.setItem('rtz_fichas', JSON.stringify(FICHAS_TECNICAS));
   localStorage.setItem('rtz_precios_override', JSON.stringify(PRECIOS_OVERRIDE));
@@ -3906,6 +3947,32 @@ function renderCobroPendiente(){
         </div>
       </div>`;
     }).join('');
+}
+
+// Mientras el permiso de taller esté prendido, se ve. A los días avisa hace cuánto:
+// la idea es que vuelva a apagarse al volver del viaje, no que quede así para siempre.
+function renderAvisoPermisoTaller(){
+  const caja = document.getElementById('dash-permiso-taller');
+  if(!caja) return;
+  const p = PERMISO_TALLER;
+  if(!p || !p.alquileresLargos || !esMateo()){ caja.innerHTML=''; return; }
+  const dias = p.prendidoEn ? Math.floor((Date.now()-p.prendidoEn)/86400000) : 0;
+  caja.innerHTML = `<div style="background:#e5a83b18;border:1px solid #e5a83b66;border-left:3px solid #e5a83b;border-radius:0 10px 10px 0;padding:.7rem .9rem;margin-bottom:1rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:200px">
+        <div style="font-size:.86rem;font-weight:700;color:var(--txt)">Taller puede cargar alquileres de hasta ${p.topeDias} día${p.topeDias!==1?'s':''}</div>
+        <div style="font-size:.76rem;color:var(--txt2);margin-top:2px">Permiso temporal, prendido ${dias===0?'hoy':'hace '+dias+' día'+(dias!==1?'s':'')}${p.prendidoPor?' por '+p.prendidoPor:''}. Acordate de apagarlo cuando vuelvas.</div>
+      </div>
+      <button onclick="apagarPermisoTallerRapido()" class="btn-lim" style="width:auto;margin:0;padding:6px 12px;font-size:.78rem;flex-shrink:0">Apagar</button>
+    </div>`;
+}
+async function apagarPermisoTallerRapido(){
+  if(!esMateo()) return;
+  if(!(await confirmSiNo(`¿Volver a limitar a taller?\n\nVan a poder cargar solo alquileres de ${TOPE_DIAS_TALLER} día o abiertos, como siempre.`, {si:'Apagar', no:'Dejarlo'}))) return;
+  PERMISO_TALLER = {alquileresLargos:false, topeDias:(PERMISO_TALLER&&PERMISO_TALLER.topeDias)||30, prendidoPor:'', prendidoEn:null};
+  marcarAccionUndo('Volver a limitar a taller', 'home');
+  guardarPermisoTaller_();
+  aplicarRestriccionesRol();
+  renderDashboard();
 }
 
 /* ── LA MÁQUINA FIGURA LIBRE PERO EL ALQUILER ESTÁ CORRIENDO ───────────────
@@ -4967,13 +5034,71 @@ let ROL_ACTUAL = localStorage.getItem('rtz_rol') || 'admin';
 // sale la maquina, y la fecha de vuelta se define despues). Cualquier otra duracion
 // la carga la oficina. Antes el tope era 4 dias.
 const TOPE_DIAS_TALLER = 1;
+
+/* PERMISO TEMPORAL: cuando Mateo no está, taller tiene que poder cargar todo. En vez
+   de cambiar el código y volver a subir el archivo cada vez que se va de viaje, es un
+   interruptor que prende y apaga él desde el menú ⋮. Se sincroniza como el resto, así
+   que lo prende en una compu y vale en todas.
+   Mientras está prendido sale un cartel en Inicio — si no, queda encendido para
+   siempre y el tope deja de existir sin que nadie lo haya decidido. */
+let PERMISO_TALLER = JSON.parse(localStorage.getItem('rtz_permiso_taller') || 'null')
+  || {alquileresLargos:false, topeDias:30, prendidoPor:'', prendidoEn:null};
+function guardarPermisoTaller_(){
+  localStorage.setItem('rtz_permiso_taller', JSON.stringify(PERMISO_TALLER));
+  sincronizarFirebase();
+}
+// El tope que rige AHORA. Todo lo que limita a taller pasa por acá.
+function topeDiasTaller(){
+  if(PERMISO_TALLER && PERMISO_TALLER.alquileresLargos){
+    const n = parseInt(PERMISO_TALLER.topeDias);
+    if(!isNaN(n) && n > 0) return n;
+  }
+  return TOPE_DIAS_TALLER;
+}
 function limitarDiasTaller(dias){
-  if(ROL_ACTUAL==='taller' && dias>TOPE_DIAS_TALLER){
-    alert(`Como taller, se puede cargar hasta ${TOPE_DIAS_TALLER} día${TOPE_DIAS_TALLER!==1?'s':''}. Para más días, el cliente tiene que hablar directamente con Mateo.`);
-    return TOPE_DIAS_TALLER;
+  const tope = topeDiasTaller();
+  if(ROL_ACTUAL==='taller' && dias>tope){
+    alert(`Como taller, se puede cargar hasta ${tope} día${tope!==1?'s':''}. Para más días, el cliente tiene que hablar directamente con Mateo.`);
+    return tope;
   }
   return dias;
 }
+function abrirPermisoTaller(){
+  if(!esMateo()){ alert('Este permiso lo maneja Mateo.'); return; }
+  const p = PERMISO_TALLER || {};
+  document.getElementById('permtaller-check').checked = !!p.alquileresLargos;
+  document.getElementById('permtaller-dias').value = p.topeDias || 30;
+  togglePermisoTallerUI();
+  const fmtF = ts => ts ? new Date(ts).toLocaleDateString('es-AR') : '';
+  document.getElementById('permtaller-estado').textContent = p.alquileresLargos
+    ? `Prendido${p.prendidoPor?' por '+p.prendidoPor:''}${p.prendidoEn?' el '+fmtF(p.prendidoEn):''}.`
+    : `Apagado — hoy taller carga hasta ${TOPE_DIAS_TALLER} día o alquileres abiertos.`;
+  document.getElementById('modal-permiso-taller').style.display='flex';
+}
+function cerrarPermisoTaller(){ document.getElementById('modal-permiso-taller').style.display='none'; }
+function togglePermisoTallerUI(){
+  const on = document.getElementById('permtaller-check').checked;
+  document.getElementById('permtaller-dias-box').style.display = on ? 'block' : 'none';
+}
+function guardarPermisoTaller(){
+  if(!esMateo()){ cerrarPermisoTaller(); return; }
+  const on = document.getElementById('permtaller-check').checked;
+  const n = parseInt(document.getElementById('permtaller-dias').value);
+  if(on && (isNaN(n) || n<1 || n>365)){ alert('Poné una cantidad de días entre 1 y 365.'); return; }
+  const estabaOn = !!(PERMISO_TALLER && PERMISO_TALLER.alquileresLargos);
+  PERMISO_TALLER = on
+    ? {alquileresLargos:true, topeDias:n, prendidoPor:nombreUsuarioActual(), prendidoEn: estabaOn && PERMISO_TALLER.prendidoEn ? PERMISO_TALLER.prendidoEn : Date.now()}
+    : {alquileresLargos:false, topeDias:n||30, prendidoPor:'', prendidoEn:null};
+  marcarAccionUndo(on?`Permitir a taller alquileres de hasta ${n} días`:'Volver a limitar a taller', 'home');
+  guardarPermisoTaller_();
+  cerrarPermisoTaller();
+  aplicarRestriccionesRol();
+  renderDashboard();
+  alert(on
+    ? `Listo. Taller puede cargar alquileres de hasta ${n} día${n!==1?'s':''}.\n\nVa a quedar un cartel en Inicio para que te acuerdes de apagarlo cuando vuelvas.`
+    : `Listo. Taller vuelve a cargar hasta ${TOPE_DIAS_TALLER} día o alquileres abiertos.`);
+}
+
 // Taller anota los datos de un cliente que pide un alquiler de más de
 // TOPE_DIAS_TALLER días — queda pendiente para que Mateo lo llame (ver
 // avisarSolicitudesLargasNuevas, que solo avisa al rol admin, no a facturación).
@@ -5892,6 +6017,9 @@ function aplicarRestriccionesRol(){
     const btnActivos=document.getElementById('falq-activos');
     if(btnActivos) filtAlq('activos', btnActivos);
   }
+  // El permiso de taller lo maneja solo Mateo.
+  const btnPerm=document.getElementById('btn-permiso-taller');
+  if(btnPerm) btnPerm.style.display = esMateo() ? 'block' : 'none';
   const respBox=document.getElementById('taller-resp-actual');
   if(respBox){
     respBox.style.display = esTaller ? 'block' : 'none';
@@ -5909,7 +6037,7 @@ function aplicarRestriccionesRol(){
   // el atributo "max" de los campos numéricos para que el propio input lo sugiera.
   ['cot-dias','alq-dias-cant'].forEach(elId=>{
     const el=document.getElementById(elId);
-    if(el) esTaller ? el.setAttribute('max', TOPE_DIAS_TALLER) : el.setAttribute('max','365');
+    if(el) esTaller ? el.setAttribute('max', topeDiasTaller()) : el.setAttribute('max','365');
   });
   const solLargaBox=document.getElementById('cot-solicitud-larga-box');
   if(solLargaBox) solLargaBox.style.display = esTaller ? 'block' : 'none';
@@ -6945,6 +7073,7 @@ function renderDashboard(){
 
   renderCobroPendiente();
   renderAvisoFechasRotas();
+  renderAvisoPermisoTaller();
   renderMaquinasLibresConAlquiler();
   renderMantenimientoAVencer();
   renderHorasPendientes();
@@ -7667,12 +7796,13 @@ function calcDiasDesde(){
   }
   if(desde&&hasta&&hasta>=desde){
     let dias=Math.round((new Date(hasta+'T00:00:00')-new Date(desde+'T00:00:00'))/86400000)+1;
-    if(ROL_ACTUAL==='taller' && dias>TOPE_DIAS_TALLER){
-      const maxHastaD=new Date(desde+'T00:00:00'); maxHastaD.setDate(maxHastaD.getDate()+(TOPE_DIAS_TALLER-1));
+    const topeT = topeDiasTaller();
+    if(ROL_ACTUAL==='taller' && dias>topeT){
+      const maxHastaD=new Date(desde+'T00:00:00'); maxHastaD.setDate(maxHastaD.getDate()+(topeT-1));
       hasta=maxHastaD.toISOString().slice(0,10);
       document.getElementById('cot-fecha-hasta').value=hasta;
-      dias=TOPE_DIAS_TALLER;
-      alert(`Como taller, se puede cotizar hasta ${TOPE_DIAS_TALLER} día${TOPE_DIAS_TALLER!==1?'s':''}. Para más días, el cliente tiene que hablar directamente con Mateo.`);
+      dias=topeT;
+      alert(`Como taller, se puede cotizar hasta ${topeT} día${topeT!==1?'s':''}. Para más días, el cliente tiene que hablar directamente con Mateo.`);
     }
     fechaDesdeStr=desde; fechaHastaStr=hasta;
     document.getElementById('cot-dias').value=dias;
@@ -14300,16 +14430,17 @@ function calcDiasAlq(){
     // En un alquiler ABIERTO la fecha de retorno es provisoria: se pone cualquiera para
     // poder cargarlo y despues la corrige la facturacion. Aplicarle el tope no tiene
     // sentido, y les saltaba un cartel cada vez que lo tildaban.
-    if(!abierto && ROL_ACTUAL==='taller' && dias>TOPE_DIAS_TALLER){
+    const topeT = topeDiasTaller();
+    if(!abierto && ROL_ACTUAL==='taller' && dias>topeT){
       // El último día cuenta o no según la regla del mediodía; ajustamos la cantidad
-      // de días calendario a sumar para que el total dé exactamente TOPE_DIAS_TALLER.
+      // de días calendario a sumar para que el total dé exactamente el tope.
       const cuentaUltimoDia=(horaRetiro||'00:00')>'12:00';
-      const diffNecesario=Math.max(0, TOPE_DIAS_TALLER-(cuentaUltimoDia?1:0));
+      const diffNecesario=Math.max(0, topeT-(cuentaUltimoDia?1:0));
       const maxHastaD=new Date(desde+'T00:00:00'); maxHastaD.setDate(maxHastaD.getDate()+diffNecesario);
       hasta=maxHastaD.toISOString().slice(0,10);
       document.getElementById('alq-hasta').value=hasta;
-      dias=TOPE_DIAS_TALLER;
-      alert(`Como taller, se puede cargar hasta ${TOPE_DIAS_TALLER} día${TOPE_DIAS_TALLER!==1?'s':''}. Para más días, el cliente tiene que hablar directamente con Mateo.`);
+      dias=topeT;
+      alert(`Como taller, se puede cargar hasta ${topeT} día${topeT!==1?'s':''}. Para más días, el cliente tiene que hablar directamente con Mateo.`);
     }
     // Días que el cliente no usa (domingos, feriados, obra parada): se descuentan de
     // lo que se cobra, pero el equipo sigue reservado todo el período.
