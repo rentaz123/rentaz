@@ -10931,7 +10931,6 @@ function renderEqFichaMantenimiento(){
   const st = estadoMantenimiento(eq.id);
   const fmtF = s => { if(!s) return '—'; const[y,m,d]=String(s).split('-'); return d?`${d}/${m}/${y}`:s; };
   const horasEq = horasDeEquipo(eq.id);
-  const faltanDatos = !eq.nInterno || !eq.marca || !eq.modelo || !eq.nSerie;
 
   const COL = {sin:'var(--txt3)', vigente:'var(--verde)', porvencer:'#b57d10', vencida:'var(--rojo)'}[st.estado];
   const TXT = {
@@ -10943,10 +10942,12 @@ function renderEqFichaMantenimiento(){
 
   let h=`<div style="background:${COL}18;border-left:3px solid ${COL};border-radius:0 8px 8px 0;padding:.55rem .75rem;margin-bottom:.9rem;font-size:.8rem;color:var(--txt);line-height:1.45">${TXT}</div>`;
 
-  if(faltanDatos){
+  // Se nombra SOLO lo que falta de verdad — ver datosQueFaltanEq.
+  const faltan = datosQueFaltanEq(eq);
+  if(faltan.length){
     h+=`<div style="background:#e5a83b18;border:1px solid #e5a83b55;border-radius:8px;padding:.55rem .75rem;margin-bottom:.9rem;font-size:.78rem;color:var(--txt);line-height:1.45">
-        Faltan el N° de máquina, la marca, el modelo o el N° de serie: la hoja sale incompleta.
-        <a href="javascript:void(0)" onclick="setEqFichaTab('datos')" style="color:var(--verde);font-weight:700">Cargarlos ahora</a>
+        ${faltan.length===1?'Falta':'Faltan'} en los <b>Datos de la máquina</b>: ${faltan.join(', ')}.
+        <a href="javascript:void(0)" onclick="setEqFichaTab('datos')" style="color:var(--verde);font-weight:700">Cargar${faltan.length===1?'lo':'los'} ahora</a>
       </div>`;
   }
 
@@ -11108,6 +11109,19 @@ const DATOS_EQUIPO = [
   // patente, y las empresas la piden en la hoja de mantenimiento junto con la serie.
   {key:'dominio', label:'Dominio (patente)', ph:'AB 123 CD — si no tiene, vacío'}
 ];
+/* Qué le falta a ESTA máquina para que la hoja salga completa. Devuelve los nombres,
+   no un sí/no: el cartel decía "faltan el N° de máquina, la marca, el modelo o el N°
+   de serie" aunque faltara uno solo, y mandaba a revisar cuatro campos que ya estaban
+   cargados. El año, el chasis y el dominio no entran: muchas máquinas no tienen. */
+const DATOS_EQUIPO_OPCIONALES = ['anio','nChasis','dominio'];
+function datosQueFaltanEq(eq){
+  if(!eq) return [];
+  return DATOS_EQUIPO
+    .filter(c => !DATOS_EQUIPO_OPCIONALES.includes(c.key))
+    .filter(c => !String(eq[c.key]||'').trim())
+    .map(c => c.label.replace(/\s*\(.*\)\s*$/,''));
+}
+
 // Lo que se muestra al lado del nombre cuando el número está cargado.
 function nroInternoEq(eq){
   const n = eq && eq.nInterno ? String(eq.nInterno).trim() : '';
@@ -11762,8 +11776,12 @@ function renderHistorialMaquina(){
   const problemas = (EQ_INCIDENCIAS||[]).filter(i=>i.equipoId===histMaqId);
   const abiertos = problemas.filter(i=>i.estado==='abierta').length;
   const fotos = cuantasFotosEq(histMaqId);
-  // Sin marca/modelo/serie la hoja de mantenimiento sale incompleta: se avisa en el botón.
-  const faltanDatos = !eq.nInterno || !eq.marca || !eq.modelo || !eq.nSerie;
+  // Si falta algún dato, el botón lo dice — y dice CUÁL si es uno solo, para no mandar
+  // a revisar una ficha entera por un campo. Ver datosQueFaltanEq.
+  const faltanLista = datosQueFaltanEq(eq);
+  const faltanDatos = faltanLista.length > 0;
+  const avisoDatos = !faltanDatos ? ''
+    : (faltanLista.length===1 ? ' ⚠ falta '+faltanLista[0] : ' ⚠ faltan '+faltanLista.length);
   // Y el estado de la hoja, en el botón: vencida o por vencer tiene que verse sin entrar.
   const stMant = estadoMantenimiento(histMaqId);
   const colorMant = {vencida:'var(--rojo)', porvencer:'#b57d10', sin:'#b57d10', vigente:''}[stMant.estado];
@@ -11797,7 +11815,7 @@ function renderHistorialMaquina(){
       <button onclick="abrirFichaEq(${eq.id},'prob')" class="btn-lim" style="padding:7px 13px;font-size:.78rem${abiertos?';border-color:var(--rojo);color:var(--rojo)':''}">Reportar / ver problemas${abiertos?' ('+abiertos+')':''}</button>
       <button onclick="abrirFichaEq(${eq.id},'mant')" class="btn-lim" style="padding:7px 13px;font-size:.78rem${colorMant?';border-color:'+colorMant+';color:'+colorMant:''}">Hoja de mantenimiento${avisoMant}</button>
       <button onclick="abrirFichaEq(${eq.id},'fotos')" class="btn-lim" style="padding:7px 13px;font-size:.78rem">Fotos${fotos?' ('+fotos+')':''}</button>
-      <button onclick="abrirFichaEq(${eq.id},'datos')" class="btn-lim" style="padding:7px 13px;font-size:.78rem${faltanDatos?';border-color:#e5a83b;color:#b57d10':''}">Datos${faltanDatos?' ⚠':''}</button>
+      <button onclick="abrirFichaEq(${eq.id},'datos')" class="btn-lim" style="padding:7px 13px;font-size:.78rem${faltanDatos?';border-color:#e5a83b;color:#b57d10':''}">Datos${avisoDatos}</button>
     </div>
     ${formServicioHTML('hm')}
 
