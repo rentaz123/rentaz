@@ -2497,13 +2497,17 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
         <button onclick="cerrarPermisoTaller()" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">&#10005;</button>
       </div>
       <div style="font-size:.8rem;color:var(--txt2);line-height:1.5;margin-bottom:1rem">
-        Normalmente taller carga alquileres de <b>1 d&iacute;a</b> o abiertos. Para m&aacute;s d&iacute;as te pasan una solicitud.
-        Si no vas a estar, prend&eacute; esto y pueden cargar todo.
+        Normalmente taller carga alquileres de <b>1 d&iacute;a</b> o abiertos, y no tiene Cotizador.
+        Si no vas a estar, prend&eacute; esto y pueden resolver solos.
       </div>
-      <label style="display:flex;align-items:center;gap:9px;cursor:pointer;background:var(--bg3);border-radius:8px;padding:.6rem .7rem;margin-bottom:.7rem">
+      <label style="display:flex;align-items:center;gap:9px;cursor:pointer;background:var(--bg3);border-radius:8px;padding:.6rem .7rem;margin-bottom:.4rem">
         <input type="checkbox" id="permtaller-check" onchange="togglePermisoTallerUI()" style="width:18px;height:18px;cursor:pointer;accent-color:var(--verde)">
-        <span style="font-size:.88rem;font-weight:700;color:var(--txt)">Taller puede cargar alquileres largos</span>
+        <span style="font-size:.88rem;font-weight:700;color:var(--txt)">Taller puede cargar alquileres largos y cotizar</span>
       </label>
+      <div style="font-size:.73rem;color:var(--txt3);line-height:1.5;margin-bottom:.8rem;padding-left:.2rem">
+        Les habilita el <b>Cotizador</b> (para los viajes afuera) y sube el tope de d&iacute;as.
+        Siguen cotizando a <b>tarifa de lista</b>: el precio especial no se les habilita.
+      </div>
       <div id="permtaller-dias-box" style="display:none;margin-bottom:.9rem">
         <label class="flabel">Hasta cu&aacute;ntos d&iacute;as</label>
         <input type="number" id="permtaller-dias" min="1" max="365" value="30">
@@ -3971,7 +3975,7 @@ function renderAvisoPermisoTaller(){
   const dias = p.prendidoEn ? Math.floor((Date.now()-p.prendidoEn)/86400000) : 0;
   caja.innerHTML = `<div style="background:#e5a83b18;border:1px solid #e5a83b66;border-left:3px solid #e5a83b;border-radius:0 10px 10px 0;padding:.7rem .9rem;margin-bottom:1rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
       <div style="flex:1;min-width:200px">
-        <div style="font-size:.86rem;font-weight:700;color:var(--txt)">Taller puede cargar alquileres de hasta ${p.topeDias} día${p.topeDias!==1?'s':''}</div>
+        <div style="font-size:.86rem;font-weight:700;color:var(--txt)">Taller puede cotizar y cargar alquileres de hasta ${p.topeDias} día${p.topeDias!==1?'s':''}</div>
         <div style="font-size:.76rem;color:var(--txt2);margin-top:2px">Permiso temporal, prendido ${dias===0?'hoy':'hace '+dias+' día'+(dias!==1?'s':'')}${p.prendidoPor?' por '+p.prendidoPor:''}. Acordate de apagarlo cuando vuelvas.</div>
       </div>
       <button onclick="apagarPermisoTallerRapido()" class="btn-lim" style="width:auto;margin:0;padding:6px 12px;font-size:.78rem;flex-shrink:0">Apagar</button>
@@ -3979,7 +3983,7 @@ function renderAvisoPermisoTaller(){
 }
 async function apagarPermisoTallerRapido(){
   if(!esMateo()) return;
-  if(!(await confirmSiNo(`¿Volver a limitar a taller?\n\nVan a poder cargar solo alquileres de ${TOPE_DIAS_TALLER} día o abiertos, como siempre.`, {si:'Apagar', no:'Dejarlo'}))) return;
+  if(!(await confirmSiNo(`¿Volver a limitar a taller?\n\nSe les saca el Cotizador y vuelven a cargar solo alquileres de ${TOPE_DIAS_TALLER} día o abiertos, como siempre.`, {si:'Apagar', no:'Dejarlo'}))) return;
   PERMISO_TALLER = {alquileresLargos:false, topeDias:(PERMISO_TALLER&&PERMISO_TALLER.topeDias)||30, prendidoPor:'', prendidoEn:null};
   marcarAccionUndo('Volver a limitar a taller', 'home');
   guardarPermisoTaller_();
@@ -5181,8 +5185,8 @@ function guardarPermisoTaller(){
   aplicarRestriccionesRol();
   renderDashboard();
   alert(on
-    ? `Listo. Taller puede cargar alquileres de hasta ${n} día${n!==1?'s':''}.\n\nVa a quedar un cartel en Inicio para que te acuerdes de apagarlo cuando vuelvas.`
-    : `Listo. Taller vuelve a cargar hasta ${TOPE_DIAS_TALLER} día o alquileres abiertos.`);
+    ? `Listo. Taller ya tiene el Cotizador y puede cargar alquileres de hasta ${n} día${n!==1?'s':''}.\n\nVa a quedar un cartel en Inicio para que te acuerdes de apagarlo cuando vuelvas.`
+    : `Listo. Taller vuelve a cargar hasta ${TOPE_DIAS_TALLER} día o alquileres abiertos, y se le saca el Cotizador.`);
 }
 
 // Taller anota los datos de un cliente que pide un alquiler de más de
@@ -5671,6 +5675,28 @@ if(TALLER_RESPONSABLE==='Tomás' || TALLER_RESPONSABLE==='Otro'){
 // es historia y se sigue leyendo igual donde esté escrita.
 const TALLER_PERSONAS = ['Alejandro', 'Alex'];
 
+/* Nombre completo y puesto para la FIRMA de los documentos que salen de la empresa.
+   Adentro de la app alcanza con "Alex", pero una hoja de mantenimiento que firma
+   "ALEX" no dice nada: la empresa que la recibe tiene que poder identificar quién la
+   hizo. Solo se usa al imprimir — en pantalla seguimos con el nombre corto. */
+const FIRMA_RESPONSABLE = {
+  'Alejandro': {nombre:'Alejandro Ribodetti', puesto:'Taller'},
+  'Alex':      {nombre:'Alex Medina',         puesto:'Taller'},
+  'Mateo':     {nombre:'Mateo Della Santa',   puesto:'Rentaz S.A.'},
+  'Walter':    {nombre:'Walter',              puesto:'Administración'},
+  'Paloma':    {nombre:'Paloma',              puesto:'Rentaz S.A.'},
+  'Fabiana':   {nombre:'Fabiana',             puesto:'Administración'}
+};
+// Devuelve {nombre, puesto} para quien firma. Si es alguien que no está en la lista
+// (un nombre escrito a mano), se usa tal cual y sin puesto inventado.
+function firmaDe(quien){
+  const txt = String(quien||'').trim();
+  if(!txt) return {nombre:'', puesto:''};
+  const clave = Object.keys(FIRMA_RESPONSABLE)
+    .find(k => k.toLowerCase() === txt.toLowerCase());
+  return clave ? FIRMA_RESPONSABLE[clave] : {nombre:txt, puesto:''};
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  ENTRAR — ahora contra Supabase de verdad
 //
@@ -5954,6 +5980,17 @@ function entrarAlApp(){
 // histmaq (la hoja de vida de una máquina) sí la ve taller: es su propio trabajo
 // anotado. Lo único que no ve de ahí es el costo — eso se filtra adentro.
 const PANTALLAS_TALLER = ['home','calendario','equipos','histmaq','clientes','alquileres','solicitudes','control','precios','rivadavia'];
+/* Mientras está prendido el permiso temporal (ver PERMISO_TALLER), taller suma el
+   Cotizador: si no está Mateo, tienen que poder cotizar un viaje afuera sin llamarlo.
+   Va con el MISMO interruptor que los alquileres largos a propósito — una sola cosa
+   para apagar al volver, en vez de dos que se pueden olvidar por la mitad.
+   Lo que NO se les habilita es el precio especial: cotizan a tarifa de lista. */
+const PANTALLAS_TALLER_EXTRA = ['cotizador'];
+function pantallasDeTaller(){
+  return (PERMISO_TALLER && PERMISO_TALLER.alquileresLargos)
+    ? PANTALLAS_TALLER.concat(PANTALLAS_TALLER_EXTRA)
+    : PANTALLAS_TALLER;
+}
 // Cambia la vista a la de otro usuario. Solo funciona si el que esta conectado
 // de verdad es Mateo: aunque alguien lo llame a mano desde la consola, si no es
 // el, no hace nada.
@@ -6077,7 +6114,7 @@ function aplicarRestriccionesRol(){
   // las metiera en este bucle, a taller le desaparecerían todos los grupos.
   document.querySelectorAll('#sidebar nav button:not(.nav-grupo):not(.nav-vercomo)').forEach(btn=>{
     const s = btn.id.replace('nav-','');
-    btn.style.display = (!esTaller || PANTALLAS_TALLER.includes(s)) ? '' : 'none';
+    btn.style.display = (!esTaller || pantallasDeTaller().includes(s)) ? '' : 'none';
   });
   // Facturación no tiene acceso a Reportes por el momento.
   const navReportes=document.getElementById('nav-reportes');
@@ -6135,7 +6172,7 @@ function aplicarRestriccionesRol(){
   const btnPdf=document.getElementById('cot-btn-pdf');
   if(btnPdf) btnPdf.textContent = esTaller ? 'Imprimir presupuesto' : 'Generar PDF';
   // Si la pantalla activa quedó fuera del alcance de taller, mandamos a Inicio.
-  if(esTaller && !PANTALLAS_TALLER.includes(pantallaActualNombre)){
+  if(esTaller && !pantallasDeTaller().includes(pantallaActualNombre)){
     goTo('home');
   }
   if(esFacturacion && pantallaActualNombre==='reportes'){
@@ -6350,10 +6387,11 @@ function refrescarPantallaActual(){
 function goTo(s){
   // Facturación no tiene acceso a Reportes por el momento.
   if(s==='reportes' && ROL_ACTUAL==='facturacion') s='home';
-  // Quién cotizó a quién y por cuánto no se le muestra a taller, igual que el
-  // seguimiento de cotizaciones en Inicio. El botón ya está escondido; esto es por si
-  // se llega de otra forma (un enlace viejo, la consola).
-  if(s==='nocerrados' && ROL_ACTUAL==='taller') s='home';
+  /* Taller solo entra a lo que le corresponde. Esconder el botón del menú no alcanza:
+     se puede llegar con el botón "atrás" del navegador, con un enlace viejo o desde
+     otra pantalla. Esto vale también para el Cotizador cuando se apaga el permiso
+     temporal estando parados ahí. */
+  if(ROL_ACTUAL==='taller' && !pantallasDeTaller().includes(s)) s='home';
   pantallaActualNombre=s;
   document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('#sidebar nav button').forEach(x=>x.classList.remove('active'));
@@ -11158,6 +11196,8 @@ function descargarHojaMantenimiento(eqId){
   // la identifica en sus papeles y con el que la van a pedir.
   const nombreMaq = ([eq.marca, eq.modelo].filter(Boolean).join(' ') || eq.nombre)
     + (eq.nInterno ? ` — N° ${eq.nInterno}` : '');
+  // Quién firma, con nombre y apellido y el puesto — ver FIRMA_RESPONSABLE.
+  const fma = firmaDe(h0.cargadoPor);
 
   let secciones='';
   seccionesMantenimiento(eq).forEach((sec,i)=>{
@@ -11196,7 +11236,8 @@ function descargarHojaMantenimiento(eqId){
     .obs{margin-top:16px;font-size:10px;}
     .obs b{color:#2e7d32;}
     .firma{margin-top:26px;display:flex;gap:50px;}
-    .firma div{flex:1;border-top:1px solid #222;padding-top:4px;font-size:9.5px;text-align:center;color:#444;}
+    .firma > div{flex:1;border-top:1px solid #222;padding-top:4px;font-size:10px;text-align:center;color:#222;font-weight:700;}
+    .firma .cargo{font-size:9px;color:#666;font-weight:400;margin-top:1px;}
   </style></head><body>
     <div class="logo"><img src="${LOGO_B64}"></div>
     <hr class="top">
@@ -11213,8 +11254,8 @@ function descargarHojaMantenimiento(eqId){
     ${secciones}
     ${h0.obs?`<div class="obs"><b>Observaciones:</b> ${esc(h0.obs)}</div>`:''}
     <div class="firma">
-      <div>${esc(h0.cargadoPor||'Responsable de mantenimiento')}</div>
-      <div>RENTAZ S.A.</div>
+      <div>${esc(fma.nombre||'Responsable de mantenimiento')}${fma.puesto?`<div class="cargo">${esc(fma.puesto)}</div>`:''}</div>
+      <div>RENTAZ S.A.<div class="cargo">Rafaela, Santa Fe</div></div>
     </div>
   </body></html>`;
 
