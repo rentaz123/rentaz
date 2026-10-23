@@ -10346,7 +10346,15 @@ function guardarHorasEquipo(eqId, horas, fecha, quien){
 function equiposConHorasPendientes(){
   return equiposActivos().filter(e=>{
     const d = EQ_CHECKLIST[e.id];
-    return d && d.horasPendienteDesde;
+    if(!d || !d.horasPendienteDesde) return false;
+    /* El pendiente puede haber quedado viejo: si hay una lectura de ese día o
+       posterior, las horas ESTÁN y el aviso no tiene sentido. Pasaba con las marcas
+       hechas antes de arreglar esto — el Brazo Snorkel tenía 2588 hs del 22/10 y
+       seguía pidiendo "cargar horas" del 22/10.
+       Se mira el dato, no la marca: así se limpia solo, sin que nadie tenga que
+       volver a escribir un número que la app ya tiene. */
+    if(horasDeEquipo(e.id)!==null && d.fecha && d.fecha >= d.horasPendienteDesde) return false;
+    return true;
   });
 }
 
@@ -10360,6 +10368,17 @@ function equiposConHorasPendientes(){
 async function pedirHorasAlVolver(a, fecha){
   const eq = (EQUIPOS||[]).find(e=>e.id===a.equipoId);
   if(!eq) return;
+  /* Si ya hay una lectura de ese mismo día o posterior, esta vuelta YA tiene su
+     horómetro cargado: volver a pedirlo es hacerle escribir dos veces lo mismo a
+     taller. Pasaba al remarcar una vuelta (el Brazo Snorkel de BAUZA): las 2588 hs
+     estaban cargadas del día anterior y el cartel aparecía igual.
+     Si la lectura es más vieja que la vuelta, sí se pide: la máquina trabajó desde
+     entonces y ese número ya no sirve. */
+  const dEq = EQ_CHECKLIST[eq.id] || {};
+  if(horasDeEquipo(eq.id)!==null && dEq.fecha && fecha && dEq.fecha >= fecha){
+    if(dEq.horasPendienteDesde){ dEq.horasPendienteDesde = null; guardarEqChecklist(); }
+    return;
+  }
   const quien = a.retiroFisicoPor || (ROL_ACTUAL==='taller' ? TALLER_RESPONSABLE : nombreUsuarioActual()) || 'Taller';
   const horas = await pedirHorasHorometro(eq, fecha);
   if(horas!==null){
