@@ -931,6 +931,18 @@ if ('serviceWorker' in navigator) {
         <div class="dash-collapse-body" id="dash-libreocupada-container" style="display:none"></div>
       </div>
 
+      <!-- REVISIÓN TRIMESTRAL. La tarea de taller de la primera semana de cada
+           trimestre. La ven taller (que la hace) y oficina (que la controla).
+           Ver renderRevisionTrimestral. -->
+      <div class="dash-collapse" id="dc-revtrim" style="border-color:#00695c;display:none">
+        <button class="dash-collapse-header" id="dch-revtrim" onclick="toggleDashCollapse('revtrim')" style="color:#00695c">
+          <span class="dc-title">Revisi&oacute;n trimestral de m&aacute;quinas</span>
+          <span class="dc-badge" id="dc-badge-revtrim" style="background:#00695c;color:#fff"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-revtrim-container" style="display:none"></div>
+      </div>
+
       <!-- HOJAS DE MANTENIMIENTO POR VENCER. Valen 3 meses y sin ellas las empresas no
            dejan entrar la máquina. Avisa 15 días antes. Ver renderMantenimientoAVencer. -->
       <div class="dash-collapse" id="dc-mantvence" style="border-color:#e5a83b;display:none">
@@ -4109,11 +4121,69 @@ function renderMaquinasLibresConAlquiler(){
   document.getElementById('dash-libreocupada-container').innerHTML = h;
 }
 
+/* ── LA TAREA DE TALLER: revisión trimestral ───────────────────────────────
+   La ven los dos: taller porque la hace, oficina porque la controla. Por eso el
+   panel es el mismo y muestra lo mismo — no hay una versión "para el jefe" y otra
+   para el que trabaja. Mientras falte una máquina, no se va. */
+function renderRevisionTrimestral(){
+  const caja = document.getElementById('dc-revtrim');
+  if(!caja) return;
+  const c = estadoRevisionTrimestral();
+  // Terminada: desaparece hasta que empiece el trimestre que viene.
+  if(!c.faltan.length){ caja.style.display='none'; return; }
+  caja.style.display='block';
+  badgeDash('dc-badge-revtrim', c.faltan.length);
+
+  const col = c.atrasada ? 'var(--rojo)' : '#00695c';
+  caja.style.borderColor = col;
+  const cab = document.getElementById('dch-revtrim');
+  if(cab) cab.style.color = c.atrasada ? 'var(--rojo)' : '#00695c';
+  const badge = document.getElementById('dc-badge-revtrim');
+  if(badge) badge.style.background = col;
+  const tit = caja.querySelector('.dc-title');
+  if(tit) tit.textContent = `Revisión trimestral — ${c.label}`;
+
+  const esTaller = esTallerVista();
+  const intro = c.atrasada
+    ? `<b style="color:var(--rojo)">Se pasó la primera semana del trimestre.</b> ${esTaller?'Faltan':'Taller todavía no revisó'} ${c.faltan.length} de ${c.total} máquinas.`
+    : `${esTaller?'Esta semana hay que revisar todas las máquinas.':'Taller tiene que revisar todas las máquinas esta semana.'} Van ${c.hechas.length} de ${c.total}.`;
+
+  // Barra de avance: de un vistazo se ve cuánto falta, sin contar renglones.
+  const pct = c.total ? Math.round(c.hechas.length*100/c.total) : 0;
+  let h = `<p style="font-size:.82rem;color:var(--txt2);margin:0 0 .5rem;line-height:1.5">${intro}</p>
+    <div style="height:7px;background:var(--bg3);border-radius:4px;overflow:hidden;margin-bottom:.8rem">
+      <div style="height:100%;width:${pct}%;background:${col}"></div>
+    </div>`;
+
+  const fmtF = s => { if(!s) return ''; const[y,m,d]=String(s).split('-'); return d?`${d}/${m}`:s; };
+  h += c.faltan.map(eq=>{
+    const prev = EQ_MANTENIMIENTO[eq.id];
+    const ultima = prev && prev.fecha ? `última el ${fmtF(prev.fecha)}` : 'nunca se le cargó una';
+    return `<div style="display:flex;gap:9px;align-items:center;padding:.5rem .7rem;border:1px solid var(--border);border-left:3px solid ${col};border-radius:8px;margin-bottom:.35rem;background:var(--bg2)">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:.87rem;overflow-wrap:anywhere">${eq.nombre}</div>
+        <div style="font-size:.75rem;color:var(--txt3)">${ultima}</div>
+      </div>
+      <button onclick="abrirFichaEq(${eq.id},'mant')" class="btn-nuevo" style="padding:5px 11px;font-size:.74rem;flex-shrink:0">Revisar</button>
+    </div>`;
+  }).join('');
+
+  if(c.hechas.length){
+    h += `<div style="font-size:.72rem;color:var(--txt3);margin-top:.7rem;border-top:1px solid var(--border);padding-top:.5rem;line-height:1.5">
+        <b style="color:var(--verde)">Ya revisadas:</b> ${c.hechas.map(e=>e.nombre).join(' · ')}
+      </div>`;
+  }
+  document.getElementById('dash-revtrim-container').innerHTML = h;
+}
+
 // ── Hojas de mantenimiento por vencer ─────────────────────────────────────
 // Lo ve taller también: son ellos los que revisan la máquina y vuelven a cargarla.
 function renderMantenimientoAVencer(){
   const caja = document.getElementById('dc-mantvence');
   if(!caja) return;
+  // Mientras la revisión trimestral esté abierta, ese es EL aviso. Mostrar los dos
+  // es decir lo mismo dos veces y hace que se dejen de leer los dos.
+  if(estadoRevisionTrimestral().faltan.length){ caja.style.display='none'; return; }
   const lista = equiposConMantenimientoAVencer()
     .sort((a,b)=>estadoMantenimiento(a.id).dias - estadoMantenimiento(b.id).dias);
   badgeDash('dc-badge-mantvence', lista.length);
@@ -6442,6 +6512,55 @@ function sumarMesesISO(iso, n){
   return fechaISOLocal(base);
 }
 function vencimientoMantenimiento(fecha){ return sumarMesesISO(fecha, MANT_MESES_VIGENCIA); }
+
+/* ── REVISIÓN TRIMESTRAL ───────────────────────────────────────────────────
+   La primera semana de cada trimestre taller revisa TODAS las máquinas y carga
+   la hoja de cada una. Cada hoja sale con su fecha real (la del día que se
+   revisó, no una inventada para todas) y vale 3 meses.
+
+   No hace falta programar ninguna alarma: al empezar el trimestre siguiente
+   ninguna máquina tiene hoja de ese trimestre, así que la campaña aparece sola
+   otra vez. El aviso es consecuencia del dato, no un recordatorio aparte que
+   alguien tenga que mantener. */
+const MANT_DIAS_PRIMERA_SEMANA = 7;
+function trimestreDeISO(iso){
+  if(!iso || !fechaValidaApp(iso)) return '';
+  const [y,m] = iso.split('-').map(Number);
+  return `${y}-Q${Math.floor((m-1)/3)+1}`;
+}
+function trimestreActual(){ return trimestreDeISO(hoyISO()); }
+function etiquetaTrimestre(tri){
+  if(!tri) return '';
+  const [y,q] = tri.split('-Q');
+  return `${q}° trimestre ${y}`;
+}
+// Primer día del trimestre, para saber si ya se pasó la primera semana.
+function inicioTrimestreISO(tri){
+  const [y,q] = tri.split('-Q').map(Number);
+  return `${y}-${String((q-1)*3+1).padStart(2,'0')}-01`;
+}
+function diasDesdeInicioTrimestre(){
+  const ini = inicioTrimestreISO(trimestreActual());
+  return Math.round((new Date(hoyISO()+'T00:00:00') - new Date(ini+'T00:00:00'))/86400000);
+}
+function maquinaRevisadaEnTrimestre(eqId, tri){
+  const h = EQ_MANTENIMIENTO[eqId];
+  return !!(h && h.fecha && trimestreDeISO(h.fecha) === tri);
+}
+// Estado de la campaña de este trimestre. Las dadas de baja no entran.
+function estadoRevisionTrimestral(){
+  const tri = trimestreActual();
+  const flota = equiposActivos();
+  const hechas = flota.filter(e=>maquinaRevisadaEnTrimestre(e.id, tri));
+  const faltan = flota.filter(e=>!maquinaRevisadaEnTrimestre(e.id, tri));
+  return {
+    tri, label: etiquetaTrimestre(tri),
+    total: flota.length, hechas, faltan,
+    // Pasada la primera semana y todavía sin terminar: deja de ser un recordatorio
+    // y pasa a estar atrasado.
+    atrasada: faltan.length>0 && diasDesdeInicioTrimestre() > MANT_DIAS_PRIMERA_SEMANA
+  };
+}
 // Cuántos días faltan (negativo = ya venció). null si no hay hoja.
 function estadoMantenimiento(eqId){
   const h = EQ_MANTENIMIENTO[eqId];
@@ -7074,6 +7193,7 @@ function renderDashboard(){
   renderCobroPendiente();
   renderAvisoFechasRotas();
   renderAvisoPermisoTaller();
+  renderRevisionTrimestral();
   renderMaquinasLibresConAlquiler();
   renderMantenimientoAVencer();
   renderHorasPendientes();
@@ -7298,10 +7418,10 @@ function renderDashboard(){
 }
 
 // ── Ventanas rebatibles del dashboard ──────────────────────────
-const dashCollapseIds={libreocupada:'libreocupada',mantvence:'mantvence',horaspend:'horaspend',paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',cobropend:'cobropend',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
+const dashCollapseIds={revtrim:'revtrim',libreocupada:'libreocupada',mantvence:'mantvence',horaspend:'horaspend',paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',cobropend:'cobropend',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
 // Todas arrancan CERRADAS, salvo "Vencidos y vence hoy" en Impuestos y Servicios, que
 // arranca ABIERTA a propósito para que un impuesto vencido nunca pase desapercibido.
-let dashCollapseOpen={libreocupada:true,mantvence:true,horaspend:true,paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,cobropend:true,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
+let dashCollapseOpen={revtrim:true,libreocupada:true,mantvence:true,horaspend:true,paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,cobropend:true,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
 function applyDashCollapseState(key){
   const id=dashCollapseIds[key];
   const header=document.getElementById('dch-'+id);
@@ -7317,7 +7437,7 @@ function applyDashCollapseState(key){
 // OJO: solo los del Inicio. Los de Impuestos y Pago a Proveedores viven en otras
 // pantallas y ahi conviene poder tener varios abiertos a la vez (por eso "impVencHoy"
 // arranca abierto a proposito).
-const ACORDEON_INICIO = ['libreocupada','cobropend','fechasrotas','mantvence','horaspend','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
+const ACORDEON_INICIO = ['revtrim','libreocupada','cobropend','fechasrotas','mantvence','horaspend','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
   'solEspera','solicitudes','segcotiz','presuptaller','contratosListos','alqHoy','alqSemana','cargadoHoy'];
 function toggleDashCollapse(key){
   dashCollapseOpen[key]=!dashCollapseOpen[key];
@@ -10924,6 +11044,15 @@ function renderEqFichaCont(){
    Reemplazó al checklist de 14 ítems que vivía acá: ese seguía siendo el del
    contrato, que sale en papel con el camión, y tenerlo dos veces solo hacía que
    nadie supiera cuál completar. Ver el bloque HOJA DE MANTENIMIENTO arriba. */
+/* Qué fecha se propone al abrir la hoja. Si la que está guardada es de un trimestre
+   anterior, se está REVISANDO de nuevo: tiene que arrancar en hoy. Dejar la vieja
+   hacía que taller guardara con la fecha del trimestre pasado y la máquina siguiera
+   figurando sin revisar — la campaña nunca se habría terminado. */
+function fechaSugeridaMant(h0){
+  if(!h0 || !h0.fecha) return hoyISO();
+  return trimestreDeISO(h0.fecha)===trimestreActual() ? h0.fecha : hoyISO();
+}
+
 function renderEqFichaMantenimiento(){
   const eq=EQUIPOS.find(e=>e.id===eqFichaId); if(!eq) return;
   const h0 = EQ_MANTENIMIENTO[eq.id] || {};
@@ -10952,7 +11081,7 @@ function renderEqFichaMantenimiento(){
   }
 
   h+=`<div class="row2" style="margin-bottom:.5rem">
-      <div><label class="flabel">Fecha de la revisión</label><input type="date" id="mant-fecha" min="2020-01-01" max="2100-12-31" value="${h0.fecha||hoyISO()}" onchange="refrescarVenceMant()"></div>
+      <div><label class="flabel">Fecha de la revisión</label><input type="date" id="mant-fecha" min="2020-01-01" max="2100-12-31" value="${fechaSugeridaMant(h0)}" onchange="refrescarVenceMant()"></div>
       <div><label class="flabel">Horas de uso</label><input type="number" id="mant-horas" value="${h0.horas!==undefined&&h0.horas!==''?h0.horas:(horasEq!==null?horasEq:'')}" placeholder="hs"></div>
     </div>
     <div style="font-size:.72rem;color:var(--txt3);margin-bottom:.7rem">Vence el <b id="mant-vence">${fmtF(vencimientoMantenimiento(h0.fecha||hoyISO()))}</b> (${MANT_MESES_VIGENCIA} meses)${horasEq!==null?` · el horómetro de la máquina marca ${horasEq} hs`:''}</div>
@@ -11006,9 +11135,16 @@ function descargarHojaMantenimiento(eqId){
 
   const html=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Check List de Mantenimiento - ${esc(eq.nombre)}</title>
   <style>
-    @page { margin: 14mm 16mm; }
+    /* El "22/10/26, 12:59" de arriba y el renglón del final NO son de esta hoja: los
+       agrega el navegador al imprimir. Con margen de página en 0 Chrome deja de
+       ponerlos, y el margen real lo hace el padding del body. Si en alguna máquina
+       igual aparecen, se destilda "Encabezados y pies de página" en el cuadro de
+       impresión y queda así para siempre. */
+    @page { margin: 0; }
     *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:11px;background:#fff;}
+    body{font-family:Arial,Helvetica,sans-serif;color:#111;font-size:11px;background:#fff;padding:14mm 16mm;}
+    /* Que no se parta en dos hojas por un renglón: el documento entra en una carilla. */
+    .sec, .li, .firma, .obs{page-break-inside:avoid;}
     @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
     .logo{text-align:left;margin-bottom:6px;}
     .logo img{height:54px;}
@@ -11024,7 +11160,7 @@ function descargarHojaMantenimiento(eqId){
     .vl{flex:0 0 auto;font-weight:700;}
     .obs{margin-top:16px;font-size:10px;}
     .obs b{color:#2e7d32;}
-    .firma{margin-top:34px;display:flex;gap:50px;}
+    .firma{margin-top:26px;display:flex;gap:50px;}
     .firma div{flex:1;border-top:1px solid #222;padding-top:4px;font-size:9.5px;text-align:center;color:#444;}
   </style></head><body>
     <div class="logo"><img src="${LOGO_B64}"></div>
@@ -15764,8 +15900,12 @@ function facturarAlquilerAuto(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
   a.mesFacturado = mesSugeridoFacturacion(a);
   a.facturadoEn = Date.now();
+  // Marcar el alquiler entero como facturado responde la pregunta "falta definir qué
+  // se cobra": ya se cobró. Sin esto el aviso quedaba en Inicio para siempre.
+  resolverCobroPendiente(a);
   guardar();
   if(document.getElementById('modal-alq-det').style.display==='flex') verDetalleAlq(id);
+  renderDashboard();
   renderReportes();
   if(typeof renderFacturacion==='function') renderFacturacion();
   const sugerido = a.numeroFactura || siguienteNumeroFactura();
@@ -15805,8 +15945,11 @@ function marcarMesFacturado(id){
   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym.trim())){ alert('Formato inválido. Usá AAAA-MM, por ejemplo 2026-07'); return; }
   a.mesFacturado = ym.trim();
   a.facturadoEn = Date.now();
+  // Igual que en facturarAlquilerAuto: si ya se facturó, no falta definir nada.
+  resolverCobroPendiente(a);
   guardar();
   if(document.getElementById('modal-alq-det').style.display==='flex') verDetalleAlq(id);
+  renderDashboard();
   renderReportes();
   if(typeof renderFacturacion==='function') renderFacturacion();
   alert(`Este alquiler ahora cuenta para el reporte de ${mesLabel(a.mesFacturado)}.`);
@@ -16724,13 +16867,20 @@ async function marcarRetiroAnticipado(id){
   // Preguntamos directo acá en vez de forzar una confirmación aparte de taller después —
   // si la respuesta es que sí ya volvió, lo liberamos al toque; si no, queda pendiente
   // igual que antes (mismo flujo que un retiro normal — ver marcarEquipoRetiradoFisico).
-  const yaVolvioFisico = await confirmSiNo('¿El equipo ya está físicamente de vuelta en el depósito?', {si:'Sí, ya está acá', no:'Todavía no'});
+  // Si taller YA marcó la vuelta, no se pregunta: el dato está y preguntarlo invita a
+  // contestar distinto y pisarlo (misma trampa que en continuarCerrarAlquilerAbierto).
+  const yaMarcadaLaVuelta = !!a.retiroFisicoFecha && (!a.inicio || a.retiroFisicoFecha >= a.inicio);
+  const yaVolvioFisico = yaMarcadaLaVuelta ||
+    await confirmSiNo('¿El equipo ya está físicamente de vuelta en el depósito?', {si:'Sí, ya está acá', no:'Todavía no'});
   if(yaVolvioFisico){
     a.pickupPendiente=false;
     a.pickupPendienteDesde=null;
-    a.retiroFisicoFecha=fecha;
-    a.retiroFisicoHora=hora;
-    a.retiroFisicoPor = ROL_ACTUAL==='taller' ? TALLER_RESPONSABLE : nombreUsuarioActual();
+    // Quién y cuándo la marcó se conserva si ya estaba: fue taller, no quien cierra ahora.
+    if(!yaMarcadaLaVuelta){
+      a.retiroFisicoFecha=fecha;
+      a.retiroFisicoHora=hora;
+      a.retiroFisicoPor = ROL_ACTUAL==='taller' ? TALLER_RESPONSABLE : nombreUsuarioActual();
+    }
   } else {
     // Registrar la fecha de retiro anticipado NO libera el equipo todavía: queda pendiente
     // hasta que taller confirme que físicamente ya está de vuelta en el depósito (mismo
@@ -16959,16 +17109,29 @@ async function continuarCerrarAlquilerAbierto(){
   a.fechaRetiro=fechaRetiro;
   a.horaRetiro=horaRetiro;
   a.abierto=false;
-  // Confirmar la fecha de retiro no significa que el equipo ya esté de vuelta: queda
-  // pendiente hasta que taller marque "Equipo retirado" (ver marcarEquipoRetiradoFisico).
-  a.pickupPendiente=true;
-  a.pickupPendienteDesde=hoyISO();
-  // Limpiar restos de un ciclo de retiro anterior (ver misma nota en marcarRetiroAnticipado):
-  // si queda un retiroFisicoFecha viejo, alqEstaActivoHoy() lo toma como ya devuelto y el
-  // equipo aparece "disponible" aunque pickupPendiente esté en true.
-  a.retiroFisicoFecha=null;
-  a.retiroFisicoHora=null;
-  a.retiroFisicoPor=null;
+  /* OJO con esto, que ya rompió una vez (el Brazo Snorkel de BAUZA):
+
+     Acá antes se ponía SIEMPRE pickupPendiente=true y se borraba el retiro físico,
+     asumiendo que la oficina define la fecha ANTES de que el equipo vuelva. Pero con
+     el flujo nuevo pasa al revés: taller marca que volvió (con el horómetro y todo) y
+     la oficina define después hasta cuándo se cobra. Hacerlo así mandaba la máquina
+     de vuelta a "Para retirar", le pedía el horómetro otra vez a taller y la sacaba
+     de los equipos disponibles aunque estuviera en el galpón.
+
+     Si taller ya marcó la vuelta, no se toca. El borrado sigue existiendo solo para
+     el caso real que lo justificaba: un retiroFisicoFecha de un ciclo ANTERIOR
+     (anterior al inicio de este alquiler), que haría ver la máquina libre por error. */
+  const yaVolvioFisicamente = !!a.retiroFisicoFecha && (!a.inicio || a.retiroFisicoFecha >= a.inicio);
+  if(yaVolvioFisicamente){
+    a.pickupPendiente=false;
+    a.pickupPendienteDesde=null;
+  }else{
+    a.pickupPendiente=true;
+    a.pickupPendienteDesde=hoyISO();
+    a.retiroFisicoFecha=null;
+    a.retiroFisicoHora=null;
+    a.retiroFisicoPor=null;
+  }
 
   // Ya se definió qué se cobra: sale del aviso "falta definir" de Inicio.
   resolverCobroPendiente(a);
@@ -17632,6 +17795,14 @@ async function agregarDiasFacturablesAlq(id, periodo){
   }
   a.diasAgregados.push({fecha:hoyISO(), desde, hasta:nuevaFin, dias:diasChunk, tarifa, monto:montoChunk, detalle, mesFacturado, facturadoEn:Date.now(), numeroFactura});
 
+  // Si el equipo había vuelto y quedaba pendiente decidir qué se cobraba, esta factura
+  // ES esa decisión: cubre hasta el día que volvió o más. Antes el aviso "falta definir
+  // qué se cobra" seguía en Inicio después de haber facturado, porque solo lo limpiaban
+  // "Confirmar fecha de retiro" y "Está bien como está" — no el camino de cargar la
+  // factura, que es el que se usa siempre.
+  if(a.cobroPendiente && nuevaFin && a.cobroPendiente.desde && nuevaFin >= a.cobroPendiente.desde){
+    resolverCobroPendiente(a);
+  }
   marcarAccionUndo(`Cargar factura de "${a.equipoNombre}" — ${a.cliente} (${fmtFechaCot(desde)} al ${fmtFechaCot(nuevaFin)})`, 'alquileres');
   // En modo bucle (una factura con varios equipos) no se guarda ni se redibuja por cada
   // uno: lo hace cargarFacturaVarios al terminar, asi no se disparan siete sincronizaciones
