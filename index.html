@@ -4040,9 +4040,25 @@ function alquileresQueNoOcupanLaMaquina(){
   (ALQUILERES||[]).forEach(a=>{
     if(yaReportados.has(a.id)) return;
     if(equiposPisados.has(String(a.equipoId))) return;
+    /* Ya volvió y el alquiler está CERRADO: no hay nada que arreglar. Que la fecha de
+       fin sea posterior a hoy es normal — el Brazo Snorkel de BAUZA volvió el 22/10 y
+       se facturó hasta el 31/10, que es como se factura un mes entero. Sin esto el
+       panel lo marcaba como "sigue abierto y sumando días", que además era falso.
+       El caso que SÍ hay que marcar (abierto + marcado como devuelto) sigue más abajo:
+       ese sí suma días sin facturar para siempre. */
+    if(a.retiroFisicoFecha && !a.pickupPendiente && !a.abierto) return;
     if(a.modoHoras) return;            // van y vuelven al toque, nunca ocupan
     if(a.pausado) return;              // está libre a propósito
     if(!a.inicio || a.inicio > hoy) return;   // todavía no arrancó
+    /* Que taller no haya marcado la salida TODAVÍA no es un error: es la tarea del
+       día y ya la tiene en "Para entregar (taller)". Marcarla acá en rojo era contar
+       el mismo trabajo dos veces y llenar el panel de cosas que no hay que arreglar.
+       Recién después de DIAS_ENTREGA_VIEJA días deja de ser trabajo pendiente y pasa
+       a ser un dato mal cargado, porque la máquina figura libre estando en la obra. */
+    if(a.entregaPendiente){
+      const diasSinMarcar = Math.round((new Date(hoy+'T00:00:00') - new Date(a.inicio+'T00:00:00'))/86400000);
+      if(diasSinMarcar <= DIAS_ENTREGA_VIEJA) return;
+    }
     const fin = alqFinEfectivo(a);
     const deberiaEstarOcupando = a.abierto || fin===null || fin >= hoy;
     if(!deberiaEstarOcupando) return;
@@ -4061,8 +4077,8 @@ function alquileresQueNoOcupanLaMaquina(){
     } else if(a.entregaPendiente){
       motivo = 'Taller todavía no marcó que la máquina salió del depósito, así que para la app sigue adentro.';
       arreglo = `<button onclick="marcarEquipoEntregado(${a.id})" class="btn-nuevo" style="padding:5px 11px;font-size:.74rem;flex-shrink:0">Marcar que salió</button>`;
-    } else if(a.retiroFisicoFecha && !a.pickupPendiente){
-      motivo = `Figura que volvió al depósito el ${fmtD(a.retiroFisicoFecha)}, pero el alquiler sigue abierto y sumando días.`;
+    } else if(a.retiroFisicoFecha && !a.pickupPendiente && a.abierto){
+      motivo = `Volvió al depósito el ${fmtD(a.retiroFisicoFecha)} pero el alquiler quedó ABIERTO: sigue sumando días sin facturar. Hay que cerrarlo.`;
       arreglo = `<button onclick="verDetalleAlq(${a.id})" class="btn-nuevo" style="padding:5px 11px;font-size:.74rem;flex-shrink:0">Abrir y cerrarlo</button>`;
     } else if(r.alquiler){
       motivo = `La máquina figura ocupada por otro alquiler (${r.alquiler.cliente}). Uno de los dos está mal cargado.`;
