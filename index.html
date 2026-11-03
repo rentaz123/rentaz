@@ -10319,6 +10319,21 @@ function alqEstaActivoHoy(a, hoyStr){
   return finEf===null || finEf>=hoyStr;
 }
 
+/* ¿Este alquiler tiene la máquina AFUERA ahora mismo?
+
+   Que esté "abierto" no alcanza: abierto solo quiere decir que no se definió hasta
+   cuándo se factura. Un abierto cuya máquina ya volvió NO la ocupa — lo único que le
+   falta es cerrarle la facturación, y eso no tiene por qué trabar la máquina.
+
+   Confundir las dos cosas es lo que hacía que la Alo 60 #2 figurara disponible en
+   Equipos y al mismo tiempo "en obra en MOLFINO" al querer ponerla en otro alquiler. */
+function alqConLaMaquinaAfuera(a){
+  if(!a || a.pausado || a.activo===false) return false;
+  if(a.retiradoAnticipado) return false;
+  if(a.retiroFisicoFecha && !a.pickupPendiente && (!a.inicio || a.retiroFisicoFecha >= a.inicio)) return false;
+  return !!a.abierto;
+}
+
 function estadoRealEq(eq, alquileresArr){
   alquileresArr = alquileresArr || ALQUILERES;
   if(eq.estado==='taller') return {estado:'taller', cliente:''};
@@ -10610,7 +10625,14 @@ function initCal(){
 // sumando sin fecha de retorno todavía), sin que haya que tocar nada manualmente.
 function alqFinPintado(a, hoy){
   if(a.retiradoAnticipado) return new Date(a.retiradoAnticipado+'T00:00:00');
-  if(a.abierto || a.pickupPendiente){
+  /* Si la máquina YA volvió al depósito, el calendario corta ahí — aunque el alquiler
+     siga abierto o se facture hasta más adelante. Sin esto, un abierto con la máquina
+     de vuelta se seguía pintando ocupado un día más cada día, mientras el selector de
+     equipos ya la daba libre: otra vez dos respuestas para la misma máquina.
+     El equipo vuelve a estar disponible cuando VUELVE, esté facturado o no. */
+  const yaVolvio = a.retiroFisicoFecha && !a.pickupPendiente
+    && (!a.inicio || a.retiroFisicoFecha >= a.inicio);
+  if(!yaVolvio && (a.abierto || a.pickupPendiente)){
     const finConfirmado = new Date(a.fin+'T00:00:00');
     return finConfirmado>hoy ? finConfirmado : hoy;
   }
@@ -13325,7 +13347,7 @@ function poblarOpcionesEquipoAlq(excludeAlqId, excludeEqIds){
           // libre pasada esa fecha. Resultado: el equipo aparecía "Alquilado" en Flota y
           // al mismo tiempo elegible acá, y se podía prometer dos veces la misma máquina.
           const abierto=ALQUILERES.find(a=>
-            a.equipoId===e.id && a.abierto && !a.retiradoAnticipado && !a.pausado &&
+            a.equipoId===e.id && alqConLaMaquinaAfuera(a) &&
             !(Array.isArray(exclAlq)?exclAlq:[exclAlq]).includes(a.id) &&
             a.inicio<=hastaF);
           if(abierto) etiqueta=` — en obra en ${abierto.cliente}, sin fecha de retorno`;
@@ -13444,7 +13466,14 @@ function quitarEquipoAlq(idx){
 // las dos podían no coincidir.
 function finBloqueoAlq(a){
   if(!a) return null;
-  if(a.pickupPendiente) return a.pickupPendienteDesde || a.fechaRetiro || a.fin;
+  /* PENDIENTE DE RETIRAR = la máquina sigue en lo del cliente y taller todavía no fue
+     a buscarla. Antes esto devolvía la fecha pactada, así que la app la daba por libre
+     desde ese día aunque nadie la hubiera traído: si taller la retiraba una semana
+     tarde, ese hueco se le podía prometer a otro cliente. Es el mismo agujero que
+     tenían los alquileres abiertos.
+     No hay fecha de liberación hasta que vuelva: null = bloquea hasta que se marque la
+     vuelta. Así coincide con alqFinEfectivo, que para estos ya devolvía null. */
+  if(a.pickupPendiente) return null;
   // OJO: con una fecha imposible guardada (el caso del año de 5 cifras), toISOString()
   // no devuelve "algo raro": LANZA un error y corta la ejecución de todo lo que venía
   // llamando. Eso es lo que rompía el desplegable de equipos al abrir un alquiler —
@@ -13696,14 +13725,21 @@ function actualizarDisponibilidadAlq(excludeAlqId){
             // Para un abierto, "al ${fin}" es mentira: ese fin es hasta dónde se
             // facturó, no hasta cuándo está ocupada. Decirlo así hacía parecer que
             // la máquina se liberaba esa fecha.
-            const cuando = conflicto.abierto && !conflicto.retiroFisicoFecha
-              ? `desde el ${fmtD(conflicto.inicio)}, <b>sin fecha de retorno</b>`
-              : `del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}`;
+            const cuando = conflicto.pickupPendiente
+              ? `del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}, y <b>todavía no volvió al depósito</b>`
+              : (conflicto.abierto && !conflicto.retiroFisicoFecha
+                ? `desde el ${fmtD(conflicto.inicio)}, <b>sin fecha de retorno</b>`
+                : `del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}`);
+            // Sin fecha de liberación el motivo cambia según el caso, pero la salida es
+            // siempre la misma: marcar la vuelta real y recién ahí cargar el nuevo.
+            const porQueBloquea = conflicto.pickupPendiente
+              ? 'Está pendiente de retirar: taller todavía no fue a buscarla, así que no se puede prometer. Apenas la marquen como devuelta, el equipo queda libre.'
+              : 'Es un alquiler abierto y la máquina todavía no volvió, así que ocupa el equipo hasta que se cierre. Si ya volvió, cerrá ese alquiler con la fecha real y después cargá este.';
             return `⚠ <b>${nombreElegido}</b> ya está alquilado a <b>${conflicto.cliente}</b>
               ${cuando}.<br>
               <span style="font-weight:400">${desdeCuandoLibre
                 ? `Queda libre <b>desde el ${desdeCuandoLibre}</b>${notaMediodia} — si lo cargás desde esa fecha en adelante, entra sin problema.`
-                : 'Es un alquiler abierto y la máquina todavía no volvió, así que ocupa el equipo hasta que se cierre. Si ya volvió, cerrá ese alquiler con la fecha real y después cargá este.'}</span>
+                : porQueBloquea}</span>
               ${libres.length
                 ? `<div style="margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.35);font-weight:400">
                      Para esas mismas fechas <b>sí está libre</b>: ${libres.map(n=>`<b>${n}</b>`).join(' · ')}</div>`
@@ -13741,7 +13777,7 @@ function actualizarDisponibilidadAlq(excludeAlqId){
 
   for(const row of filas){
     const abiertoDelEquipo = ALQUILERES.find(a=>
-      a.equipoId===row.eqId && a.abierto && !a.retiradoAnticipado && !a.pausado &&
+      a.equipoId===row.eqId && alqConLaMaquinaAfuera(a) &&
       !(Array.isArray(excl)?excl:[excl]).includes(a.id) &&
       (a.fin||'') < desde);
     if(abiertoDelEquipo){
@@ -15435,7 +15471,7 @@ function resumenAlquilerHTML(a){
   // un resto de un ciclo anterior y no hay que creerle (ver comentario en alqEstaActivoHoy).
   else if(a.retiroFisicoFecha && !a.pickupPendiente){ estadoLbl='Finalizado'; estadoColor='var(--txt3)'; }
   // Verde para lo que está facturando; el rojo queda reservado a lo que hay que resolver.
-  else if(a.abierto && a.inicio<=hoy){ estadoLbl='Abierto — sin retorno definido'; estadoColor='#2e9e52'; }
+  else if(alqConLaMaquinaAfuera(a) && a.inicio<=hoy){ estadoLbl='Abierto — sin retorno definido'; estadoColor='#2e9e52'; }
   // Mismo criterio que la etiqueta de la tarjeta: si venció y el equipo sigue en obra
   // no está "Finalizado". Sin esto quedaban máquinas en la calle marcadas como cerradas.
   else if(a.pickupPendiente && a.fin && a.fin<hoy){ estadoLbl='Falta retirar el equipo'; estadoColor='var(--rojo)'; }
