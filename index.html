@@ -931,18 +931,6 @@ if ('serviceWorker' in navigator) {
         <div class="dash-collapse-body" id="dash-libreocupada-container" style="display:none"></div>
       </div>
 
-      <!-- REVISIÓN TRIMESTRAL. La tarea de taller de la primera semana de cada
-           trimestre. La ven taller (que la hace) y oficina (que la controla).
-           Ver renderRevisionTrimestral. -->
-      <div class="dash-collapse" id="dc-revtrim" style="border-color:#00695c;display:none">
-        <button class="dash-collapse-header" id="dch-revtrim" onclick="toggleDashCollapse('revtrim')" style="color:#00695c">
-          <span class="dc-title">Revisi&oacute;n trimestral de m&aacute;quinas</span>
-          <span class="dc-badge" id="dc-badge-revtrim" style="background:#00695c;color:#fff"></span>
-          <span class="dc-arrow">▾</span>
-        </button>
-        <div class="dash-collapse-body" id="dash-revtrim-container" style="display:none"></div>
-      </div>
-
       <!-- HOJAS DE MANTENIMIENTO POR VENCER. Valen 3 meses y sin ellas las empresas no
            dejan entrar la máquina. Avisa 15 días antes. Ver renderMantenimientoAVencer. -->
       <div class="dash-collapse" id="dc-mantvence" style="border-color:#e5a83b;display:none">
@@ -1050,6 +1038,19 @@ if ('serviceWorker' in navigator) {
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-cargado-hoy-container" style="display:none"></div>
+      </div>
+
+      <!-- REVISIÓN TRIMESTRAL. Va al final a propósito: es una tarea de una semana cada
+           tres meses, no algo del día a día. Arriba estorbaba todos los días para algo
+           que se usa cuatro veces al año. La ven taller (que la hace) y oficina (que la
+           controla). Ver renderRevisionTrimestral. -->
+      <div class="dash-collapse" id="dc-revtrim" style="border-color:#00695c;display:none">
+        <button class="dash-collapse-header" id="dch-revtrim" onclick="toggleDashCollapse('revtrim')" style="color:#00695c">
+          <span class="dc-title">Revisi&oacute;n trimestral de m&aacute;quinas</span>
+          <span class="dc-badge" id="dc-badge-revtrim" style="background:#00695c;color:#fff"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-revtrim-container" style="display:none"></div>
       </div>
 
       <!-- Pagos / Vencimientos: en Inicio solo dejamos lo de HOY, para que no se le pase a nadie.
@@ -7475,7 +7476,9 @@ function renderDashboard(){
 const dashCollapseIds={revtrim:'revtrim',libreocupada:'libreocupada',mantvence:'mantvence',horaspend:'horaspend',paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',cobropend:'cobropend',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
 // Todas arrancan CERRADAS, salvo "Vencidos y vence hoy" en Impuestos y Servicios, que
 // arranca ABIERTA a propósito para que un impuesto vencido nunca pase desapercibido.
-let dashCollapseOpen={revtrim:true,libreocupada:true,mantvence:true,horaspend:true,paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,cobropend:true,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
+// revtrim arranca CERRADO: vive abajo de todo y es una tarea de cuatro veces al año.
+// El número en la cabecera alcanza para saber que hay algo pendiente.
+let dashCollapseOpen={revtrim:false,libreocupada:true,mantvence:true,horaspend:true,paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,cobropend:true,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
 function applyDashCollapseState(key){
   const id=dashCollapseIds[key];
   const header=document.getElementById('dch-'+id);
@@ -7491,8 +7494,8 @@ function applyDashCollapseState(key){
 // OJO: solo los del Inicio. Los de Impuestos y Pago a Proveedores viven en otras
 // pantallas y ahi conviene poder tener varios abiertos a la vez (por eso "impVencHoy"
 // arranca abierto a proposito).
-const ACORDEON_INICIO = ['revtrim','libreocupada','cobropend','fechasrotas','mantvence','horaspend','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
-  'solEspera','solicitudes','segcotiz','presuptaller','contratosListos','alqHoy','alqSemana','cargadoHoy'];
+const ACORDEON_INICIO = ['libreocupada','cobropend','fechasrotas','mantvence','horaspend','paraEntregar','paraRetirar','vuelvenHoy','liberaSemana','problemas',
+  'solEspera','solicitudes','segcotiz','presuptaller','contratosListos','alqHoy','alqSemana','cargadoHoy','revtrim'];
 function toggleDashCollapse(key){
   dashCollapseOpen[key]=!dashCollapseOpen[key];
   if(dashCollapseOpen[key] && ACORDEON_INICIO.includes(key)){
@@ -13451,6 +13454,24 @@ function finBloqueoAlq(a){
     if(!fechaValidaApp(f)) return f;
     const d=new Date(f+'T00:00:00'); d.setDate(d.getDate()-1); return d.toISOString().slice(0,10);
   };
+  /* LA MÁQUINA YA VOLVIÓ AL DEPÓSITO — manda esto por encima de todo lo demás.
+
+     Esto faltaba y es el mismo choque de siempre: estadoRealEq decía "disponible"
+     (porque mira el retorno físico) y esta cuenta decía "ocupada hasta a.fin" (porque
+     miraba solo la fecha facturada). Pasó con la Alo 60 #2: volvió de Molfino, en
+     Equipos figuraba libre, y al querer ponerla en otro alquiler saltaba "OCUPADA esas
+     fechas". Dos respuestas distintas para la misma máquina.
+
+     Hasta cuándo se factura y hasta cuándo está ocupada son cosas distintas: un
+     alquiler puede facturarse hasta fin de mes con la máquina de vuelta en el galpón
+     desde el día 3. Para bloquear vale la vuelta física, no la factura. */
+  const volvioDeVerdad = a.retiroFisicoFecha && (!a.inicio || a.retiroFisicoFecha >= a.inicio);
+  if(volvioDeVerdad){
+    // Misma regla del mediodía que abajo: si volvió antes de las 12:00 ese día ya se
+    // puede volver a alquilar; si volvió a la tarde, el día queda tomado.
+    const horaVuelta = a.retiroFisicoHora || '00:00';
+    return horaVuelta > '12:00' ? a.retiroFisicoFecha : menosUnDia(a.retiroFisicoFecha);
+  }
   if(a.retiradoAnticipado){
     // Regla del mediodía (ver diasAlquilerPorFecha / finFacturableAlq): si el retiro real
     // fue antes de las 12:00, ese día queda libre para arrancar OTRO alquiler ese mismo día
@@ -13470,7 +13491,7 @@ function finBloqueoAlq(a){
      Es el mismo criterio que ya usaba alqFinEfectivo para el estado del equipo —
      las dos cuentas se contradecían entre ellas. */
   if(a.abierto){
-    if(a.retiroFisicoFecha) return a.retiroFisicoFecha;   // ya volvió: libera desde ahí
+    // (el caso "ya volvió" se resolvió arriba, en volvioDeVerdad)
     // Si YA ARRANCÓ y la máquina no volvió, está en lo del cliente ahora mismo:
     // bloquea sin límite. Esto es lo que faltaba.
     if(a.inicio && a.inicio <= hoyISO()) return null;
