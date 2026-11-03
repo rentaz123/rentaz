@@ -6385,6 +6385,31 @@ function refrescarPantallaActual(){
   if(s==='pagoprov' && typeof renderPagoProv==='function')renderPagoProv();
   if(s==='rivadavia' && typeof renderRivadavia==='function')renderRivadavia();
 }
+
+// Pide redibujar la pantalla actual DESPUÉS de que termine la acción en curso.
+// La llama guardar(), así que corre pase lo que pase: ninguna pantalla puede quedar
+// mostrando un número viejo porque alguien se olvidó de agregar un render*() a mano.
+//
+// - setTimeout(0): si una acción guarda varias veces seguidas, se dibuja una sola vez,
+//   y recién cuando ya corrieron los render*() propios de esa acción.
+// - El candado REFRESCANDO: si alguna pantalla llama a guardar() mientras se dibuja
+//   (por ejemplo una que corrige datos viejos sola), no se vuelve a encolar — si no,
+//   serían dos funciones llamándose entre ellas para siempre.
+var _REFRESCO_PANTALLA_TIMER = null;
+var _REFRESCANDO_PANTALLA = false;
+function programarRefrescoPantalla(){
+  if(_REFRESCANDO_PANTALLA) return;
+  if(_REFRESCO_PANTALLA_TIMER) clearTimeout(_REFRESCO_PANTALLA_TIMER);
+  _REFRESCO_PANTALLA_TIMER = setTimeout(()=>{
+    _REFRESCO_PANTALLA_TIMER = null;
+    _REFRESCANDO_PANTALLA = true;
+    // Un error dibujando una pantalla no puede dejar el candado trabado ni romper
+    // la acción que lo disparó: se anota en la consola y se sigue.
+    try{ refrescarPantallaActual(); }
+    catch(e){ console.error('No se pudo redibujar la pantalla actual', e); }
+    _REFRESCANDO_PANTALLA = false;
+  }, 0);
+}
 function goTo(s){
   // Facturación no tiene acceso a Reportes por el momento.
   if(s==='reportes' && ROL_ACTUAL==='facturacion') s='home';
@@ -10597,6 +10622,18 @@ function guardar(){
       alert('⚠️ Se llenó el espacio de este navegador.\n\nTus cambios SÍ se están guardando en la nube — no se pierde nada.\n\nPero la copia local dejó de actualizarse: si te quedás sin internet, esta compu puede mostrarte datos viejos.\n\nAvisale a Mateo para liberar espacio (suelen ser las fotos de los checklists).');
     }
   }
+  // ── RED DE SEGURIDAD: LA PANTALLA SIEMPRE MUESTRA LO QUE SE ACABA DE GUARDAR ──
+  // Cada acción de la app termina con una lista de render*() escrita a mano, y en varias
+  // se olvidó alguna pantalla. El caso que lo destapó (3/11/26): al editar un alquiler se
+  // llamaba a renderAlq/renderDashboard/renderEq pero NO a renderFacturacion, así que el
+  // total de Facturación quedaba con el importe de antes de la edición — el detalle del
+  // alquiler decía $948.640 y la lista, del mismo alquiler, $425.920.
+  //
+  // En vez de confiar en que ninguna de las ~200 llamadas a guardar() se olvide de una
+  // pantalla, después de CUALQUIER guardado se vuelve a dibujar la pantalla que se está
+  // mirando. Va en setTimeout(0) para que corra una sola vez, al final de la acción
+  // completa (si una acción guarda tres veces seguidas, se dibuja una sola).
+  programarRefrescoPantalla();
 }
 // Siempre apuntando al día 1 del mes que se está mirando.
 let calRef=new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -15186,7 +15223,11 @@ async function guardarAlq(){
   }
   alqEditandoIds = [];
   marcarAccionUndo(editando ? `Editar alquiler de ${alqClienteElegido?.nombre||'cliente'}` : `Crear alquiler de ${alqClienteElegido?.nombre||'cliente'}`, 'alquileres');
-  guardar(); cerrarModalAlq(); renderAlq(); renderDashboard(); renderEq();
+  // Faltaban Facturación, Calendario y Reportes: al editar un alquiler se recalculaba
+  // bien el precio y el total, pero la pantalla de Facturación seguía mostrando el
+  // importe viejo porque nadie la volvía a dibujar (reportado el 3/11/26: el detalle
+  // decía $948.640 y la lista $425.920, sobre el mismo alquiler).
+  guardar(); cerrarModalAlq(); renderAlq(); renderDashboard(); renderEq(); renderFacturacion(); renderCal(); renderReportes();
   if(editando){
     alert('Alquiler actualizado correctamente');
   } else if(primerAlqId && ROL_ACTUAL==='taller' && arrancaHoyOAntes(primerAlqId)){
