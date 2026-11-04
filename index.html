@@ -1332,6 +1332,29 @@ if ('serviceWorker' in navigator) {
             <div><label class="flabel">Hasta</label><input type="date" id="cot-fecha-hasta" min="2020-01-01" max="2100-12-31" onchange="calcDiasDesde()"></div>
           </div>
           <div id="per-fechas-resumen" style="display:none;font-size:.75rem;color:var(--verde);font-weight:700;margin-top:2px"></div>
+          <!-- PAQUETES: el MISMO equipo cotizado por varios períodos (1 día / 1 semana /
+               1 mes) para que el cliente compare y elija uno. No se suman entre sí y el
+               flete va una sola vez, al final, aclarando que se cobra aparte. Pedido por
+               Mateo el 3/11/26: "el cliente no quiere ver el total, quiere ver el valor
+               de cada paquete y elegir después". -->
+          <div style="background:var(--bg3);border-radius:8px;padding:8px 10px;margin-top:2px">
+            <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:700;color:var(--txt);cursor:pointer">
+              <input type="checkbox" id="cot-paquetes-check" onchange="togglePaquetesCot()"> Pasar varios paquetes de este equipo (el cliente elige uno)
+            </label>
+            <div id="cot-paquetes-box" style="display:none;margin-top:6px">
+              <div style="font-size:.75rem;color:var(--txt2);margin-bottom:6px">Se manda el valor de cada paquete por separado, sin total, y el flete una sola vez al final. Con esto prendido, los días/fechas de arriba no se usan.</div>
+              <div style="display:flex;flex-wrap:wrap;gap:12px">
+                <label style="display:flex;align-items:center;gap:5px;font-size:.82rem;cursor:pointer"><input type="checkbox" class="cot-paq" value="1" onchange="cotizar()"> 1 día</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:.82rem;cursor:pointer"><input type="checkbox" class="cot-paq" value="7" checked onchange="cotizar()"> 1 semana</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:.82rem;cursor:pointer"><input type="checkbox" class="cot-paq" value="15" onchange="cotizar()"> 15 días</label>
+                <label style="display:flex;align-items:center;gap:5px;font-size:.82rem;cursor:pointer"><input type="checkbox" class="cot-paq" value="28" checked onchange="cotizar()"> 1 mes</label>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:7px">
+                <label style="font-size:.78rem;color:var(--txt2);white-space:nowrap">Otro paquete:</label>
+                <input type="number" id="cot-paq-otro" min="1" max="365" placeholder="días" oninput="cotizar()" style="width:85px;padding:4px 6px;font-size:.8rem">
+              </div>
+            </div>
+          </div>
           <div id="warn-mes" class="warn-txt">⚠ Precio mensual: el cliente debe confirmar desde el inicio (28 días)</div>
           <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:700;color:var(--txt);cursor:pointer;margin-top:2px;">
             <input type="checkbox" id="cot-especial-check" onchange="toggleEspecialCot();cotizar()"> Precio especial (negociado con el cliente)
@@ -3950,12 +3973,25 @@ function renderCobroPendiente(){
       const porQue = c.motivo==='abierto'
         ? 'Era un alquiler abierto — hay que definir hasta cuándo se cobra'
         : `Volvió antes del ${fmtD(a.fin)} pactado — hay que decidir si se descuentan días`;
+      // Qué se facturó hasta ahora, dicho con fechas. Sin esto el cartel decía "falta
+      // definir qué se cobra" aunque ya hubiera facturas cargadas, y no había forma de
+      // saber si faltaba algo de verdad o si el aviso estaba de más.
+      const hastaFact = facturadoHastaAlq(a);
+      const faltanDias = diasSinDefinirCobro(a);
+      const loFacturado = a.abierto
+        ? (hastaFact
+            ? `Facturado hasta el ${fmtD(hastaFact)} (parcial) — el alquiler sigue abierto, falta cerrarlo`
+            : 'Todavía no se le facturó nada — el alquiler sigue abierto')
+        : (hastaFact
+            ? `Facturado hasta el ${fmtD(hastaFact)}${faltanDias>0?` — faltan ${faltanDias} día${faltanDias!==1?'s':''} hasta el día que volvió`:''}`
+            : 'Todavía no se le facturó nada a este alquiler');
       return `<div style="display:flex;gap:9px;align-items:flex-start;padding:.55rem .7rem;border:1px solid #b3791f33;border-left:3px solid #b3791f;border-radius:8px;margin-bottom:.35rem;background:var(--bg2)">
         <div style="flex:1;min-width:0">
           <div style="font-weight:700;font-size:.88rem">${a.equipoNombre||''}</div>
           <div style="font-size:.78rem;color:var(--txt2)">${a.cliente||''}</div>
           <div style="font-size:.76rem;color:#b3791f;font-weight:700;margin-top:2px">Volvió el ${fmtD(c.desde)}${c.marcadoPor?' · lo marcó '+c.marcadoPor:''}</div>
           <div style="font-size:.74rem;color:var(--txt3);margin-top:1px">${porQue}</div>
+          <div style="font-size:.74rem;color:var(--txt2);margin-top:1px;font-weight:600">${loFacturado}</div>
           <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:.45rem">
             <button onclick="${a.abierto?`abrirModalCerrarAbierto(${a.id})`:`marcarRetiroAnticipado(${a.id})`}" class="btn-nuevo" style="padding:4px 10px;font-size:.73rem">Definir qué se cobra</button>
             <button onclick="cobroPendienteSinCambios(${a.id})" class="btn-lim" style="padding:4px 10px;font-size:.73rem">Está bien como está</button>
@@ -8354,6 +8390,31 @@ function limpiarEquiposExtraCot(){
   renderEquiposExtraCot();
 }
 
+// ── PAQUETES DEL MISMO EQUIPO ─────────────────────────────────────────────
+// El cliente pide "pasame cuánto sale por semana y por mes". Antes había que mandar
+// dos presupuestos, o agregar el mismo equipo dos veces como "otro equipo". Con esto
+// se tilda qué paquetes quiere y el presupuesto sale con el valor de cada uno, sin
+// total combinado (son alternativas: elige UNO) y con el flete una sola vez al final.
+function togglePaquetesCot(){
+  const on = document.getElementById('cot-paquetes-check').checked;
+  document.getElementById('cot-paquetes-box').style.display = on ? 'block' : 'none';
+  cotizar();
+}
+// Los días de cada paquete tildado, sin repetidos y de menor a mayor. Devuelve []
+// cuando el modo está apagado — ese es el "no hay paquetes" que mira cotizar().
+function paquetesCotDias(){
+  const chk = document.getElementById('cot-paquetes-check');
+  if(!chk || !chk.checked) return [];
+  const dias = Array.from(document.querySelectorAll('.cot-paq')).filter(x=>x.checked).map(x=>parseInt(x.value)||0);
+  const otroEl = document.getElementById('cot-paq-otro');
+  const otro = otroEl ? (parseInt(otroEl.value)||0) : 0;
+  if(otro>0) dias.push(otro);
+  // El tope de días de taller vale también acá: si no, un paquete de "1 mes" sería la
+  // forma de saltear el permiso temporal sin que nadie se entere.
+  const topados = dias.map(d=>limitarDiasTaller(d)).filter(d=>d>0);
+  return [...new Set(topados)].sort((a,b)=>a-b);
+}
+
 // De qué destino es un valor del selector de Rosso. El "value" de cada opción es el
 // precio, con una letra pegada para distinguir los destinos que podrían costar igual
 // (ver poblarRossoSelect): nada = Rafaela, "b" = Bella Italia, "s" = Susana.
@@ -8578,7 +8639,10 @@ function cotizar(){
   const extrasTotal=cotExtras.reduce((s,x)=>s+x.monto,0);
   const sub=base+equiposExtraTotal+fVal+fValLiviano+fVal2+extrasTotal,iva=sub*0.21,tot=sub+iva;
   const clNombre=cotCliente?cotCliente.nombre:'';
-  const sinTotal = document.getElementById('cot-sin-total-check').checked;
+  const paqDias = paquetesCotDias();
+  // Los paquetes son alternativas por definición (el cliente elige uno): nunca
+  // llevan total combinado, aunque el casillero de alternativas esté sin tildar.
+  const sinTotal = document.getElementById('cot-sin-total-check').checked || paqDias.length>0;
   const mostrarIva = document.getElementById('cot-mostrar-iva-check').checked;
   // Destino del flete (para mostrar "Traslado ida y vuelta <ciudad>" en pantalla).
   const destFlete = fleteEspecial ? '' : destinoFromFleteLabel(fLabel);
@@ -8593,16 +8657,29 @@ function cotizar(){
     ${fValLiviano>0?`<div class="res-lin"><span>${'Traslado equipo liviano'+(destFleteLiviano?' '+destFleteLiviano:'')}</span><span>${fmt(fValLiviano)}</span></div>`:''}
     ${fVal2>0?`<div class="res-lin"><span>${'Traslado (flete 2)'+(destFlete2?' '+destFlete2:'')}</span><span>${fmt(fVal2)}</span></div>`:''}
     ${cotExtras.map(x=>`<div class="res-lin"><span>${x.concepto}</span><span>${fmt(x.monto)}</span></div>`).join('')}`;
-  // Lista de items para el modo "sin total": cada equipo con su propio flete correspondiente
-  // (varía según si es pesado o no, cuando el flete es Rosso por km). Se calcula una sola vez
-  // acá y se guarda en window._cot para que copiar()/generarPDF()/historial usen los mismos
-  // valores sin depender de que los campos del formulario sigan disponibles después.
-  const todosLosEquipos = [{tipo, nombre:p.nombre, base, perLabel}, ...equiposExtra].map(eq=>({
+  // Lista de items para el modo "sin total": cada opción con su propio flete
+  // correspondiente (varía según si es pesado o no, cuando el flete es Rosso por km).
+  // Se calcula una sola vez acá y se guarda en window._cot para que
+  // copiar()/generarPDF()/historial usen los mismos valores sin depender de que los
+  // campos del formulario sigan disponibles después.
+  //
+  // Una opción es una de estas dos cosas:
+  //  · un PAQUETE: el mismo equipo por distintos períodos (1 día / 1 semana / 1 mes),
+  //  · otro EQUIPO, cada uno con su propio período.
+  // Si hay paquetes tildados mandan ellos, y el período suelto de arriba no se usa.
+  const opcionesBase = paqDias.length
+    ? paqDias.map(d=>{
+        const r=calcBasePorTipo(tipo, d);
+        if(r.hayMes) document.getElementById('warn-mes').style.display='block';
+        return {tipo, nombre:r.nombre, base:r.base, perLabel:r.perLabel, dias:d};
+      }).concat(equiposExtra)
+    : [{tipo, nombre:p.nombre, base, perLabel, dias}, ...equiposExtra];
+  const todosLosEquipos = opcionesBase.map(eq=>({
     ...eq,
     flete: fleteMode==='sin' ? 0 : fleteParaEquipoSinTotal(eq.tipo, fVal)
   }));
   // Costos adicionales (peajes, etc.): igual que en el modo normal, NO se desglosan al
-  // cliente — se suman en silencio al flete. En este modo "sin total" cada equipo listado
+  // cliente — se suman en silencio al flete. En este modo "sin total" cada opción listada
   // es una ALTERNATIVA (el cliente elige una, no se suman entre sí), así que el costo
   // adicional se replica en cada opción que tenga flete propio: sea cual sea la que elija,
   // ese costo del viaje corresponde a esa opción igual.
@@ -8611,15 +8688,35 @@ function cotizar(){
     const aplicarA = conFlete.length ? conFlete : [todosLosEquipos[0]];
     aplicarA.forEach(eq=>{ eq.flete += extrasTotal; });
   }
+  // Si TODAS las opciones llevan el mismo flete —el caso típico de los paquetes, que son
+  // del mismo equipo— repetirlo debajo de cada una es ruido y encima invita a sumarlo.
+  // Va una sola vez al final, aclarando que se cobra aparte.
+  const montosFlete = [...new Set(todosLosEquipos.map(eq=>eq.flete))];
+  const fleteAparte = (todosLosEquipos.length>1 && montosFlete.length===1 && montosFlete[0]>0) ? montosFlete[0] : 0;
+  // En modo paquetes no existe un "total": son alternativas. Pero el listado interno de
+  // presupuestos muestra un número por cotización, así que ahí se guarda el paquete MÁS
+  // CARO con su flete — la cota de arriba, que es lo útil para ordenar y buscar.
+  // Al cliente no se le muestra nunca: el presupuesto sale sin total.
+  const mayorOpcion = todosLosEquipos.length ? Math.max(...todosLosEquipos.map(eq=>eq.base)) : 0;
+  const subGuardado = paqDias.length ? mayorOpcion + fVal + fValLiviano + fVal2 + extrasTotal : sub;
+  const ivaGuardado = paqDias.length ? subGuardado*0.21 : iva;
+  const totGuardado = paqDias.length ? subGuardado + ivaGuardado : tot;
   const itemsSinTotal = todosLosEquipos.map(eq=>`<div class="res-lin" style="margin-top:6px"><span style="font-weight:700">${eq.nombre}</span><span style="font-weight:700">${fmt(eq.base)}</span></div>
       <div class="res-lin"><span style="color:var(--txt2);font-size:.76rem">${eq.perLabel}</span></div>
-      ${eq.flete>0?`<div class="res-lin"><span style="color:var(--txt2);font-size:.8rem">+ Traslado ida y vuelta${destFlete?' '+destFlete:''}</span><span style="font-size:.85rem">${fmt(eq.flete)}</span></div>`:''}`).join('');
+      ${(eq.flete>0 && !fleteAparte)?`<div class="res-lin"><span style="color:var(--txt2);font-size:.8rem">+ Traslado ida y vuelta${destFlete?' '+destFlete:''}</span><span style="font-size:.85rem">${fmt(eq.flete)}</span></div>`:''}`).join('')
+    + (fleteAparte?`<div class="res-lin" style="margin-top:9px;padding-top:7px;border-top:1px dashed var(--border2)"><span style="font-weight:700">Traslado ida y vuelta${destFlete?' '+destFlete:''}</span><span style="font-weight:700">${fmt(fleteAparte)}</span></div>
+      <div class="res-lin"><span style="color:var(--txt2);font-size:.76rem">Se cobra aparte — no está sumado en los valores de arriba</span></div>`:'');
   if(sinTotal){
     document.getElementById('res-box').innerHTML=`
       ${clienteLin}
       ${itemsSinTotal}
       ${mostrarIva?`<div style="font-size:.74rem;color:var(--txt2);margin-top:8px;padding-top:8px;border-top:1px dashed var(--border2)">Todos los precios son + IVA (21%).</div>`:''}`;
-    document.getElementById('iva-box').textContent = mostrarIva ? `⚠ Precios sin IVA, por equipo (flete propio de cada uno) — todo + IVA 21%, sin total combinado` : `⚠ Precios sin IVA, por equipo (flete propio de cada uno) — sin total combinado`;
+    // El renglón de aviso cambia según cómo salió el presupuesto: con los paquetes el
+    // flete va una sola vez al final, no uno por opción.
+    const comoSale = paqDias.length
+      ? (fleteAparte ? 'por paquete, el cliente elige uno — el flete va aparte, una sola vez' : 'por paquete, el cliente elige uno — sin total combinado')
+      : (fleteAparte ? 'por equipo — el flete va aparte, una sola vez' : 'por equipo (flete propio de cada uno) — sin total combinado');
+    document.getElementById('iva-box').textContent = mostrarIva ? `⚠ Precios sin IVA, ${comoSale}, todo + IVA 21%` : `⚠ Precios sin IVA, ${comoSale}`;
   } else if(mostrarIva){
     document.getElementById('res-box').innerHTML=`
       ${clienteLin}
@@ -8635,7 +8732,7 @@ function cotizar(){
     document.getElementById('iva-box').textContent=`Total final: ${fmt(tot)}`;
   }
   document.getElementById('res-card').style.display='block';
-  window._cot={nombre:p.nombre,tipo,perLabel,base,equiposExtra,equiposExtraTotal,todosLosEquipos,sinTotal,mostrarIva,fLabel,fVal,fDesglose,sub,iva,tot,cliente:cotCliente,
+  window._cot={nombre:p.nombre,tipo,perLabel,base,equiposExtra,equiposExtraTotal,todosLosEquipos,sinTotal,paquetes:paqDias,fleteAparte,mostrarIva,fLabel,fVal,fDesglose,sub:subGuardado,iva:ivaGuardado,tot:totGuardado,cliente:cotCliente,
     dias, perModo,
     fechaDesde:perModo==='fechas'?fechaDesdeStr:'',fechaHasta:perModo==='fechas'?fechaHastaStr:'',
     fleteMode, rossoModo:fleteMode==='rosso'?document.getElementById('rosso-modo').value:'',
@@ -8668,14 +8765,38 @@ function copiar(){
     if(cl.cuit&&cl.cuit!=='-') txt+=`CUIT: ${cl.cuit}\n`;
   }
   txt+='\n';
-  if(c.sinTotal){
+  // El flete, cuando es el mismo para todas las opciones, va una sola vez al final y
+  // dice que se cobra aparte: así el cliente no lo suma a ninguna de las opciones.
+  const lineaFleteAparte = () => {
+    if(!(c.fleteAparte>0)) return '';
+    const destAp = destinoFromFleteLabel(c.fLabel);
+    return `\nTraslado ida y vuelta${destAp?' '+destAp:''}: ${fmt(c.fleteAparte)} _(se cobra aparte)_\n`;
+  };
+  if(c.sinTotal && (c.paquetes||[]).length){
+    // Paquetes del mismo equipo: el nombre del equipo va UNA vez y abajo cada período
+    // con su valor. Repetir "Equipo: Alo 160W" tres veces era ilegible en WhatsApp.
+    txt+=`Equipo: ${nombreConAlturaAclarada(c.nombre, TIPO_META[c.tipo]?.categoria)}\n`;
+    txt+='\n';
+    txt+='*Opciones — se elige una, no se suman:*\n';
+    (c.todosLosEquipos||[]).forEach(eq=>{
+      // Si además se agregó OTRO equipo, ese sí lleva su nombre adelante.
+      const etiqueta = eq.tipo===c.tipo
+        ? eq.perLabel
+        : `${nombreConAlturaAclarada(eq.nombre, TIPO_META[eq.tipo]?.categoria)} — ${eq.perLabel}`;
+      txt+=`${etiqueta}: ${fmt(eq.base)}\n`;
+      if(eq.flete>0 && !c.fleteAparte) txt+=`   + Traslado: ${fmt(eq.flete)}\n`;
+    });
+    txt+=lineaFleteAparte();
+    if(c.mostrarIva){ txt+='\n'; txt+='_Todos los precios son + IVA (21%)._\n'; }
+  } else if(c.sinTotal){
     (c.todosLosEquipos||[]).forEach((eq,i)=>{
       if(i>0) txt+='\n';
       txt+=`Equipo: ${nombreConAlturaAclarada(eq.nombre, TIPO_META[eq.tipo]?.categoria)}\n`;
       txt+=`Período: ${eq.perLabel}${i===0?rango:''}\n`;
       txt+=`Valor alquiler: ${fmt(eq.base)}\n`;
-      if(eq.flete>0) txt+=`Flete: ${fmt(eq.flete)}\n`;
+      if(eq.flete>0 && !c.fleteAparte) txt+=`Flete: ${fmt(eq.flete)}\n`;
     });
+    txt+=lineaFleteAparte();
     if(c.mostrarIva){ txt+='\n'; txt+='_Todos los precios son + IVA (21%)._\n'; }
   } else {
   txt+=`Equipo: ${nombreConAlturaAclarada(c.nombre, TIPO_META[c.tipo]?.categoria)}\n`;
@@ -8780,6 +8901,12 @@ function limpiar(){
   document.getElementById('cot-flete2-box').style.display='none';
   document.getElementById('cot-flete2-toggle-box').style.display='none';
   document.getElementById('cot-sin-total-check').checked=false;
+  // Los paquetes vuelven a su estado de fábrica: apagados, con "1 semana" y "1 mes"
+  // tildados para la próxima vez que se prendan.
+  document.getElementById('cot-paquetes-check').checked=false;
+  document.getElementById('cot-paquetes-box').style.display='none';
+  document.querySelectorAll('.cot-paq').forEach(x=>{ x.checked = (x.value==='7' || x.value==='28'); });
+  document.getElementById('cot-paq-otro').value='';
   document.getElementById('cot-mostrar-iva-check').checked=true;
   document.getElementById('cot-usd-check').checked=false;
   document.getElementById('cot-usd-box').style.display='none';
@@ -12788,9 +12915,11 @@ function generarPDF(){
           <td class="cant" style="padding-bottom:2px">${eq.dias||dias} día${(eq.dias||dias)!==1?'s':''}</td>
           <td class="precio" style="padding-bottom:2px">$ ${Math.round(eq.base).toLocaleString('es-AR')},-</td>
         </tr>
-        ${idx===0&&rangoFecha?`<tr><td class="rango" colspan="3">${rangoFecha}</td></tr>`:''}
-        ${eq.flete>0?`<tr class="con-flete"><td>${fleteDescripcion||'Traslado ida y vuelta'}</td><td class="cant">1</td><td class="precio">$ ${Math.round(eq.flete).toLocaleString('es-AR')},-</td></tr>`:''}
-        `).join('') : `
+        ${(idx===0&&rangoFecha&&!(c.paquetes||[]).length)?`<tr><td class="rango" colspan="3">${rangoFecha}</td></tr>`:''}
+        ${(eq.flete>0&&!c.fleteAparte)?`<tr class="con-flete"><td>${fleteDescripcion||'Traslado ida y vuelta'}</td><td class="cant">1</td><td class="precio">$ ${Math.round(eq.flete).toLocaleString('es-AR')},-</td></tr>`:''}
+        `).join('') + (c.fleteAparte>0?`
+        <tr class="con-flete"><td>${(fleteDescripcion||'Traslado ida y vuelta')} — se cobra aparte, no está sumado arriba</td><td class="cant">1</td><td class="precio">$ ${Math.round(c.fleteAparte).toLocaleString('es-AR')},-</td></tr>
+        `:'') : `
         <tr>
           <td style="padding-bottom:2px">${descripcionEquipoPDF(c.tipo)}</td>
           <td class="cant" style="padding-bottom:2px">${dias} día${dias!==1?'s':''}</td>
@@ -12828,11 +12957,15 @@ function generarPDF(){
 let PRESUPUESTOS = JSON.parse(localStorage.getItem('rtz_presup') || '[]');
 function guardarPresupuesto(c, dias, rangoFecha, fleteDescripcion){
   const cl = c.cliente;
+  // Con paquetes no hay un período único. En el listado interno se guarda el más largo,
+  // que es el que acompaña al importe mayor (ver subGuardado en cotizar()).
+  const paqsGuardar = c.paquetes || [];
+  if(paqsGuardar.length) dias = Math.max(...paqsGuardar);
   const datos = {
     clienteNombre: cl ? cl.nombre : '(sin cliente)',
     clienteCuit: cl && cl.cuit && cl.cuit!=='-' ? cl.cuit : '',
     clienteTelefono: cl && cl.tel && cl.tel!=='-' ? cl.tel : '',
-    equipo: c.nombre + (c.equiposExtra && c.equiposExtra.length ? ` + ${c.equiposExtra.length} equipo${c.equiposExtra.length>1?'s':''} más` : ''),
+    equipo: c.nombre + (paqsGuardar.length ? ` — ${paqsGuardar.length} paquete${paqsGuardar.length>1?'s':''}` : '') + (c.equiposExtra && c.equiposExtra.length ? ` + ${c.equiposExtra.length} equipo${c.equiposExtra.length>1?'s':''} más` : ''),
     dias: dias,
     rangoFecha: rangoFecha,
     fleteDescripcion: fleteDescripcion,
@@ -12930,7 +13063,17 @@ function cargarPresupuestoEnCotizador(c, presupId){
   renderEquiposExtraCot();
 
   // Checks generales
-  document.getElementById('cot-sin-total-check').checked = !!c.sinTotal;
+  document.getElementById('cot-sin-total-check').checked = !!c.sinTotal && !(c.paquetes||[]).length;
+  // Un presupuesto guardado con paquetes vuelve a abrirse con los mismos paquetes
+  // tildados, no con el período suelto.
+  const paqGuardados = c.paquetes || [];
+  document.getElementById('cot-paquetes-check').checked = paqGuardados.length>0;
+  document.getElementById('cot-paquetes-box').style.display = paqGuardados.length ? 'block' : 'none';
+  document.querySelectorAll('.cot-paq').forEach(x=>{ x.checked = paqGuardados.includes(parseInt(x.value)); });
+  // Los paquetes que no son uno de los botones fijos (ej: 10 días) van al campo "otro".
+  const fijos = Array.from(document.querySelectorAll('.cot-paq')).map(x=>parseInt(x.value));
+  const sueltos = paqGuardados.filter(d=>!fijos.includes(d));
+  document.getElementById('cot-paq-otro').value = sueltos.length ? sueltos[0] : '';
   document.getElementById('cot-mostrar-iva-check').checked = c.mostrarIva!==false;
   document.getElementById('cot-localidad').value = c.localidad || '';
   document.getElementById('cot-obs').value = c.obs || '';
@@ -13047,9 +13190,13 @@ function verDetallePresup(id){
     if(precioDiario && !c.precioEspecial) html += fila('Valor diario base', precioDiario);
     if(c.sinTotal){
       (c.todosLosEquipos||[]).forEach(eq=>{
-        html += fila(''+eq.nombre, fmt(eq.base));
-        if(eq.flete>0) html += fila('Flete de '+eq.nombre, fmt(eq.flete));
+        // Con paquetes, todas las opciones son el mismo equipo: lo que distingue a cada
+        // renglón es el período, así que ese es el que va como etiqueta.
+        const etiq = (c.paquetes||[]).length && eq.tipo===c.tipo ? eq.perLabel : eq.nombre;
+        html += fila(''+etiq, fmt(eq.base));
+        if(eq.flete>0 && !c.fleteAparte) html += fila('Flete de '+eq.nombre, fmt(eq.flete));
       });
+      if(c.fleteAparte>0) html += fila('Traslado ida y vuelta (aparte)', fmt(c.fleteAparte));
       if(c.extras && c.extras.length) c.extras.forEach(x=>{ html += fila(x.concepto, fmt(x.monto)); });
       if(c.mostrarIva) html += `<div style="font-size:.78rem;color:var(--txt2);margin-top:10px;padding-top:8px;border-top:1px dashed var(--border2)">Todos los precios son + IVA (21%).</div>`;
     } else {
@@ -13196,6 +13343,19 @@ async function eliminarPresupuesto(id){
 }
 function convertirEnAlquiler(cotGuardada, presupId){
   const c = cotGuardada || window._cot; if(!c){ alert('Completá primero el cotizador'); return; }
+  // Si la cotización se pasó por PAQUETES, el cliente tomó uno solo. Hay que preguntarle
+  // cuál antes de precargar nada: si no, el alquiler saldría con los días del campo
+  // suelto del cotizador, que en ese modo ni se usó.
+  let diasElegidos = c.dias;
+  const paqs = c.paquetes || [];
+  if(paqs.length){
+    const lista = paqs.map((d,i)=>`${i+1}) ${d} día${d!==1?'s':''}`).join('\n');
+    const r = prompt(`Este presupuesto se pasó por paquetes.\n\n¿Cuál tomó el cliente?\n\n${lista}\n\nEscribí el número de la opción:`, '1');
+    if(r===null) return;
+    const idx = parseInt(r)-1;
+    if(!(idx>=0 && idx<paqs.length)){ alert('No entendí esa opción. Volvé a intentar.'); return; }
+    diasElegidos = paqs[idx];
+  }
   // Abrir modal de alquiler y precargar datos
   abrirModalAlq();
   if(presupId) window._origenPresupId = presupId; else window._origenPresupId = null;
@@ -13238,12 +13398,12 @@ function convertirEnAlquiler(cotGuardada, presupId){
   // "hasta" (fecha de cierre) queda calculada y visible al toque, dejando claro hasta
   // qué día está pagando el cliente. Esa fecha es la base para sumar días adicionales
   // después si hace falta (ver agregarDiasFacturablesAlq / cerrarAlquilerAbierto).
-  if(c.fechaDesde && c.fechaHasta){
+  if(c.fechaDesde && c.fechaHasta && !paqs.length){
     document.getElementById('alq-desde').value = c.fechaDesde;
     document.getElementById('alq-hasta').value = c.fechaHasta;
     calcDiasAlq();
-  } else if(c.dias){
-    document.getElementById('alq-dias-cant').value = c.dias;
+  } else if(diasElegidos){
+    document.getElementById('alq-dias-cant').value = diasElegidos;
     setAlqPerModo('dias');
   }
   // Precargar flete 1 (el mismo de siempre)
@@ -15635,14 +15795,15 @@ function resumenAlquilerHTML(a){
       // al cargar el alquiler abierto (a.precio) — NO significa que ya se haya facturado
       // en el sentido de a.mesFacturado/Facturación. Por eso NO usamos la palabra
       // "facturado" en este texto, para no confundirlo con el estado real de facturación.
-      const ahoraDT=new Date();
-      const hoyStr=fechaISOLocal(ahoraDT);
-      const horaAhora=ahoraDT.toTimeString().slice(0,5);
-      const diasHastaAhora=diasAlquilerPorFecha(a.inicio, hoyStr, horaAhora);
+      // Hasta qué día corrió de verdad: si taller ya marcó que la máquina volvió, la
+      // cuenta se corta ese día — no sigue sumando hasta hoy (ver hastaCuandoCorreAlq).
+      const corteDet=hastaCuandoCorreAlq(a);
+      const diasHastaAhora=diasAlquilerPorFecha(a.inicio, corteDet.fecha, corteDet.hora);
       const diasEnPrecioBase=a.dias||0;
+      const hastaCuando=corteDet.volvio ? `hasta que volvió el ${fmtD(corteDet.fecha)}` : 'hasta hoy';
       const detalle=diasHastaAhora>diasEnPrecioBase
-        ? `${diasHastaAhora} días — ${diasHastaAhora-diasEnPrecioBase} más de los ${diasEnPrecioBase} ya incluidos en el precio base`
-        : `${diasHastaAhora} días (dentro de los ${diasEnPrecioBase} ya incluidos en el precio base)`;
+        ? `${diasHastaAhora} días ${hastaCuando} — ${diasHastaAhora-diasEnPrecioBase} más de los ${diasEnPrecioBase} ya incluidos en el precio base`
+        : `${diasHastaAhora} días ${hastaCuando} (dentro de los ${diasEnPrecioBase} ya incluidos en el precio base)`;
       return fila('Lleva', detalle);
     })():''}
           ${/* Taller NO ve plata: ni importes, ni descuentos, ni bonificaciones. Solo lo que
@@ -16006,19 +16167,28 @@ function quitarViajeCompartido(id){
   renderReportes(); renderAlq();
 }
 
-// Sugiere en qué mes debería facturarse un alquiler según su fecha de inicio:
-// si arranca dentro de los últimos DIAS_LIMITE días del mes, lo manda al mes
-// siguiente (caso típico: entra el 28-29-30 de junio y se factura en julio).
-// Es solo un punto de partida razonable — siempre se puede corregir a mano.
+// Sugiere en qué mes debería facturarse un alquiler. Lo normal es el mes en que arrancó.
+// La excepción: el que arranca dentro de los últimos DIAS_LIMITE días del mes Y sigue
+// corriendo en el mes siguiente (entra el 29 de junio y vuelve el 4 de julio) se factura
+// en julio. Si empieza y termina en el mismo mes, va en ese mes aunque haya arrancado el 30.
+// Es solo un punto de partida razonable — siempre se puede corregir con "Cambiar mes".
 const DIAS_LIMITE_MES_SIGUIENTE = 5;
 function mesSugeridoFacturacion(a){
   const [y,m,d] = a.inicio.split('-').map(Number);
+  const mesInicio = `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}`;
+  // Si el alquiler EMPIEZA Y TERMINA dentro del mismo mes, se factura en ESE mes, aunque
+  // haya arrancado el 27. La regla de abajo existe para el alquiler que arranca a fin de
+  // mes y sigue corriendo en el siguiente — no para uno que empezó y terminó en octubre.
+  // (3/11/26: un alquiler del 27/10 al 29/10, facturado en octubre, se contaba en el
+  // reporte de noviembre porque acá se miraba solo la fecha de inicio.)
+  const mesFin = (a.fin && /^\d{4}-\d{2}/.test(a.fin)) ? a.fin.slice(0,7) : null;
+  if(mesFin && mesFin <= mesInicio) return mesInicio;
   const ultimoDiaMes = new Date(y, m, 0).getDate();
   if(d > ultimoDiaMes - DIAS_LIMITE_MES_SIGUIENTE){
     const sig = new Date(y, m, 1); // "m" (1-12) como índice 0-based ya apunta al mes siguiente
     return `${sig.getFullYear()}-${String(sig.getMonth()+1).padStart(2,'0')}`;
   }
-  return `${String(y).padStart(4,'0')}-${String(m).padStart(2,'0')}`;
+  return mesInicio;
 }
 // Precarga del número de factura. Walter los emite en orden, así que tipear los 13
 // caracteres a mano cada vez (0004-00005121) era puro trabajo repetido: sugerimos el
@@ -16192,15 +16362,44 @@ async function desmarcarFacturado(id){
 // alquiler NO volvía a aparecer en la cola. Nadie se enteraba, y el reporte del mes
 // mostraba solo lo facturado, siempre menos de lo que la máquina realmente trabajó.
 // Se usa la misma regla del mediodía que se usa para cobrar (diasAlquilerPorFecha).
+// ── HASTA QUÉ DÍA CORRIÓ UN ALQUILER — UNA SOLA RESPUESTA ─────────────────
+// Un alquiler abierto deja de generar días el día que la máquina entró al depósito,
+// NO el día en que alguien se acuerda de cerrarlo en el sistema.
+//
+// Esta pregunta se contestaba por separado en cinco lugares (el aviso de días sin
+// facturar, el "Lleva X días" del detalle, el cierre del alquiler abierto, el cuadro
+// de cargar factura y el de factura de varios equipos) y todos miraban HOY. Resultado:
+// un equipo que volvió el 30/10 seguía sumando un día cada mañana en los cinco, y los
+// cuadros se abrían con la fecha de hoy ya puesta, listos para facturar días que la
+// máquina nunca trabajó. Ahora los cinco preguntan acá.
+//
+// Devuelve { fecha, hora, volvio }. La hora importa por la regla del mediodía
+// (ver diasAlquilerPorFecha): el día de vuelta solo cuenta si fue después de las 12:00.
+// Si taller no cargó la hora se usa '00:00', el mismo criterio que el bloqueo del
+// calendario (ver finBloqueoAlq) — en la duda, no se cobra el día.
+function hastaCuandoCorreAlq(a){
+  const ahora = new Date();
+  const hoy = fechaISOLocal(ahora);
+  const sigueCorriendo = {fecha:hoy, hora:ahora.toTimeString().slice(0,5), volvio:false};
+  if(!a) return sigueCorriendo;
+  // pickupPendiente activo = la máquina NO volvió y retiroFisicoFecha es un resto de un
+  // ciclo anterior; no hay que creerle (mismo criterio que alqEstaActivoHoy).
+  const volvio = !!a.retiroFisicoFecha
+    && !a.pickupPendiente
+    && fechaValidaApp(a.retiroFisicoFecha)
+    && (!a.inicio || a.retiroFisicoFecha >= a.inicio)
+    && a.retiroFisicoFecha <= hoy;
+  if(!volvio) return sigueCorriendo;
+  return {fecha:a.retiroFisicoFecha, hora:a.retiroFisicoHora || '00:00', volvio:true};
+}
+
 function diasSinFacturarAlq(a){
   if(!a || !a.abierto || a.retiradoAnticipado || a.pausado) return 0;
   if(a.sinFactura) return 0;
   if(!a.inicio) return 0;
-  const ahora=new Date();
-  const hoy=fechaISOLocal(ahora);
-  if(a.inicio>hoy) return 0;
-  const hora=ahora.toTimeString().slice(0,5);
-  const corridos=diasAlquilerPorFecha(a.inicio, hoy, hora);
+  if(a.inicio > hoyISO()) return 0;
+  const corte = hastaCuandoCorreAlq(a);
+  const corridos = diasAlquilerPorFecha(a.inicio, corte.fecha, corte.hora);
   return Math.max(0, corridos-(a.dias||0));
 }
 
@@ -17094,8 +17293,14 @@ function abrirModalCerrarAbierto(id){
     `<b>${a.equipoNombre}</b> · ${a.cliente}<br>`+
     `Arrancó: ${fmtD(a.inicio)} a las ${a.horaEntrega||'08:00'}<br>`+
     `Cargado hasta ahora: ${fmtD(a.fin)} (${a.dias||0} día${(a.dias||0)!==1?'s':''})`;
-  document.getElementById('cerrarab-fecha').value = hoyISO();
-  document.getElementById('cerrarab-hora').value = a.horaRetiro||a.horaEntrega||'08:00';
+  // Si taller ya marcó que la máquina volvió, el cuadro se abre con ESE día, no con hoy.
+  // Antes venía siempre con hoy puesto: un equipo que entró al depósito el 30/10 se
+  // cerraba el 4/11 y se le facturaban cinco días que nunca trabajó (ver hastaCuandoCorreAlq).
+  const corteCerrar = hastaCuandoCorreAlq(a);
+  document.getElementById('cerrarab-fecha').value = corteCerrar.fecha;
+  document.getElementById('cerrarab-hora').value = corteCerrar.volvio
+    ? (a.retiroFisicoHora || a.horaRetiro || a.horaEntrega || '08:00')
+    : (a.horaRetiro || a.horaEntrega || '08:00');
 
   // Atajo "cerrar sin facturar nada más": pone la fecha hasta donde ya está facturado.
   // Solo aparece si con la fecha de hoy se facturarían días de más, que es justo el caso
@@ -17380,9 +17585,62 @@ async function marcarVueltaDeTaller(id){
     : `Listo, quedó registrado que volvió. El equipo ya figura disponible.`);
 }
 
+// ¿Hasta qué día está facturado un alquiler? null si todavía no se le facturó nada.
+// Hay dos formas de facturar y las dos cuentan: el alquiler entero marcado como
+// facturado (a.mesFacturado) cubre hasta a.fin, y las facturas por tramos de un
+// alquiler abierto (a.diasAgregados) cubren hasta el "hasta" del último tramo.
+// Si están las dos, manda la que llega más lejos.
+function facturadoHastaAlq(a){
+  if(!a) return null;
+  const tramos = (a.diasAgregados||[])
+    .filter(d=>d.mesFacturado && d.hasta && fechaValidaApp(d.hasta))
+    .map(d=>d.hasta).sort();
+  const ultimoTramo = tramos.length ? tramos[tramos.length-1] : null;
+  if(a.mesFacturado){
+    const fin = fechaValidaApp(a.fin) ? a.fin : null;
+    if(!ultimoTramo) return fin;
+    if(!fin) return ultimoTramo;
+    return fin > ultimoTramo ? fin : ultimoTramo;
+  }
+  return ultimoTramo;
+}
+
+// Días que quedan sin facturar entre lo último facturado y el día que volvió el equipo.
+function diasSinDefinirCobro(a){
+  if(!a || !a.cobroPendiente) return 0;
+  const vuelta = a.cobroPendiente.desde;
+  if(!fechaValidaApp(vuelta)) return 0;
+  const hasta = facturadoHastaAlq(a);
+  if(!hasta) return 0;                       // no se facturó nada: no hay cuenta que hacer
+  if(hasta >= vuelta) return 0;
+  return Math.round((new Date(vuelta+'T00:00:00') - new Date(hasta+'T00:00:00'))/86400000);
+}
+
 // Los que volvieron y todavía no tienen definido qué se cobra.
+//
+// NO alcanza con mirar la marca (a.cobroPendiente). Si después de que taller marcó la
+// vuelta ya se facturó hasta ese día o más, no falta definir nada — aunque la marca
+// haya quedado puesta porque se facturó por un camino que no la limpiaba. Eso es lo
+// que hacía que un alquiler YA FACTURADO siguiera apareciendo en Inicio pidiendo que
+// se definiera qué cobrar (reportado por Mateo el 4/11/26).
+//
+// Misma idea que el aviso de horómetros: el panel lee los datos, no la marca.
 function alquileresConCobroPendiente(){
-  return (ALQUILERES||[]).filter(a=>a.cobroPendiente && a.activo!==false);
+  return (ALQUILERES||[]).filter(a=>{
+    if(!a.cobroPendiente || a.activo===false) return false;
+    // ── UN ABIERTO NO SE RESUELVE CON UNA FACTURA PARCIAL ──────────────────
+    // Mientras el alquiler siga ABIERTO no hay un "hasta cuándo se cobra" definitivo,
+    // por más facturas parciales que tenga cargadas: las parciales son cobros a cuenta
+    // de un alquiler que sigue corriendo, no el cierre. Queda en el aviso hasta que
+    // alguien lo cierre. (Aclarado por Mateo el 4/11/26.)
+    if(a.abierto) return true;
+    // Un alquiler de fecha fija que volvió antes SÍ queda resuelto cuando se facturó
+    // hasta el día que volvió o más: ahí ya se decidió qué se cobraba.
+    const vuelta = a.cobroPendiente.desde;
+    const hasta = facturadoHastaAlq(a);
+    if(hasta && vuelta && hasta >= vuelta) return false;
+    return true;
+  });
 }
 
 // La oficina resolvió: se limpia el pendiente. Lo llaman las funciones que definen
@@ -17656,9 +17914,13 @@ function abrirPeriodoFactura(id){
   // fechaValidaApp: con la fecha de fin rota esto lanzaba y no se abría la facturación.
   if(esPrimera || !fechaValidaApp(a.fin)){ sugDesde = fechaValidaApp(a.inicio) ? a.inicio : ''; }
   else { const d=new Date(a.fin+'T00:00:00'); d.setDate(d.getDate()+1); sugDesde=d.toISOString().slice(0,10); }
-  const hoy=hoyISO();
+  // El "hasta" sugerido NO es hoy porque sí: si la máquina ya volvió, es el día que
+  // volvió. Facturar hasta hoy un equipo que entró al depósito la semana pasada es
+  // cobrarle al cliente días que no usó (ver hastaCuandoCorreAlq).
+  const corteFact = hastaCuandoCorreAlq(a);
+  const topeHasta = corteFact.fecha;
   document.getElementById('perfact-desde').value = sugDesde;
-  document.getElementById('perfact-hasta').value = hoy>sugDesde ? hoy : sugDesde;
+  document.getElementById('perfact-hasta').value = topeHasta>sugDesde ? topeHasta : sugDesde;
   // El monto a mano arranca vacío en cada apertura: es la excepción, no lo normal, y
   // dejarlo pegado del alquiler anterior sería la peor forma de equivocarse acá.
   document.getElementById('perfact-monto').value = '';
@@ -18203,7 +18465,10 @@ function abrirFacturaVarios(){
   const fmtD = s => { const[y,m,d]=String(s).split('-'); return `${d}/${m}/${y.slice(2)}`; };
   document.getElementById('fv-filas').innerHTML = sel.map(a=>{
     const desde = desdeSugeridoFact(a);
-    const hasta = hoyISO() > desde ? hoyISO() : desde;
+    // Si la máquina ya volvió, el 'hasta' de esta fila es el día que volvió, no hoy
+    // (ver hastaCuandoCorreAlq). Cada equipo de la factura puede tener su propia fecha.
+    const topeFila = hastaCuandoCorreAlq(a).fecha;
+    const hasta = topeFila > desde ? topeFila : desde;
     return `<div class="fv-fila" data-id="${a.id}" style="padding:.7rem 0;border-bottom:1px solid var(--border)">
       <div style="font-size:.86rem;font-weight:600;color:var(--txt);margin-bottom:.4rem">${a.equipoNombre}</div>
       <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
