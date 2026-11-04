@@ -16298,6 +16298,40 @@ function marcarMesFacturado(id){
   if(typeof renderFacturacion==='function') renderFacturacion();
   alert(`Este alquiler ahora cuenta para el reporte de ${mesLabel(a.mesFacturado)}.`);
 }
+
+// ── EN QUÉ MES CUENTA UN ALQUILER CARGADO SIN FACTURA ─────────────────────
+// Un alquiler sin factura cuenta igual en los reportes (la máquina trabajó y entró
+// plata), pero no tiene mes de facturación porque nunca se facturó. Hasta ahora caía
+// siempre en el mes en que ARRANCÓ, sin manera de corregirlo: si salió el 28/09 y
+// cobraste en octubre, quedaba en septiembre — y como los reportes arrancan limpios
+// desde octubre, desaparecía del todo. Esto le da el mismo control que tienen los
+// facturados con "Cambiar mes", pero sin marcarlo como facturado (que sería mentira).
+function mesEnQueCuentaAlq(a){
+  if(!a) return '';
+  return a.mesFacturado || a.mesCuenta || String(a.inicio||'').slice(0,7);
+}
+function marcarMesSinFactura(id){
+  const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
+  const actual = mesEnQueCuentaAlq(a);
+  const ym = prompt(
+    `¿En qué mes tiene que contar este alquiler en los reportes? (formato AAAA-MM)\n\n`+
+    `${a.equipoNombre} · ${a.cliente}\n`+
+    `Arrancó el ${String(a.inicio||'').split('-').reverse().join('/')}\n\n`+
+    `Se carga sin factura: no se marca como facturado, solo se define en qué mes suma.`,
+    actual);
+  if(ym===null) return;
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(ym.trim())){ alert('Formato inválido. Usá AAAA-MM, por ejemplo 2026-10'); return; }
+  a.mesCuenta = ym.trim();
+  marcarAccionUndo(`Mes de reportes de "${a.equipoNombre}" — ${a.cliente}`, 'facturacion');
+  guardar();
+  if(document.getElementById('modal-alq-det').style.display==='flex') verDetalleAlq(id);
+  renderReportes();
+  if(typeof renderFacturacion==='function') renderFacturacion();
+  const avisoCorte = (REPORTES_DESDE_MES && a.mesCuenta < REPORTES_DESDE_MES)
+    ? `\n\n⚠️ Ojo: los reportes arrancan en ${mesLabel(REPORTES_DESDE_MES)}, así que con ese mes sigue quedando afuera.`
+    : '';
+  alert(`Listo. Este alquiler ahora cuenta en el reporte de ${mesLabel(a.mesCuenta)}.`+avisoCorte);
+}
 // Corrige (o marca por primera vez) el mes en que cuenta UNA factura parcial puntual de
 // un alquiler abierto — independiente del mes de la porción base y de las demás facturas
 // parciales. Se usa cuando una factura se emitió en un mes distinto al que quedó marcado
@@ -16653,17 +16687,30 @@ function renderFacturacion(){
 
   if(sinFacturaLista.length){
     h += `<div class="sec-divider" style="margin:1.2rem 0 .6rem">Cargados sin factura (${sinFacturaLista.length})</div>`;
-    h += '<div style="font-size:.76rem;color:var(--txt3);margin-bottom:.6rem">Estos se cargaron aclarando que no necesitan factura. No hace falta hacer nada: ya cuentan en reportes. Si igual hubiera que facturar alguno, tocá "Facturar igual".</div>';
-    h += sinFacturaLista.map(a=>`<div class="pago-item" style="border-color:rgba(229,168,59,0.4);background:rgba(229,168,59,0.06);margin-bottom:.5rem">
+    h += '<div style="font-size:.76rem;color:var(--txt3);margin-bottom:.6rem">Estos se cargaron aclarando que no necesitan factura. Cuentan igual en los reportes — abajo dice en qué mes suma cada uno, y se puede corregir.</div>';
+    h += sinFacturaLista.map(a=>{
+      // En qué mes suma este alquiler, dicho con todas las letras. Si cae antes del
+      // arranque limpio queda fuera de los reportes y hay que avisarlo acá: es
+      // exactamente el caso que no se veía por ningún lado (Genie 3246 / ZANABRIA, 4/11/26).
+      const mesCuenta = mesEnQueCuentaAlq(a);
+      const afuera = REPORTES_DESDE_MES && mesCuenta && mesCuenta < REPORTES_DESDE_MES;
+      return `<div class="pago-item" style="border-color:${afuera?'var(--rojo)':'rgba(229,168,59,0.4)'};background:${afuera?'rgba(214,69,69,.07)':'rgba(229,168,59,0.06)'};margin-bottom:.5rem">
         <div class="pago-info">
           <div class="pago-concepto" style="font-size:.95rem">${a.equipoNombre} · ${a.cliente}</div>
           <div class="pago-meta" style="font-size:.8rem;margin-top:3px">${fmtD(a.inicio)} al ${fmtD(a.fin)} · ${fmt(a.tot||0)} · sin factura</div>
+          <div style="font-size:.78rem;margin-top:2px;color:${afuera?'var(--rojo)':'var(--verde)'};font-weight:700">
+            ${afuera
+              ? `⚠ Cuenta en ${mesLabel(mesCuenta)} — queda FUERA de los reportes, que arrancan en ${mesLabel(REPORTES_DESDE_MES)}. Cambiale el mes.`
+              : `Cuenta en el reporte de ${mesLabel(mesCuenta)}${a.mesCuenta?' (definido a mano)':''}`}
+          </div>
         </div>
-        <div style="display:flex;gap:6px;flex-shrink:0">
+        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
           <button onclick="verDetalleAlq(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem">Ver</button>
+          <button onclick="marcarMesSinFactura(${a.id})" class="${afuera?'btn-nuevo':'btn-lim'}" style="padding:6px 10px;font-size:.75rem">Cambiar mes</button>
           <button onclick="facturarAlquilerAuto(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem">Facturar igual</button>
         </div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
 
   h += `<div class="sec-divider" style="margin:1.2rem 0 .6rem">Ya facturados${busca?'':' (últimos 30)'}</div>`;
@@ -18989,7 +19036,7 @@ function chunksFacturablesAlq(a){
   const diasBase = hayParciales ? (a.diasBase!=null ? a.diasBase : a.dias||0) : (a.dias||0);
   const finBase = hayParciales ? (a.finBase || a.fin) : (a.retiradoAnticipado || a.fin);
   if(!baseFusionadaEnChunk && (a.mesFacturado || a.sinFactura)){
-    chunks.push({monto:precioBase, dias:diasBase, inicio:a.inicio, fin:finBase, mes:a.mesFacturado||null});
+    chunks.push({monto:precioBase, dias:diasBase, inicio:a.inicio, fin:finBase, mes:a.mesFacturado || a.mesCuenta || null});
   }
   (a.diasAgregados||[]).forEach(d=>{
     if(d.mesFacturado){
