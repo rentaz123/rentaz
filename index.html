@@ -16545,6 +16545,53 @@ function diasSinFacturarAlq(a){
 // en cada carga de la app: lo normal es no querer verlos.
 let FACT_VER_VIEJOS=false;
 
+
+// ── LA PLANILLA RIVADAVIA, DENTRO DE FACTURACIÓN ──────────────────────────
+// Las jornadas del autoelevador en Rivadavia se marcaban como facturadas SOLO desde la
+// pantalla de la planilla. Pero Facturación es donde se mira "qué falta facturar", así
+// que desde acá no se veían y quedaban olvidadas. (Mateo, 5/11/26.)
+//
+// Se agrupan por mes TRABAJADO y se dice en qué mes se facturan (el siguiente, siempre:
+// Rivadavia va a mes vencido). Solo cuentan las jornadas cerradas — una que todavía no
+// tiene hora de entrada no se puede cobrar, y se avisa aparte para que no pase inadvertida.
+function bloqueFacturacionRiv(){
+  if(esTallerVista()) return '';
+  const cerradas = (PLANILLA_RIV||[]).filter(r=>r.fecha && r.horaEntrada);
+  const abiertas = (PLANILLA_RIV||[]).filter(r=>r.fecha && !r.horaEntrada);
+  const porMes = {};
+  cerradas.forEach(r=>{
+    const ym = String(r.fecha).slice(0,7);
+    if(!porMes[ym]) porMes[ym] = {ym, pend:[], fact:[]};
+    (r.mesFacturado ? porMes[ym].fact : porMes[ym].pend).push(r);
+  });
+  const pendientes = Object.values(porMes).filter(g=>g.pend.length).sort((a,b)=>a.ym.localeCompare(b.ym));
+  if(!pendientes.length) return '';
+
+  const fmtHoras = regs => {
+    const medias = regs.reduce((s,r)=>s+rivBloques(r),0);
+    const h = medias/2;
+    return Number.isInteger(h) ? String(h) : String(h).replace('.',',');
+  };
+  return `<div class="sec-divider" style="margin:1.2rem 0 .6rem">Planilla Rivadavia (${pendientes.length})</div>`
+    + `<div style="font-size:.76rem;color:var(--txt3);margin-bottom:.6rem">El autoelevador en Rivadavia se factura a mes vencido: lo trabajado en un mes se factura al mes siguiente, y ahí cuenta en los reportes.</div>`
+    + pendientes.map(g=>{
+      const total = g.pend.reduce((s,r)=>s+rivMontoReg(r),0);
+      const abiertasDelMes = abiertas.filter(r=>String(r.fecha).slice(0,7)===g.ym).length;
+      return `<div class="pago-item" style="border-color:rgba(0,131,143,.45);background:rgba(0,131,143,.06);margin-bottom:.5rem">
+        <div class="pago-info">
+          <div class="pago-concepto" style="font-size:.95rem">Autoelevador en Rivadavia · ${mesLabelRiv(g.ym)}</div>
+          <div class="pago-meta" style="font-size:.8rem;margin-top:3px">${g.pend.length} jornada${g.pend.length!==1?'s':''} · ${fmtHoras(g.pend)} h · ${fmt(total)}</div>
+          <div style="font-size:.78rem;margin-top:2px;color:var(--verde);font-weight:700">Se factura en ${mesLabel(mesSiguienteDe(g.ym))} — ahí va a contar en los reportes</div>
+          ${abiertasDelMes?`<div style="font-size:.76rem;color:var(--rojo);margin-top:2px">⚠ Quedan ${abiertasDelMes} jornada${abiertasDelMes!==1?'s':''} sin cerrar en ${mesLabelRiv(g.ym)} — esas no entran hasta que se les cargue la hora de entrada.</div>`:''}
+          ${g.fact.length?`<div style="font-size:.76rem;color:var(--txt3);margin-top:2px">(${g.fact.length} jornada${g.fact.length!==1?'s':''} de ese mes ya estaban facturadas)</div>`:''}
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+          <button onclick="goTo('rivadavia')" class="btn-lim" style="padding:6px 10px;font-size:.75rem">Ver planilla</button>
+          <button onclick="facturarMesRiv('${g.ym}')" class="btn-nuevo" style="padding:6px 10px;font-size:.75rem">Facturado</button>
+        </div>
+      </div>`;
+    }).join('');
+}
 function renderFacturacion(){
   const cont=document.getElementById('fact-cont');
   if(!cont) return;
@@ -16817,6 +16864,7 @@ function renderFacturacion(){
     }).join('');
   }
 
+  h += bloqueFacturacionRiv();
   h += `<div class="sec-divider" style="margin:1.2rem 0 .6rem">Ya facturados${busca?'':' (últimos 30)'}</div>`;
   const facturadosMostrar = busca ? facturados : facturados.slice(0,30);
   if(!facturadosMostrar.length){
@@ -17062,12 +17110,23 @@ async function facturarMesRiv(ym){
   const horas=mediasHoras/2;
   const horasTxt=Number.isInteger(horas)?horas:String(horas).replace('.',',');
   const total=horas*rivPrecioHora();
-  if(!(await confirmSiNo(`Facturar ${mesLabelRiv(ym)}:\n${delMes.length} registro(s) · ${mediasHoras} media(s) hora(s) = ${horasTxt} h × ${fmt(rivPrecioHora())}/h = ${fmt(total)}\n\nQuedan marcados como facturados y pasan a contar en reportes.`, {si:'Confirmar', no:'Cancelar'}))) return;
+  // Se dice en qué mes va a contar, que NO es el mes trabajado: Rivadavia va a mes
+  // vencido (ver mesDeReportesRiv). Sin aclararlo, el número aparecía en un mes que
+  // no era el que uno esperaba y no se entendía por qué.
+  const mesRep = mesSiguienteDe(ym);
+  if(!(await confirmSiNo(
+      `Facturar ${mesLabelRiv(ym)}:\n${delMes.length} registro(s) · ${mediasHoras} media(s) hora(s) = ${horasTxt} h × ${fmt(rivPrecioHora())}/h = ${fmt(total)}\n\n`+
+      `Rivadavia se factura a mes vencido, así que esto cuenta en el reporte de ${mesLabel(mesRep)}.`,
+      {si:'Confirmar', no:'Cancelar'}))) return;
   const now=Date.now();
   delMes.forEach(r=>{ r.mesFacturado=ym; r.facturadoEn=now; });
   guardarPlanillaRiv();
   renderRivadavia();
-  alert(`${mesLabelRiv(ym)} facturado — ${fmt(total)}. Ya cuenta en reportes.`);
+  // Facturación, Reportes e Inicio también miran la planilla: si no se redibujan,
+  // quedan mostrando el estado anterior (ver programarRefrescoPantalla).
+  if(typeof renderFacturacion==='function') renderFacturacion();
+  renderReportes(); renderDashboard();
+  alert(`${mesLabelRiv(ym)} facturado — ${fmt(total)}.\n\nCuenta en el reporte de ${mesLabel(mesRep)}.`);
 }
 async function desfacturarMesRiv(ym){
   const delMes=PLANILLA_RIV.filter(r=>r.fecha && r.fecha.slice(0,7)===ym && r.mesFacturado);
@@ -17076,6 +17135,10 @@ async function desfacturarMesRiv(ym){
   delMes.forEach(r=>{ r.mesFacturado=null; r.facturadoEn=null; });
   guardarPlanillaRiv();
   renderRivadavia();
+  // Igual que al facturar: todas las pantallas que miran la planilla tienen que
+  // enterarse, no solo la de Rivadavia.
+  if(typeof renderFacturacion==="function") renderFacturacion();
+  renderReportes(); renderDashboard();
 }
 
 // Version corta para la columna de la tabla de cerrados.
@@ -17223,18 +17286,50 @@ function renderRivadavia(){
 // Convierte los registros ya facturados de la planilla en "alquileres sintéticos"
 // para que entren a los reportes de Ventas / Ranking igual que cualquier alquiler.
 // No se guardan en ALQUILERES (siguen viviendo en PLANILLA_RIV); esto es solo una vista.
+// ── RIVADAVIA SE FACTURA A MES VENCIDO ───────────────────────────────────
+// Lo que la máquina trabajó en octubre se le factura en noviembre. Por lo tanto tiene
+// que contar en el reporte de NOVIEMBRE, no en el de octubre. Antes se imputaba al mes
+// del trabajo y por eso el autoelevador nunca cuadraba. (Mateo, 5/11/26.)
+//
+// El mes se CALCULA a partir de la fecha del registro, no se guarda. Así vale igual
+// para los registros viejos que ya están cargados y para los que entren mañana, sin
+// tener que tocar ningún dato ni acordarse de migrar nada.
+function mesSiguienteDe(ym){
+  if(!ym || !/^\d{4}-(0[1-9]|1[0-2])$/.test(ym)) return ym||'';
+  const [y,m] = ym.split('-').map(Number);
+  const d = new Date(y, m, 1);   // "m" (1-12) como índice 0-based ya apunta al mes siguiente
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+// En qué mes cuenta para los reportes una jornada de la planilla.
+function mesDeReportesRiv(reg){
+  return mesSiguienteDe(String((reg && reg.fecha) || '').slice(0,7));
+}
 function alquileresRivParaReportes(){
   const cli='EXPRESO RIVADAVIA S.R.L.';
+  // ── CUÁNTOS "DÍAS" DE MÁQUINA EQUIVALE UNA JORNADA POR HORA ──────────────
+  // En Rivadavia el autoelevador se cobra por hora, así que no hay "días alquilada"
+  // en el sentido del resto de la flota. Contar 1 día por jornada era inventar un
+  // número: una salida de 2 horas y un alquiler de un día entero no son lo mismo.
+  //
+  // La regla la definió Mateo el 5/11/26: los días salen de dividir lo facturado por
+  // esas horas por el VALOR DIARIO del autoelevador. Así queda expresado en la misma
+  // unidad que el resto del reporte y el rendimiento por día se puede comparar.
+  // Si por lo que sea no hay tarifa diaria cargada, se vuelve a contar 1 por jornada
+  // antes que dividir por cero y mostrar cualquier cosa.
+  const tarifaDia = (precioTipo('autoelevador') || {}).dia || 0;
   return PLANILLA_RIV.filter(r=>r.mesFacturado).map(r=>{
     const monto=rivMontoReg(r);
+    // Sin redondear: el redondeo es cosa de la pantalla (fmtDias). Redondeando acá, el
+    // promedio por día del renglón dejaba de dar exactamente la tarifa diaria.
+    const diasEquiv = tarifaDia>0 ? (monto/tarifaDia) : 1;
     return {
       id:'riv-'+r.id, equipoId:null, equipoNombre:'Autoelevador (planilla Rivadavia)',
       categoria:'autoelevador', altura:4.5, pesada:false,
       cliente:cli, clienteId:508,
-      inicio:r.fecha, fin:r.fecha, dias:1,
+      inicio:r.fecha, fin:r.fecha, dias:diasEquiv,
       precio:monto, sub:monto, iva:monto*0.21, tot:monto*1.21,
       fVal:0, fTransportista:'Sin flete',
-      mesFacturado:r.mesFacturado, sinFactura:false,
+      mesFacturado:mesDeReportesRiv(r), sinFactura:false,
       _rivadavia:true
     };
   });
@@ -18255,16 +18350,22 @@ async function agregarDiasFacturablesAlq(id, periodo){
   // que con "tarifa × días del período" no se puede escribir.
   // En el detalle dejamos anotada la equivalencia en días (monto ÷ tarifa diaria pactada)
   // para que dentro de seis meses se entienda por qué esa factura no da la cuenta redonda.
+  // diasCobrados: los días que REALMENTE se le cobran al cliente, que no siempre son
+  // los del calendario. El caso de THERMOFIN: el período de la factura son 7 días y se
+  // le cobran 6. Hasta ahora solo se guardaba el período, así que el reporte de Máquinas
+  // contaba 28 días trabajados cuando en realidad eran 24 — y el rendimiento por día
+  // salía más bajo del real. Reportado por Mateo el 5/11/26.
+  let diasCobrados = dias;
   if(periodo.montoManual > 0){
     montoFactura = periodo.montoManual;
     tarifa = null;
     const tarifaDiaRef = p && p.dia ? p.dia : 0;
     const equivalen = tarifaDiaRef>0 ? Math.round((montoFactura/tarifaDiaRef)*100)/100 : null;
+    if(equivalen!=null) diasCobrados = equivalen;
     detalle = (equivalen!=null && equivalen!==dias)
       ? `Monto acordado — período de ${dias} día${dias!==1?'s':''}, se cobran ${equivalen}`
       : 'Monto acordado';
   }
-  // Se cobran menos días (o más) que los del período, a la tarifa diaria pactada. Es
   // el caso de THERMOFIN: el período de la factura son 7 días y se le cobran 6. Antes
   // había que hacer la multiplicación a mano y escribir el importe.
   else if(periodo.diasACobrar > 0){
@@ -18275,6 +18376,7 @@ async function agregarDiasFacturablesAlq(id, periodo){
     }
     tarifa = tarifaDiaRef;
     montoFactura = periodo.diasACobrar * tarifaDiaRef;
+    diasCobrados = periodo.diasACobrar;
     const bonif = Math.round((dias - periodo.diasACobrar)*100)/100;
     detalle = bonif>0
       ? `${String(periodo.diasACobrar).replace('.',',')} de ${dias} días — ${String(bonif).replace('.',',')} bonificado${bonif!==1?'s':''}`
@@ -18380,7 +18482,7 @@ async function agregarDiasFacturablesAlq(id, periodo){
       {si:`${mesLabel(mesDelPeriodo)} (cuando trabajó la máquina)`, no:`${mesLabel(mesActual)} (cuando se emitió la factura)`});
     if(alMesDelPeriodo) mesFacturado = mesDelPeriodo;
   }
-  a.diasAgregados.push({fecha:hoyISO(), desde, hasta:nuevaFin, dias:diasChunk, tarifa, monto:montoChunk, detalle, mesFacturado, facturadoEn:Date.now(), numeroFactura});
+  a.diasAgregados.push({fecha:hoyISO(), desde, hasta:nuevaFin, dias:diasChunk, diasCobrados, tarifa, monto:montoChunk, detalle, mesFacturado, facturadoEn:Date.now(), numeroFactura});
 
   // Si el equipo había vuelto y quedaba pendiente decidir qué se cobraba, esta factura
   // ES esa decisión: cubre hasta el día que volvió o más. Antes el aviso "falta definir
@@ -19140,11 +19242,19 @@ function chunksFacturablesAlq(a){
   const diasBase = hayParciales ? (a.diasBase!=null ? a.diasBase : a.dias||0) : (a.dias||0);
   const finBase = hayParciales ? (a.finBase || a.fin) : (a.retiradoAnticipado || a.fin);
   if(!baseFusionadaEnChunk && (a.mesFacturado || a.sinFactura)){
-    chunks.push({monto:precioBase, dias:diasBase, inicio:a.inicio, fin:finBase, mes:a.mesFacturado || a.mesCuenta || null});
+    chunks.push({monto:precioBase, dias:diasBase, diasCobrados:diasBase, inicio:a.inicio, fin:finBase, mes:a.mesFacturado || a.mesCuenta || null});
   }
   (a.diasAgregados||[]).forEach(d=>{
     if(d.mesFacturado){
-      chunks.push({monto:d.monto||0, dias:d.dias||0, inicio:d.desde||finBase, fin:d.hasta||finBase, mes:d.mesFacturado});
+      // diasCobrados = los días que se le cobraron al cliente. Puede ser menos que el
+      // período (THERMOFIN: 6 de cada 7). Las facturas viejas no lo tienen guardado,
+      // pero se puede deducir exacto: monto ÷ tarifa diaria, que son los dos datos que
+      // sí quedaron. Si la factura se cargó como paquete o monto suelto no hay tarifa
+      // diaria y ahí no hay nada que deducir: valen los días del período.
+      const cobrados = (d.diasCobrados!=null)
+        ? d.diasCobrados
+        : ((d.tarifa>0 && d.monto>0) ? Math.round((d.monto/d.tarifa)*100)/100 : (d.dias||0));
+      chunks.push({monto:d.monto||0, dias:d.dias||0, diasCobrados:cobrados, inicio:d.desde||finBase, fin:d.hasta||finBase, mes:d.mesFacturado});
     }
   });
   // El corte del arranque limpio se aplica ACÁ, sobre los tramos ya armados, para
@@ -19340,6 +19450,13 @@ function alqMeta(a){
   return {categoria:'otro', altura:0, pesada:false};
 }
 
+// Los días del reporte pueden no ser enteros: las jornadas por hora de Rivadavia se
+// convierten a días equivalentes, y una factura puede cobrar media jornada. Se muestra
+// con una sola decimal y coma, como se escribe acá. Un entero sale sin decimales.
+function fmtDias(n){
+  const v = Math.round((Number(n)||0)*10)/10;
+  return Number.isInteger(v) ? String(v) : String(v).replace('.', ',');
+}
 function renderRepMaquinas(){
   if(!EQUIPOS.length && !ALQUILERES.length) return '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:2rem">No hay equipos cargados.</p>';
 
@@ -19370,24 +19487,45 @@ function renderRepMaquinas(){
   const porGrupo={};
   repMaquinasFilasPorGrupo={};
 
-  alquileresParaReportes().forEach(a=>{
+  // ── LA PLANILLA DE RIVADAVIA TAMBIÉN ES TRABAJO DEL AUTOELEVADOR ─────────
+  // Los registros ya facturados de la planilla entran como "alquileres sintéticos"
+  // (ver alquileresRivParaReportes) y caen en el MISMO renglón que el autoelevador,
+  // porque es la misma máquina. Ya entraban en Clientes y en Ranking; acá quedaban
+  // afuera, y el autoelevador figuraba facturando bastante menos de lo que facturó.
+  // Pedido por Mateo el 5/11/26.
+  //
+  // Se cuentan aparte las JORNADAS de planilla para no decir "23 alquileres" cuando
+  // en realidad son 3 alquileres y 20 salidas por hora.
+  const rivParaMaquinas = alquileresRivParaReportes();
+  [...alquileresParaReportes(), ...rivParaMaquinas].forEach(a=>{
     const chunks=chunksFacturablesAlq(a);
     if(!chunks.length) return;
-    let mDias=0, mMonto=0;
+    // Días TRABAJADOS = los que se le cobraron al cliente, no los del calendario.
+    // Un mes de 28 días facturado 6 de cada 7 son 24 días trabajados, y el rendimiento
+    // por día sale de dividir por 24. Dividir por 28 lo hacía ver más barato de lo que
+    // se cobró. Se guardan también los de calendario para poder aclararlo en el renglón.
+    let mDias=0, mMonto=0, mDiasCalendario=0;
     chunks.forEach(chunk=>{
       if(mesDelChunk(chunk, a) !== mesElegido) return;
-      mDias += chunk.dias||0;
+      mDias += (chunk.diasCobrados!=null ? chunk.diasCobrados : (chunk.dias||0));
+      mDiasCalendario += chunk.dias||0;
       mMonto += chunk.monto||0;
     });
     if(mDias>0){
       const meta=alqMeta(a);
       const key=grupoKey(meta);
-      if(!porGrupo[key]) porGrupo[key]={key, label:grupoLabel(meta), cantidad:0, dias:0, monto:0};
-      porGrupo[key].cantidad+=1;
+      if(!porGrupo[key]) porGrupo[key]={key, label:grupoLabel(meta), cantidad:0, dias:0, monto:0, diasCalendario:0, jornadasRiv:0, montoRiv:0};
+      if(a._rivadavia){
+        porGrupo[key].jornadasRiv+=1;
+        porGrupo[key].montoRiv+=mMonto;
+      } else {
+        porGrupo[key].cantidad+=1;
+      }
       porGrupo[key].dias+=mDias;
+      porGrupo[key].diasCalendario+=mDiasCalendario;
       porGrupo[key].monto+=mMonto;
       if(!repMaquinasFilasPorGrupo[key]) repMaquinasFilasPorGrupo[key]=[];
-      repMaquinasFilasPorGrupo[key].push({a, dias:mDias, monto:mMonto});
+      repMaquinasFilasPorGrupo[key].push({a, dias:mDias, diasCalendario:mDiasCalendario, monto:mMonto});
     }
   });
 
@@ -19422,7 +19560,7 @@ function renderRepMaquinas(){
         <h4 style="font-size:.9rem">${x.label}</h4>
         <span style="font-weight:700;color:var(--txt);font-size:.9rem">${fmt(x.monto)}</span>
       </div>
-      <div style="font-size:.78rem;color:var(--txt3)">${x.dias} día${x.dias!==1?'s':''} alquilada · ${x.cantidad} alquiler${x.cantidad!==1?'es':''} · promedio <b style="color:var(--txt2)">${fmt(x.promedio)}/día</b> · Tocá para ver el detalle</div>
+      <div style="font-size:.78rem;color:var(--txt3)">${fmtDias(x.dias)} día${x.dias!==1?'s':''} facturado${x.dias!==1?'s':''}${(x.diasCalendario>x.dias)?` <span style="color:var(--txt3)">(${fmtDias(x.diasCalendario)} de calendario — el resto bonificado)</span>`:''} · ${x.cantidad} alquiler${x.cantidad!==1?'es':''}${x.jornadasRiv?` + ${x.jornadasRiv} jornada${x.jornadasRiv!==1?'s':''} de Rivadavia (${fmt(x.montoRiv)})`:''} · promedio <b style="color:var(--txt2)">${fmt(x.promedio)}/día</b> · Tocá para ver el detalle</div>
     </div>`).join('');
 }
 // Drill-down: qué alquileres arman un renglón del reporte de Máquinas. Sirve para
@@ -19436,13 +19574,21 @@ function mostrarDetalleGrupoMaquina(key){
   document.getElementById('repgrupo-det-titulo').textContent = filas.length ? grupoLabel(alqMeta(filas[0].a)) : 'Detalle';
   const ordenadas = [...filas].sort((x,y)=>(y.a.inicio||'').localeCompare(x.a.inicio||''));
   document.getElementById('repgrupo-det-contenido').innerHTML = ordenadas.length
-    ? ordenadas.map(({a,dias,monto})=>`<div class="eq-item" style="cursor:pointer;flex-direction:column;align-items:flex-start;gap:2px" onclick="document.getElementById('modal-repgrupo-det').style.display='none';verDetalleAlq(${a.id})">
+    ? ordenadas.map(({a,dias,diasCalendario,monto})=>{
+      // Los renglones de la planilla Rivadavia no son alquileres de verdad: su id es un
+      // texto ('riv-123') y no existen en ALQUILERES. Mandarlos a verDetalleAlq rompía
+      // el click. Van a su propia pantalla, que es donde se pueden tocar.
+      const irA = a._rivadavia
+        ? `document.getElementById('modal-repgrupo-det').style.display='none';goTo('rivadavia')`
+        : `document.getElementById('modal-repgrupo-det').style.display='none';verDetalleAlq(${a.id})`;
+      return `<div class="eq-item" style="cursor:pointer;flex-direction:column;align-items:flex-start;gap:2px" onclick="${irA}">
         <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
           <span style="font-size:.85rem;font-weight:700">${a.equipoNombre}</span>
           <span style="font-weight:700;color:var(--verde);font-size:.85rem">${fmt(monto)}</span>
         </div>
-        <div style="font-size:.78rem;color:var(--txt2)">${a.cliente} · ${fmtD(a.inicio)} al ${fmtD(a.fin)} · ${dias} día${dias!==1?'s':''}${a.mesFacturado?' · '+mesLabel(a.mesFacturado):''}</div>
-      </div>`).join('')
+        <div style="font-size:.78rem;color:var(--txt2)">${a.cliente} · ${fmtD(a.inicio)} al ${fmtD(a.fin)} · ${fmtDias(dias)} día${dias!==1?'s':''} facturado${dias!==1?'s':''}${(diasCalendario>dias)?` de ${fmtDias(diasCalendario)} de calendario`:''}${a.mesFacturado?' · '+mesLabel(a.mesFacturado):''}</div>
+      </div>`;
+    }).join('')
     : '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:1rem">No hay alquileres en este grupo.</p>';
   document.getElementById('modal-repgrupo-det').style.display='flex';
 }
