@@ -831,11 +831,16 @@ if ('serviceWorker' in navigator) {
            vacío cuando no hay ninguna, así el panel no se ensucia. -->
       <div id="dash-puesta-al-dia"></div>
 
+      <!-- Tira de alertas: una sola línea con lo que de verdad hay que resolver, arriba
+           de todo. Cada cosa es un botón que abre su ventana. Se llena desde
+           renderTiraAlertas() leyendo los números que ya calcularon los paneles. -->
+      <div id="dash-alertas" style="display:none"></div>
+
       <!-- Para entregar (equipos con alquiler cargado pero todavía no salieron físicamente del depósito) -->
-      <div class="dash-collapse" id="dc-para-entregar" style="border-color:var(--azul)">
-        <button class="dash-collapse-header" id="dch-para-entregar" onclick="toggleDashCollapse('paraEntregar')" style="color:var(--azul)">
+      <div class="dash-collapse" id="dc-para-entregar" >
+        <button class="dash-collapse-header" id="dch-para-entregar" onclick="toggleDashCollapse('paraEntregar')">
           <span class="dc-title">Para entregar (taller)</span>
-          <span class="dc-badge" id="dc-badge-para-entregar" style="background:var(--azul);color:#fff"></span>
+          <span class="dc-badge" id="dc-badge-para-entregar"></span>
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-para-entregar-container" style="display:none"></div>
@@ -843,10 +848,10 @@ if ('serviceWorker' in navigator) {
 
       <!-- Contratos listos para enviar (equipo ya salió con checklist completo, falta mandarle
            el contrato digital al cliente). No lo ve taller — es para oficina/Walter. -->
-      <div class="dash-collapse" id="dc-contratos-listos" style="border-color:var(--verde)">
-        <button class="dash-collapse-header" id="dch-contratos-listos" onclick="toggleDashCollapse('contratosListos')" style="color:var(--verde)">
+      <div class="dash-collapse" id="dc-contratos-listos" >
+        <button class="dash-collapse-header" id="dch-contratos-listos" onclick="toggleDashCollapse('contratosListos')">
           <span class="dc-title">Contratos listos para enviar</span>
-          <span class="dc-badge" id="dc-badge-contratos-listos" style="background:var(--verde);color:#fff"></span>
+          <span class="dc-badge" id="dc-badge-contratos-listos"></span>
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-contratos-listos-container" style="display:none"></div>
@@ -876,10 +881,10 @@ if ('serviceWorker' in navigator) {
            (ver avisarSolicitudesEsperaCubiertasNuevas para el aviso sonoro/banner en el momento
            en que se libera; esto acá queda fijo en Inicio para que no se pierda si nadie vio el
            banner en su momento — se actualiza solo en cada render del dashboard). -->
-      <div class="dash-collapse" id="dc-sol-espera" style="border-color:#00838f;display:none">
-        <button class="dash-collapse-header" id="dch-sol-espera" onclick="toggleDashCollapse('solEspera')" style="color:#00838f">
+      <div class="dash-collapse" id="dc-sol-espera" style="display:none">
+        <button class="dash-collapse-header" id="dch-sol-espera" onclick="toggleDashCollapse('solEspera')">
           <span class="dc-title">Solicitudes que ya se pueden cubrir</span>
-          <span class="dc-badge" id="dc-badge-sol-espera" style="background:#00838f;color:#fff"></span>
+          <span class="dc-badge" id="dc-badge-sol-espera"></span>
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-sol-espera-container" style="display:none"></div>
@@ -887,10 +892,10 @@ if ('serviceWorker' in navigator) {
 
       <!-- Solicitudes de presupuesto largo (taller tomó datos de un cliente que pide más
            de TOPE_DIAS_TALLER días) — SOLO visible para admin, ver renderDashboard. -->
-      <div class="dash-collapse" id="dc-solicitudes" style="border-color:#8e24aa;display:none">
-        <button class="dash-collapse-header" id="dch-solicitudes" onclick="toggleDashCollapse('solicitudes')" style="color:#8e24aa">
+      <div class="dash-collapse" id="dc-solicitudes" style="display:none">
+        <button class="dash-collapse-header" id="dch-solicitudes" onclick="toggleDashCollapse('solicitudes')">
           <span class="dc-title">Pasar presupuesto</span>
-          <span class="dc-badge" id="dc-badge-solicitudes" style="background:#8e24aa;color:#fff"></span>
+          <span class="dc-badge" id="dc-badge-solicitudes"></span>
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-solicitudes-container" style="display:none"></div>
@@ -958,10 +963,10 @@ if ('serviceWorker' in navigator) {
            ganaron ni se dieron por perdidas, agrupadas por qué hay que hacer con cada una.
            El número de la pastilla cuenta SOLO las que hay que llamar hoy; las que están
            al día se ven al abrir pero no gritan. Ver renderSeguimientoCotiz. -->
-      <div class="dash-collapse" id="dc-segcotiz" style="border-color:#00695c;display:none">
-        <button class="dash-collapse-header" id="dch-segcotiz" onclick="toggleDashCollapse('segcotiz')" style="color:#00695c">
+      <div class="dash-collapse" id="dc-segcotiz" style="display:none">
+        <button class="dash-collapse-header" id="dch-segcotiz" onclick="toggleDashCollapse('segcotiz')">
           <span class="dc-title">Cotizaciones para seguir</span>
-          <span class="dc-badge" id="dc-badge-segcotiz" style="background:#00695c;color:#fff"></span>
+          <span class="dc-badge" id="dc-badge-segcotiz"></span>
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-segcotiz-container" style="display:none"></div>
@@ -969,10 +974,10 @@ if ('serviceWorker' in navigator) {
 
       <!-- Cotizaciones pasadas por taller, todavía sin convertir en alquiler ni marcadas
            como seguidas — SOLO visible para admin, ver renderDashboard. -->
-      <div class="dash-collapse" id="dc-presuptaller" style="border-color:#ef6c00;display:none">
-        <button class="dash-collapse-header" id="dch-presuptaller" onclick="toggleDashCollapse('presuptaller')" style="color:#ef6c00">
+      <div class="dash-collapse" id="dc-presuptaller" style="display:none">
+        <button class="dash-collapse-header" id="dch-presuptaller" onclick="toggleDashCollapse('presuptaller')">
           <span class="dc-title">Cotizaciones de taller — seguimiento</span>
-          <span class="dc-badge" id="dc-badge-presuptaller" style="background:#ef6c00;color:#fff"></span>
+          <span class="dc-badge" id="dc-badge-presuptaller"></span>
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-presuptaller-container" style="display:none"></div>
@@ -1001,10 +1006,10 @@ if ('serviceWorker' in navigator) {
 
       <!-- Equipos que terminan/vuelven hoy (retorno programado para hoy), ordenados por hora
            de vencimiento del contrato — visible para TODOS los roles. -->
-      <div class="dash-collapse" id="dc-vuelven-hoy" style="border-color:#00897b">
-        <button class="dash-collapse-header" id="dch-vuelven-hoy" onclick="toggleDashCollapse('vuelvenHoy')" style="color:#00897b">
+      <div class="dash-collapse" id="dc-vuelven-hoy" >
+        <button class="dash-collapse-header" id="dch-vuelven-hoy" onclick="toggleDashCollapse('vuelvenHoy')">
           <span class="dc-title">Terminan hoy</span>
-          <span class="dc-badge" id="dc-badge-vuelven-hoy" style="background:#00897b;color:#fff"></span>
+          <span class="dc-badge" id="dc-badge-vuelven-hoy"></span>
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-vuelven-hoy-container" style="display:none"></div>
@@ -1021,10 +1026,10 @@ if ('serviceWorker' in navigator) {
 
       <!-- Equipos que se liberan en los próximos días (fin confirmado, no abiertos) — pantallazo
            rápido para poder ofrecerlos antes de que se liberen del todo. -->
-      <div class="dash-collapse" id="dc-libera-semana" style="border-color:#00695c">
-        <button class="dash-collapse-header" id="dch-libera-semana" onclick="toggleDashCollapse('liberaSemana')" style="color:#00695c">
+      <div class="dash-collapse" id="dc-libera-semana" >
+        <button class="dash-collapse-header" id="dch-libera-semana" onclick="toggleDashCollapse('liberaSemana')">
           <span class="dc-title">Se liberan esta semana y la próxima</span>
-          <span class="dc-badge" id="dc-badge-libera-semana" style="background:#00695c;color:#fff"></span>
+          <span class="dc-badge" id="dc-badge-libera-semana"></span>
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-libera-semana-container" style="display:none"></div>
@@ -1044,10 +1049,10 @@ if ('serviceWorker' in navigator) {
            tres meses, no algo del día a día. Arriba estorbaba todos los días para algo
            que se usa cuatro veces al año. La ven taller (que la hace) y oficina (que la
            controla). Ver renderRevisionTrimestral. -->
-      <div class="dash-collapse" id="dc-revtrim" style="border-color:#00695c;display:none">
-        <button class="dash-collapse-header" id="dch-revtrim" onclick="toggleDashCollapse('revtrim')" style="color:#00695c">
+      <div class="dash-collapse" id="dc-revtrim" style="display:none">
+        <button class="dash-collapse-header" id="dch-revtrim" onclick="toggleDashCollapse('revtrim')">
           <span class="dc-title">Revisi&oacute;n trimestral de m&aacute;quinas</span>
-          <span class="dc-badge" id="dc-badge-revtrim" style="background:#00695c;color:#fff"></span>
+          <span class="dc-badge" id="dc-badge-revtrim"></span>
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-revtrim-container" style="display:none"></div>
@@ -7563,15 +7568,82 @@ function renderDashboard(){
       ppHome.style.display='none';
     }
   }
+  renderTiraAlertas();
+}
+
+// ── LA TIRA DE ALERTAS DEL INICIO ────────────────────────────────────────
+// Una sola línea arriba de todo con lo que DE VERDAD hay que resolver. Nada más.
+// Cada cosa es un botón: se toca y se abre esa ventana, ya desplegada y a la vista.
+// Así se entra a la app y en dos segundos se sabe si hay algo que atender, sin
+// tener tres listas largas abiertas tapando todo.
+//
+// NO recalcula nada. Lee el número que cada panel ya puso en su propia etiqueta
+// (y si ese panel está visible o no). Es a propósito: si contara por su cuenta,
+// tarde o temprano la tira y el panel dirían cosas distintas — que es exactamente
+// el tipo de error que más molestó este año.
+//
+// "urgente" = algo está mal o frena plata o una máquina. Lo demás (lo que arranca
+// hoy, lo que vuelve, lo cargado hoy, los seguimientos) NO es alerta: está en su
+// ventana, con su número, y se mira cuando uno quiere.
+const ALERTAS_INICIO = [
+  {key:'fechasrotas',  id:'fechasrotas',   label:'con la fecha mal cargada', color:'var(--rojo)'},
+  {key:'libreocupada', id:'libreocupada',  label:'sin cerrar',               color:'var(--rojo)'},
+  {key:'paraRetirar',  id:'para-retirar',  label:'falta retirar',            color:'var(--rojo)'},
+  {key:'problemas',    id:'problemas',     label:'con problemas',            color:'var(--rojo)'},
+  {key:'cobropend',    id:'cobropend',     label:'falta definir qué se cobra', color:'#b3791f'},
+  {key:'horaspend',    id:'horaspend',     label:'sin horómetro',            color:'#b3791f'},
+  {key:'mantvence',    id:'mantvence',     label:'mantenimiento por vencer', color:'#e5a83b'}
+];
+function renderTiraAlertas(){
+  const caja = document.getElementById('dash-alertas');
+  if(!caja) return;
+  const chips = ALERTAS_INICIO.map(al=>{
+    const panel = document.getElementById('dc-'+al.id);
+    const badge = document.getElementById('dc-badge-'+al.id);
+    if(!panel || !badge) return null;
+    // Un panel escondido no tiene nada que decir, aunque le haya quedado un número viejo.
+    if(panel.style.display === 'none') return null;
+    const n = parseInt(String(badge.textContent).replace(/\D/g,'')) || 0;
+    if(n <= 0) return null;
+    return {...al, n};
+  }).filter(Boolean);
+
+  if(!chips.length){ caja.innerHTML=''; caja.style.display='none'; return; }
+  caja.style.display='block';
+  caja.innerHTML = `
+    <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:1rem">
+      <span style="font-size:.76rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.04em">Para resolver</span>
+      ${chips.map(c=>`<button onclick="irAlPanelDeInicio('${c.key}','${c.id}')"
+          style="display:inline-flex;align-items:center;gap:6px;background:${c.color}14;border:1px solid ${c.color}55;color:${c.color};
+                 border-radius:999px;padding:5px 12px;font-size:.79rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">
+          <span style="background:${c.color};color:#fff;border-radius:999px;min-width:17px;padding:0 5px;text-align:center;font-size:.72rem">${c.n}</span>
+          ${c.label}
+        </button>`).join('')}
+    </div>`;
+}
+// Abre la ventana que se tocó en la tira y la deja a la vista. Si ya estaba abierta
+// no la cierra (sería lo contrario de lo que uno espera al tocar una alerta).
+function irAlPanelDeInicio(key, id){
+  if(!dashCollapseOpen[key]) toggleDashCollapse(key);
+  const el = document.getElementById('dc-'+id);
+  if(el) el.scrollIntoView({block:'center', behavior:'smooth'});
 }
 
 // ── Ventanas rebatibles del dashboard ──────────────────────────
 const dashCollapseIds={revtrim:'revtrim',libreocupada:'libreocupada',mantvence:'mantvence',horaspend:'horaspend',paraEntregar:'para-entregar',paraRetirar:'para-retirar',vuelvenHoy:'vuelven-hoy',liberaSemana:'libera-semana',problemas:'problemas',solEspera:'sol-espera',solicitudes:'solicitudes',cobropend:'cobropend',fechasrotas:'fechasrotas',segcotiz:'segcotiz',presuptaller:'presuptaller',contratosListos:'contratos-listos',alqHoy:'alq-hoy',alqSemana:'alq-semana',cargadoHoy:'cargado-hoy',vencHoy:'venc-hoy',vencSemana:'venc-semana',vencOtros:'venc-otros',impVencHoy:'imp-venc-hoy',impPagados:'imp-pagados',ppPendientes:'pp-pendientes',ppPagados:'pp-pagados',ppEnviados:'pp-enviados'};
-// Todas arrancan CERRADAS, salvo "Vencidos y vence hoy" en Impuestos y Servicios, que
-// arranca ABIERTA a propósito para que un impuesto vencido nunca pase desapercibido.
-// revtrim arranca CERRADO: vive abajo de todo y es una tarea de cuatro veces al año.
-// El número en la cabecera alcanza para saber que hay algo pendiente.
-let dashCollapseOpen={revtrim:false,libreocupada:true,mantvence:true,horaspend:true,paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:true,solicitudes:false,cobropend:true,fechasrotas:true,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
+// ── TODAS LAS VENTANAS DEL INICIO ARRANCAN CERRADAS ───────────────────────
+// Antes seis arrancaban abiertas (horómetros, mantenimiento, cobro pendiente, fechas
+// rotas, máquinas trabadas, solicitudes). Entrar a la app era caer sobre dos o tres
+// listas largas desplegadas, con todo lo demás empujado abajo. Pedido por Mateo el
+// 4/11/26: "quiero ingresar y que esté todo más limpio, con sus alertas de que hay
+// cosas por ver, pero yo elegir dónde ingresar".
+//
+// Lo urgente no se pierde: sale arriba de todo en la tira de alertas, en una línea
+// (ver renderTiraAlertas). Desde ahí se abre el que uno quiera.
+//
+// La excepción sigue siendo "Vencidos y vence hoy" de Impuestos y Servicios, que no
+// está en el Inicio: vive en su propia pantalla y ahí sí conviene verlo abierto.
+let dashCollapseOpen={revtrim:false,libreocupada:false,mantvence:false,horaspend:false,paraEntregar:false,paraRetirar:false,vuelvenHoy:false,liberaSemana:false,problemas:false,solEspera:false,solicitudes:false,cobropend:false,fechasrotas:false,segcotiz:false,presuptaller:false,contratosListos:false,alqHoy:false,alqSemana:false,cargadoHoy:false,vencHoy:false,vencSemana:false,vencOtros:false,impVencHoy:true,impPagados:false,ppPendientes:false,ppPagados:false,ppEnviados:false};
 function applyDashCollapseState(key){
   const id=dashCollapseIds[key];
   const header=document.getElementById('dch-'+id);
