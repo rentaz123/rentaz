@@ -9584,20 +9584,40 @@ function limpiarBuscaPrecios(){
 //  cuántos cambios hubo y cuánto aumentaron en promedio. Eso es lo que sirve
 //  para seguirle el paso a la inflación.
 // ═══════════════════════════════════════════════════════════════════════════
+// Los cambios bajados de la nube quedan acá para no volver a pedirlos cada vez que se
+// toca un mes. Se vacía cuando se anota uno nuevo (ver registrarCambioPrecio).
+let HIST_PRECIOS_FILAS = null;
+// Mes abierto para mirar en detalle (AAAA-MM), o null = ninguno.
+let HIST_PRECIOS_MES = null;
+
 async function renderHistorialPrecios(){
   const cont = document.getElementById('precios-historial');
   if(!cont || !sb || !sbSesion) return;
-
-  let filas = [];
-  try{
-    const { data, error } = await sb.from('precios_historial')
-      .select('*').order('cambiado_en', {ascending:false}).limit(300);
-    if(error) throw error;
-    filas = data || [];
-  }catch(e){
-    cont.innerHTML = `<p style="font-size:.8rem;color:var(--rojo)">No se pudo cargar el historial: ${e.message}</p>`;
-    return;
+  if(!HIST_PRECIOS_FILAS){
+    try{
+      const { data, error } = await sb.from('precios_historial')
+        .select('*').order('cambiado_en', {ascending:false}).limit(300);
+      if(error) throw error;
+      HIST_PRECIOS_FILAS = data || [];
+    }catch(e){
+      cont.innerHTML = '<p style="font-size:.8rem;color:var(--rojo)">No se pudo cargar el historial: ' + e.message + '</p>';
+      return;
+    }
   }
+  pintarHistorialPrecios();
+}
+
+// Abre un mes del resumen de arriba. Tocando el mismo otra vez se cierra.
+// No vuelve a pedir nada a la nube: los cambios ya están bajados.
+function elegirMesHistPrecios(m){
+  HIST_PRECIOS_MES = (HIST_PRECIOS_MES === m) ? null : m;
+  pintarHistorialPrecios();
+}
+
+function pintarHistorialPrecios(){
+  const cont = document.getElementById('precios-historial');
+  if(!cont) return;
+  const filas = HIST_PRECIOS_FILAS || [];
 
   if(!filas.length){
     cont.innerHTML = `<p style="font-size:.82rem;color:var(--txt3);line-height:1.6">
@@ -9644,23 +9664,23 @@ async function renderHistorialPrecios(){
     meses[m].precios = Object.keys(meses[m].porClave).length;
   });
   const MES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const nombreMes = m => { const p=String(m).split('-'); return MES[parseInt(p[1],10)-1] + ' ' + p[0]; };
+
+  // Cada mes es un botón: se toca y abajo se abre el detalle de ESE mes.
   const resumen = Object.keys(meses).sort().reverse().map(m=>{
     const d = meses[m];
     const prom = d.con ? d.suma/d.con : null;
-    const partes = m.split('-');
-    return `<div style="background:var(--bg2);border-radius:10px;padding:.7rem .9rem;box-shadow:var(--sombra)">
-      <div style="font-size:.7rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.06em;font-weight:600">${MES[parseInt(partes[1],10)-1]} ${partes[0]}</div>
+    const sel = (HIST_PRECIOS_MES === m);
+    return `<button onclick="elegirMesHistPrecios('${m}')"
+      style="text-align:left;font-family:inherit;cursor:pointer;background:var(--bg2);
+             border:1px solid ${sel?'var(--verde)':'transparent'};border-radius:10px;padding:.7rem .9rem;box-shadow:var(--sombra)">
+      <div style="font-size:.7rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.06em;font-weight:600">${nombreMes(m)}</div>
       <div style="font-size:1.35rem;font-weight:700;letter-spacing:-.03em;margin-top:3px;color:${prom!=null?colorPct(prom):'var(--txt3)'}">${prom!=null?fmtPct(prom):'sin cambio neto'}</div>
-      <div style="font-size:.72rem;color:var(--txt3);margin-top:2px">${d.con} precio${d.con!==1?'s':''} aumentado${d.con!==1?'s':''} · promedio real</div>
-    </div>`;
+      <div style="font-size:.72rem;color:var(--txt3);margin-top:2px">${d.con} precio${d.con!==1?'s':''} aumentado${d.con!==1?'s':''} · ${sel?'tocá para cerrar':'tocá para ver'}</div>
+    </button>`;
   }).join('');
 
-  // ── Detalle ──────────────────────────────────────────────────────────────
-  // Solo los cambios de verdad. Las líneas de "precio vigente" son el punto de
-  // partida, no movimientos: si se listaran, 46 de 49 filas serían relleno y no
-  // se vería lo único que importa, que es lo que se movió.
-  const soloCambios = filas.filter(f=>f.valor_anterior != null);
-  const detalle = soloCambios.map(f=>{
+  const lineaCambio = f=>{
     const p = pct(f.valor_anterior, f.valor_nuevo);
     const fecha = new Date(f.cambiado_en);
     const fStr = String(fecha.getDate()).padStart(2,'0')+'/'+String(fecha.getMonth()+1).padStart(2,'0')+'/'+String(fecha.getFullYear()).slice(2);
@@ -9678,19 +9698,76 @@ async function renderHistorialPrecios(){
         ${p!=null?`<div style="font-size:.78rem;font-weight:700;color:${colorPct(p)};margin-top:2px">${fmtPct(p)}</div>`:''}
       </div>
     </div>`;
-  }).join('');
+  };
 
-  cont.innerHTML =
-    (resumen ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:9px;margin-bottom:1rem">${resumen}</div>` : '') +
-    tablaEvolucion(filas, pct, colorPct, fmtPct) +
-    (soloCambios.length
-      ? `<details style="margin-top:1.2rem">
-           <summary style="cursor:pointer;font-size:.72rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;list-style:none">
-             Ver cambio por cambio (${soloCambios.length})
-           </summary>
-           <div style="background:var(--bg2);border-radius:12px;padding:.3rem 1rem;box-shadow:var(--sombra);margin-top:.5rem">${detalle}</div>
-         </details>`
-      : '');
+  // Solo los cambios de verdad. Las líneas de "precio vigente" son el punto de
+  // partida, no movimientos: si se listaran, 46 de 49 filas serían relleno.
+  const soloCambios = filas.filter(f=>f.valor_anterior != null);
+
+  // ── El mes abierto ───────────────────────────────────────────────────────
+  // Se muestran DOS cosas y conviene no confundirlas:
+  //  · el NETO del mes por precio (con cuánto entró y con cuánto salió), que es
+  //    exactamente lo que arma el porcentaje de la tarjeta de arriba;
+  //  · y abajo, cada toque suelto, por si hubo más de uno sobre el mismo precio.
+  let bloqueMes = '';
+  if(HIST_PRECIOS_MES && meses[HIST_PRECIOS_MES]){
+    const d = meses[HIST_PRECIOS_MES];
+    const prom = d.con ? d.suma/d.con : null;
+    const delMes = soloCambios.filter(f=>String(f.cambiado_en).slice(0,7)===HIST_PRECIOS_MES);
+    const netos = Object.values(d.porClave)
+      .map(v=>({desde:v.desde, hasta:v.hasta, etiqueta:v.etiqueta, p: pct(v.desde, v.hasta)}))
+      .filter(v=>v.p!==null && v.p!==0)
+      .sort((a,b)=>b.p-a.p);
+    const resumenTxt = (prom!=null)
+      ? ('Se movieron <b style="color:var(--txt)">' + d.con + '</b> precio' + (d.con!==1?'s':'')
+         + ', con un aumento promedio de <b style="color:' + colorPct(prom) + '">' + fmtPct(prom) + '</b>.'
+         + (d.cambios!==d.con ? ' Hubo ' + d.cambios + ' toques en total: alguno se corrigió más de una vez y acá cuenta el neto.' : ''))
+      : 'Hubo movimientos pero ningún precio terminó el mes distinto de como entró.';
+    const netosHtml = netos.length
+      ? ('<div style="font-size:.7rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:.2rem">Neto del mes, precio por precio</div>'
+         + netos.map(v=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:.5rem .2rem;border-bottom:1px solid var(--border)">
+        <span style="font-size:.84rem;font-weight:600;color:var(--txt)">${v.etiqueta}</span>
+        <span style="text-align:right;white-space:nowrap;font-size:.82rem;color:var(--txt2)">
+          <span style="color:var(--txt3)">${v.desde!=null?fmt(v.desde):'—'}</span>
+          <span style="color:var(--txt3);margin:0 5px">→</span>
+          <b style="color:var(--txt)">${v.hasta!=null?fmt(v.hasta):'—'}</b>
+          <b style="margin-left:9px;color:${colorPct(v.p)}">${fmtPct(v.p)}</b>
+        </span>
+      </div>`).join(''))
+      : '';
+    const toquesHtml = delMes.length
+      ? `<details style="margin-top:.7rem">
+        <summary style="cursor:pointer;font-size:.72rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;list-style:none">
+          Ver los ${delMes.length} toque${delMes.length!==1?'s':''} de este mes, uno por uno
+        </summary>
+        <div style="margin-top:.3rem">${delMes.map(lineaCambio).join('')}</div>
+      </details>`
+      : '';
+    bloqueMes = `<div style="background:var(--bg2);border:1px solid var(--verde);border-radius:12px;padding:.9rem 1rem;margin-bottom:1rem;box-shadow:var(--sombra)">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:.2rem">
+        <span style="font-size:.95rem;font-weight:700;color:var(--txt);text-transform:capitalize">${nombreMes(HIST_PRECIOS_MES)}</span>
+        <button onclick="elegirMesHistPrecios('${HIST_PRECIOS_MES}')" class="btn-lim" style="width:auto;margin:0;padding:4px 10px;font-size:.73rem">Cerrar</button>
+      </div>
+      <div style="font-size:.78rem;color:var(--txt2);line-height:1.5;margin-bottom:.7rem">${resumenTxt}</div>
+      ${netosHtml}
+      ${toquesHtml}
+    </div>`;
+  }
+
+  const cabeceraMeses = resumen
+    ? `<div style="font-size:.72rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin-bottom:.5rem">Aumento promedio por mes — tocá un mes para abrirlo</div>
+       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;margin-bottom:1rem">${resumen}</div>`
+    : '';
+  const todosLosCambios = soloCambios.length
+    ? `<details style="margin-top:1.2rem">
+         <summary style="cursor:pointer;font-size:.72rem;color:var(--txt3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;list-style:none">
+           Ver cambio por cambio, todos los meses (${soloCambios.length})
+         </summary>
+         <div style="background:var(--bg2);border-radius:12px;padding:.3rem 1rem;box-shadow:var(--sombra);margin-top:.5rem">${soloCambios.map(lineaCambio).join('')}</div>
+       </details>`
+    : '';
+
+  cont.innerHTML = cabeceraMeses + bloqueMes + tablaEvolucion(filas, pct, colorPct, fmtPct) + todosLosCambios;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -9833,6 +9910,8 @@ async function registrarCambioPrecio(tipo, clave, etiqueta, anterior, nuevo){
     // Volvemos a dibujar el historial para que el cambio aparezca al instante.
     // Sin esto la fila queda guardada pero la pantalla sigue mostrando lo de
     // antes, y parece que no funcionó.
+    // Se vacía la copia local para que vuelva a bajar los cambios con el nuevo adentro.
+    HIST_PRECIOS_FILAS = null;
     if(document.getElementById('precios-historial')) renderHistorialPrecios();
   }catch(e){ console.error('No se pudo anotar el cambio de precio:', e); }
 }
@@ -16414,6 +16493,40 @@ function mesEnQueCuentaAlq(a){
   if(!a) return '';
   return a.mesFacturado || a.mesCuenta || String(a.inicio||'').slice(0,7);
 }
+// ── UN ALQUILER SIN FACTURA NO LLEVA NÚMERO DE FACTURA ────────────────────
+// El botón de la sección "Cargados sin factura" usaba el mismo camino que un alquiler
+// normal: marcaba el mes Y pedía el número de factura, sugiriendo el siguiente de la
+// serie de Walter. Eso es peligroso — si alguien acepta la sugerencia, al alquiler le
+// queda pegado un número que NUNCA se emitió, y después ese número aparece en el
+// buscador de Facturación como si existiera. (Mateo, 5/11/26.)
+//
+// Acá no se pide ningún número y se dice con todas las letras para qué sirve: para que
+// el alquiler cuente en el reporte del mes, no para declarar una factura que no hay.
+async function pasarAReportesSinFactura(id){
+  const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
+  // El mes: el que ya se haya definido a mano (ver marcarMesSinFactura), o la sugerencia.
+  const mes = a.mesCuenta || mesSugeridoFacturacion(a);
+  const fueraDelCorte = REPORTES_DESDE_MES && mes < REPORTES_DESDE_MES;
+  const aviso = fueraDelCorte
+    ? `\n\n⚠️ OJO: ${mesLabel(mes)} es anterior a ${mesLabel(REPORTES_DESDE_MES)}, que es desde cuando arrancan los reportes. Con ese mes igual va a quedar afuera. Cambiale el mes antes.`
+    : '';
+  const ok = await confirmSiNo(
+    `${a.equipoNombre} · ${a.cliente}\n${fmt(a.tot||0)}\n\n`+
+    `Este alquiler va SIN FACTURA. Marcarlo acá no emite ninguna factura ni le carga ningún número: `+
+    `solo lo deja contando en el reporte de ${mesLabel(mes)}.${aviso}`,
+    {si:`Sí, que cuente en ${mesLabel(mes)}`, no:'Cancelar'});
+  if(!ok) return;
+  a.mesFacturado = mes;
+  a.facturadoEn = Date.now();
+  a.numeroFactura = '';            // explícito: no tiene, y no se va a inventar uno
+  resolverCobroPendiente(a);
+  marcarAccionUndo(`Pasar a reportes "${a.equipoNombre}" — ${a.cliente} (sin factura)`, 'facturacion');
+  guardar();
+  if(document.getElementById('modal-alq-det').style.display==='flex') verDetalleAlq(id);
+  renderDashboard(); renderReportes();
+  if(typeof renderFacturacion==='function') renderFacturacion();
+  alert(`Listo. Cuenta en el reporte de ${mesLabel(mes)}.\n\nQueda sin número de factura, que es lo que corresponde: no se emitió ninguna.`);
+}
 function marcarMesSinFactura(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
   const actual = mesEnQueCuentaAlq(a);
@@ -16858,7 +16971,7 @@ function renderFacturacion(){
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
           <button onclick="verDetalleAlq(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem">Ver</button>
           <button onclick="marcarMesSinFactura(${a.id})" class="${afuera?'btn-nuevo':'btn-lim'}" style="padding:6px 10px;font-size:.75rem">Cambiar mes</button>
-          <button onclick="facturarAlquilerAuto(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem">Facturar igual</button>
+          <button onclick="pasarAReportesSinFactura(${a.id})" class="btn-nuevo" style="padding:6px 10px;font-size:.75rem" title="No emite factura ni carga ningún número: solo lo deja contando en el reporte">Pasar a reportes</button>
         </div>
       </div>`;
     }).join('');
@@ -16882,14 +16995,14 @@ function renderFacturacion(){
     return `<div class="pago-item" style="border-color:var(--border2);opacity:.85;margin-bottom:.5rem">
         <div class="pago-info">
           <div class="pago-concepto" style="font-size:.95rem">${a.equipoNombre} · ${a.cliente}</div>
-          <div class="pago-meta" style="font-size:.8rem;margin-top:3px">${mesLabel(mesMostrar)} · ${fmt(a.tot||0)}${numMostrar?` · Factura N° <b style="color:var(--txt)">${numMostrar}</b>`:' · <span style="color:var(--rojo)">sin N° de factura</span>'}${ultimoChunk?' · <span style="color:var(--txt3)">alquiler abierto — al día</span>':''}</div>
+          <div class="pago-meta" style="font-size:.8rem;margin-top:3px">${mesLabel(mesMostrar)} · ${fmt(a.tot||0)}${a.sinFactura ? ' · <span style="color:var(--txt2)">va sin factura — cuenta en el reporte, no hay N° que cargar</span>' : (numMostrar?` · Factura N° <b style="color:var(--txt)">${numMostrar}</b>`:' · <span style="color:var(--rojo)">sin N° de factura</span>')}${ultimoChunk?' · <span style="color:var(--txt3)">alquiler abierto — al día</span>':''}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap">
           ${ultimoChunk
             ? `<button onclick="editarNumeroFacturaParcial(${a.id},${idxUltimo})" class="btn-lim" style="padding:6px 10px;font-size:.75rem">${numMostrar?'Editar N°':'Cargar N°'}</button>
                <button onclick="editarMesFacturaParcial(${a.id},${idxUltimo})" class="btn-lim" style="padding:6px 10px;font-size:.75rem">Cambiar mes</button>
                <button onclick="verDetalleAlq(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem">Ver</button>`
-            : `<button onclick="editarNumeroFactura(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem">${numMostrar?'Editar N°':'Cargar N°'}</button>
+            : `${a.sinFactura?'':`<button onclick="editarNumeroFactura(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem">${numMostrar?'Editar N°':'Cargar N°'}</button>`}
                <button onclick="marcarMesFacturado(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem">Cambiar mes</button>
                <button onclick="desmarcarFacturado(${a.id})" class="btn-lim" style="padding:6px 10px;font-size:.75rem;color:var(--rojo)">↩️ Desmarcar</button>`}
         </div>
