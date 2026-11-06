@@ -779,6 +779,7 @@ if ('serviceWorker' in navigator) {
           <button onclick="cerrarMenuMas();abrirCambiarClave()">Cambiar mi contrase&ntilde;a</button>
           <button id="btn-backup" onclick="cerrarMenuMas();descargarBackup()">Bajar copia ahora</button>
           <button id="btn-permiso-taller" style="display:none" onclick="cerrarMenuMas();abrirPermisoTaller()">Permiso de taller (alquileres largos)</button>
+          <button id="btn-alinear-mant" style="display:none" onclick="cerrarMenuMas();alinearVencimientosMant()">Alinear vencimiento de las hojas</button>
           <button id="btn-faceid-menu" style="display:none" onclick="cerrarMenuMas();alternarFaceId()">Entrar con Face ID en este celular</button>
           <div style="height:1px;background:var(--border);margin:5px 8px"></div>
           <button onclick="cerrarMenuMas();logout()">Cerrar sesi&oacute;n</button>
@@ -6217,6 +6218,9 @@ function aplicarRestriccionesRol(){
   // El permiso de taller lo maneja solo Mateo.
   const btnPerm=document.getElementById('btn-permiso-taller');
   if(btnPerm) btnPerm.style.display = esMateo() ? 'block' : 'none';
+  // Alinear los vencimientos de las hojas es una decision de Mateo: toca TODA la flota.
+  const btnAlin=document.getElementById('btn-alinear-mant');
+  if(btnAlin) btnAlin.style.display = esMateo() ? 'block' : 'none';
   const respBox=document.getElementById('taller-resp-actual');
   if(respBox){
     respBox.style.display = esTaller ? 'block' : 'none';
@@ -6666,6 +6670,71 @@ function sumarMesesISO(iso, n){
 }
 function vencimientoMantenimiento(fecha){ return sumarMesesISO(fecha, MANT_MESES_VIGENCIA); }
 
+/* ── VENCIMIENTO FIJADO A MANO PARA TODA LA FLOTA ──────────────────────────
+   Lo normal es que la hoja valga 3 meses desde el día que se revisó la máquina.
+   Pero las plataformas de los clientes (las empresas que exigen la hoja para dejar
+   entrar el equipo) ya tienen cargada una fecha de vencimiento propia, y conviene
+   que todas las máquinas venzan EL MISMO DÍA: así se renuevan todas juntas, en una
+   sola pasada, y coinciden con lo que esas plataformas ya traen.
+
+   Para eso cada hoja puede llevar un "venceManual". Si está, manda ese; si no, vale
+   la cuenta de siempre. La FECHA DE REVISIÓN no se toca nunca: sigue siendo el día
+   real en que taller miró la máquina, y es la que usa la campaña trimestral.
+
+   Cuando taller vuelve a cargar la hoja, el vencimiento a mano se borra y arranca de
+   nuevo la cuenta de 3 meses — si no, una hoja renovada seguiría venciendo en una
+   fecha vieja sin que nadie se diera cuenta. (Pedido por Mateo el 5/11/26.) */
+function venceHojaMant(h){
+  if(!h) return '';
+  if(h.venceManual && fechaValidaApp(h.venceManual)) return h.venceManual;
+  return vencimientoMantenimiento(h.fecha);
+}
+function venceEsManual(h){ return !!(h && h.venceManual && fechaValidaApp(h.venceManual)); }
+
+// Pone la misma fecha de vencimiento a todas las hojas cargadas. Solo Mateo.
+async function alinearVencimientosMant(){
+  if(!esMateo()){ alert('Esto lo maneja Mateo.'); return; }
+  const flota = equiposActivos();
+  const conHoja = flota.filter(e=>{ const h=EQ_MANTENIMIENTO[e.id]; return h && h.fecha; });
+  const sinHoja = flota.filter(e=>{ const h=EQ_MANTENIMIENTO[e.id]; return !(h && h.fecha); });
+  if(!conHoja.length){
+    alert('Todavía no hay ninguna hoja de mantenimiento cargada, así que no hay nada que alinear.\n\nPrimero taller tiene que cargarlas desde cada máquina.');
+    return;
+  }
+  const fecha = prompt(
+    '¿Hasta qué día van a valer TODAS las hojas de mantenimiento? (AAAA-MM-DD)\n\n'+
+    'Se le pone esta misma fecha de vencimiento a las '+conHoja.length+' máquinas que ya tienen la hoja cargada.\n'+
+    'La fecha de revisión de cada una no se toca.',
+    '2027-01-01');
+  if(fecha===null) return;
+  if(!fechaValidaApp(fecha)){ alert('Esa fecha no es válida: '+porQueLaFechaEstaMal(fecha)+'.'); return; }
+
+  // Se dice cuántas estaban vencidas o por vencer, porque alinear las deja vigentes
+  // de un saque y eso tiene que ser una decisión consciente, no un efecto colateral.
+  const vencidas = conHoja.filter(e=>estadoMantenimiento(e.id).estado==='vencida').length;
+  const fmtF = s => String(s).split('-').reverse().join('/');
+  const detalle = sinHoja.length
+    ? '\n\nOJO: '+sinHoja.length+' máquina'+(sinHoja.length!==1?'s':'')+' no tiene'+(sinHoja.length!==1?'n':'')+' hoja cargada y no entra'+(sinHoja.length!==1?'n':'')+':\n· '+sinHoja.map(e=>e.nombre).join('\n· ')
+    : '';
+  const aviso = vencidas
+    ? '\n\n'+vencidas+' de ellas está'+(vencidas!==1?'n':'')+' vencida'+(vencidas!==1?'s':'')+' hoy y van a pasar a figurar vigentes.'
+    : '';
+  const ok = await confirmSiNo(
+    'Todas las hojas van a vencer el '+fmtF(fecha)+'.\n\n'+
+    conHoja.length+' máquina'+(conHoja.length!==1?'s':'')+' con hoja cargada.'+aviso+detalle,
+    {si:'Sí, alinear', no:'Cancelar'});
+  if(!ok) return;
+
+  conHoja.forEach(e=>{ EQ_MANTENIMIENTO[e.id].venceManual = fecha; });
+  marcarAccionUndo('Alinear el vencimiento de '+conHoja.length+' hojas al '+fmtF(fecha), 'equipos');
+  guardarEqMantenimiento();
+  renderDashboard();
+  if(typeof renderEq==='function') renderEq();
+  if(document.getElementById('eq-ficha-mant')) renderEqFichaMantenimiento();
+  alert('Listo. Las '+conHoja.length+' hojas vencen el '+fmtF(fecha)+'.'+
+    (sinHoja.length?'\n\nQuedaron afuera '+sinHoja.length+' máquina'+(sinHoja.length!==1?'s':'')+' sin hoja cargada.':''));
+}
+
 /* ── REVISIÓN TRIMESTRAL ───────────────────────────────────────────────────
    La primera semana de cada trimestre taller revisa TODAS las máquinas y carga
    la hoja de cada una. Cada hoja sale con su fecha real (la del día que se
@@ -6718,7 +6787,7 @@ function estadoRevisionTrimestral(){
 function estadoMantenimiento(eqId){
   const h = EQ_MANTENIMIENTO[eqId];
   if(!h || !h.fecha) return {estado:'sin', vence:'', dias:null};
-  const vence = vencimientoMantenimiento(h.fecha);
+  const vence = venceHojaMant(h);
   if(!vence) return {estado:'sin', vence:'', dias:null};
   const dias = Math.round((new Date(vence+'T00:00:00') - new Date(hoyISO()+'T00:00:00'))/86400000);
   if(dias < 0)  return {estado:'vencida',  vence, dias};
@@ -11529,7 +11598,9 @@ function renderEqFichaMantenimiento(){
       <div><label class="flabel">Fecha de la revisión</label><input type="date" id="mant-fecha" min="2020-01-01" max="2100-12-31" value="${fechaSugeridaMant(h0)}" onchange="refrescarVenceMant()"></div>
       <div><label class="flabel">Horas de uso</label><input type="number" id="mant-horas" value="${h0.horas!==undefined&&h0.horas!==''?h0.horas:(horasEq!==null?horasEq:'')}" placeholder="hs"></div>
     </div>
-    <div style="font-size:.72rem;color:var(--txt3);margin-bottom:.7rem">Vence el <b id="mant-vence">${fmtF(vencimientoMantenimiento(h0.fecha||hoyISO()))}</b> (${MANT_MESES_VIGENCIA} meses)${horasEq!==null?` · el horómetro de la máquina marca ${horasEq} hs`:''}</div>
+    <div style="font-size:.72rem;color:var(--txt3);margin-bottom:.7rem">${venceEsManual(h0)
+      ? `Vence el <b id="mant-vence" style="color:var(--verde)">${fmtF(venceHojaMant(h0))}</b> — fecha fijada para toda la flota. Si volvés a cargar la hoja, pasa a valer ${MANT_MESES_VIGENCIA} meses desde la revisión.`
+      : `Vence el <b id="mant-vence">${fmtF(vencimientoMantenimiento(h0.fecha||hoyISO()))}</b> (${MANT_MESES_VIGENCIA} meses)`}${horasEq!==null?` · el horómetro de la máquina marca ${horasEq} hs`:''}</div>
     <div style="margin-bottom:1rem"><label class="flabel">Quién la hizo</label><input type="text" class="mayus" id="mant-por" value="${String(h0.cargadoPor||(ROL_ACTUAL==='taller'?TALLER_RESPONSABLE:nombreUsuarioActual())||'').replace(/"/g,'&quot;')}" placeholder="Nombre"></div>`;
 
   h+=`<datalist id="mant-sugeridos">${MANT_VALORES.map(v=>`<option value="${v}">`).join('')}</datalist>`;
@@ -11616,7 +11687,7 @@ function descargarHojaMantenimiento(eqId){
     <h1>Check List de Mantenimiento</h1>
     <div class="cab">
       <div>Fecha: <span>${fmtF(h0.fecha)}</span></div>
-      <div>Fecha de vencimiento: <span>${fmtF(vencimientoMantenimiento(h0.fecha))}</span></div>
+      <div>Fecha de vencimiento: <span>${fmtF(venceHojaMant(h0))}</span></div>
       <div>Nombre/Código de la Máquina: <span>${esc(nombreMaq)}</span></div>
       <div>Horas de uso de la Máquina: <span>${esc(h0.horas||'-')} hs</span></div>
       <div>Nº de serie: <span>${esc(eq.nSerie||'-')}</span></div>
@@ -11659,6 +11730,9 @@ function guardarHojaMantenimiento(){
     fecha, horas, items,
     obs: document.getElementById('mant-obs').value.trim(),
     cargadoPor: String(document.getElementById('mant-por').value||'').trim().toUpperCase(),
+  // Al guardar de nuevo, el vencimiento vuelve a ser la cuenta normal: por eso acá no
+  // se arrastra el venceManual. Si hace falta volver a alinear toda la flota, se hace
+  // desde ⋮ → "Alinear vencimiento de las hojas" (ver alinearVencimientosMant).
     actualizadoEn: Date.now()
   };
   // La hoja es también una lectura del horómetro: que no queden dos números.
@@ -16653,6 +16727,37 @@ function diasSinFacturarAlq(a){
   const corridos = diasAlquilerPorFecha(a.inicio, corte.fecha, corte.hora);
   return Math.max(0, corridos-(a.dias||0));
 }
+// ── EN QUÉ MES CAEN LOS DÍAS QUE FALTAN FACTURAR ─────────────────────────
+// "16 días sin facturar" no dice lo mismo si son 16 de noviembre que si son 11 de
+// octubre y 5 de noviembre: en el primer caso el reporte de octubre está completo y
+// en el segundo le faltan once días. Sin esta aclaración el aviso parecía contradecir
+// a un reporte que ya cuadraba. (Mateo, 5/11/26.)
+//
+// NO vuelve a contar nada: toma el total que ya calculó diasSinFacturarAlq y lo reparte
+// sobre los días siguientes al último facturado, que son exactamente los que faltan.
+// Así el desglose nunca puede discrepar del número grande.
+function diasSinFacturarPorMes(a){
+  const total = diasSinFacturarAlq(a);
+  if(total <= 0 || !fechaValidaApp(a.fin)) return [];
+  const porMes = {};
+  const d = new Date(a.fin + 'T00:00:00');
+  for(let i=0; i<total; i++){
+    d.setDate(d.getDate() + 1);
+    const m = fechaISOLocal(d).slice(0,7);
+    porMes[m] = (porMes[m] || 0) + 1;
+  }
+  return Object.keys(porMes).sort().map(m => ({mes:m, dias:porMes[m]}));
+}
+// "11 de octubre y 5 de noviembre" — vacío si caen todos en el mismo mes, porque ahí
+// el desglose no agrega nada y es ruido.
+function textoDiasSinFacturarPorMes(a){
+  const partes = diasSinFacturarPorMes(a);
+  if(partes.length < 2) return '';
+  const MES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  const nom = m => MES[parseInt(m.split('-')[1],10)-1];
+  const txt = partes.map(p=>`${p.dias} de ${nom(p.mes)}`);
+  return txt.slice(0,-1).join(', ') + ' y ' + txt[txt.length-1];
+}
 
 // Si están a la vista los pendientes de antes del arranque limpio. Arranca en false
 // en cada carga de la app: lo normal es no querer verlos.
@@ -16756,9 +16861,30 @@ function renderFacturacion(){
     </div>`;
   }
 
-  let h = hSel + `<div style="font-size:.85rem;color:var(--txt2);margin-bottom:${pendientesViejos.length?'.4rem':'1rem'}">Pendientes de facturar: <b style="color:${pendientes.length?'var(--rojo)':'var(--verde)'}">${pendientes.length}</b>${pendientes.length?` · Total sin facturar: <b style="color:var(--txt)">${fmt(totalPendiente)}</b>`:''}${REPORTES_DESDE_MES?` <span style="color:var(--txt3)">· desde ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}</span>`:''}</div>`;
+  /* ── FACTURACIÓN: DOS VISTAS DISTINTAS ────────────────────────────────────
+     Walter (rol facturación) entra acá a hacer UNA cosa: buscar el cliente que está
+     facturando y marcarlo. Todo lo demás —el contador de pendientes, los avisos del
+     arranque limpio, el panel de alquileres sin cerrar— es información de control
+     que no le sirve para su tarea y lo aturde. A él le queda el buscador y nada más
+     hasta que escriba algo.
 
-  if(pendientesViejos.length){
+     Para Mateo sigue estando todo, pero el panel de alquileres sin cerrar arranca
+     PLEGADO: es un control que se mira cuando uno quiere, no un muro al entrar.
+     (Mateo, 5/11/26.) */
+  const soloBuscador = (ROL_ACTUAL === 'facturacion');
+  if(soloBuscador && !busca){
+    cont.innerHTML = `<div style="text-align:center;color:var(--txt3);font-size:.88rem;line-height:1.7;margin:2.5rem 0">
+        Buscá el cliente que estás facturando.<br>
+        <span style="font-size:.82rem">Te va a decir hasta qué día se le facturó, si quedó algo parcial o si todavía no se le facturó nada.</span>
+      </div>`;
+    return;
+  }
+
+  // Para Walter arranca sin el contador de pendientes: el número global no le dice
+  // nada cuando está facturando un cliente puntual.
+  let h = hSel + (soloBuscador ? '' : `<div style="font-size:.85rem;color:var(--txt2);margin-bottom:${pendientesViejos.length?'.4rem':'1rem'}">Pendientes de facturar: <b style="color:${pendientes.length?'var(--rojo)':'var(--verde)'}">${pendientes.length}</b>${pendientes.length?` · Total sin facturar: <b style="color:var(--txt)">${fmt(totalPendiente)}</b>`:''}${REPORTES_DESDE_MES?` <span style="color:var(--txt3)">· desde ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}</span>`:''}</div>`);
+
+  if(pendientesViejos.length && !soloBuscador){
     const totalViejos=pendientesViejos.reduce((s,a)=>s+(a.tot||0),0);
     h += `<div style="font-size:.79rem;color:var(--txt3);margin-bottom:1rem">
       Quedaron ${pendientesViejos.length} de antes del arranque limpio (${fmt(totalViejos)}). No cuentan en ningún reporte.
@@ -16781,7 +16907,7 @@ function renderFacturacion(){
   // corte igual que el resto de la pantalla: no cuentan en ningún reporte y Mateo ya
   // decidió no facturarlos. La fórmula de hoy es una sola (recalcularTotalesAlq) y
   // ninguno de los tres casos se puede volver a generar.
-  const totalesMalos = alquileresConTotalMalCalculado().filter(x=>!antesDelCorte(x.a));
+  const totalesMalos = soloBuscador ? [] : alquileresConTotalMalCalculado().filter(x=>!antesDelCorte(x.a));
   if(totalesMalos.length){
     const sumaDif = totalesMalos.reduce((s,x)=>s+x.diferencia,0);
     h += `<div style="background:rgba(229,168,59,.14);border-left:3px solid #e5a83b;border-radius:0 9px 9px 0;padding:11px 15px;margin-bottom:1.2rem">
@@ -16822,7 +16948,7 @@ function renderFacturacion(){
   // ¿Quedó algún alquiler abierto arrastrando desde antes del corte? Es la pregunta
   // que hay que poder responder de un vistazo después de cerrar y reingresar todo,
   // porque uno solo que quede sin cerrar desordena el rendimiento de su equipo.
-  if(REPORTES_DESDE_MES){
+  if(REPORTES_DESDE_MES && !soloBuscador){
     // Un abierto solo es "viejo" si ademas YA SE FACTURO antes del corte. Uno recien
       // cargado que arranca el 28/09 y se factura en octubre no hay que reingresarlo:
       // marcarlo mandaba a rehacer un alquiler que estaba perfecto.
@@ -16864,15 +16990,25 @@ function renderFacturacion(){
     .filter(x=>x.dias>0 && matchBusca(x.a))
     .sort((x,y)=>y.dias-x.dias);
 
-  if(corriendo.length){
+  if(corriendo.length && !soloBuscador){
     const totalDias=corriendo.reduce((s,x)=>s+x.dias,0);
     h += `<div style="background:rgba(229,168,59,.12);border-left:3px solid #e5a83b;border-radius:0 9px 9px 0;padding:11px 15px;margin-bottom:1.2rem">
       <div style="font-size:.85rem;font-weight:700;color:var(--txt);margin-bottom:3px">
-        ${corriendo.length} alquiler${corriendo.length!==1?'es':''} abierto${corriendo.length!==1?'s':''} con días sin facturar
+        ${corriendo.length} alquiler${corriendo.length!==1?'es':''} sin cerrar con días sin facturar
         <span style="font-weight:600;color:var(--txt2)">· ${totalDias} día${totalDias!==1?'s':''} en total</span>
       </div>
       <div style="font-size:.78rem;color:var(--txt2);line-height:1.5;margin-bottom:8px">
-        Estas máquinas están trabajando y esos días todavía no están en ninguna factura.
+        ${(()=>{
+          // Antes decía "estas máquinas están trabajando" para todas. Falso cuando alguna
+          // ya volvió: el alquiler sigue sin cerrar, pero la máquina está en el galpón.
+          // Se cuentan las dos situaciones por separado. (Mateo, 5/11/26.)
+          const enObra  = corriendo.filter(({a})=>!hastaCuandoCorreAlq(a).volvio).length;
+          const volvieron = corriendo.length - enObra;
+          const p = [];
+          if(enObra) p.push(`<b>${enObra}</b> ${enObra===1?'sigue':'siguen'} en obra y ${enObra===1?'suma':'suman'} un día más cada mañana`);
+          if(volvieron) p.push(`<b>${volvieron}</b> ya ${volvieron===1?'volvió':'volvieron'} al depósito y solo ${volvieron===1?'falta':'faltan'} facturar${volvieron===1?'lo':'los'} y cerrar${volvieron===1?'lo':'los'}`);
+          return p.join(' · ') + '.';
+        })()}
         Hasta que se carguen, el rendimiento del mes de esos equipos va a salir más bajo del real.
       </div>
       ${corriendo.map(({a,dias})=>{
@@ -16885,8 +17021,18 @@ function renderFacturacion(){
           <div style="flex:1;min-width:210px;font-size:.81rem">
             <b style="color:var(--txt)">${a.equipoNombre}</b> · ${a.cliente}
             <span style="display:block;color:var(--txt2);font-size:.76rem">
-              Facturado hasta el ${fmtD(a.fin)} · <b style="color:#b3791f">${dias} día${dias!==1?'s':''} sin facturar</b>
+              Facturado hasta el ${fmtD(a.fin)} · <b style="color:#b3791f">${dias} día${dias!==1?'s':''} sin facturar</b>${(()=>{const t=textoDiasSinFacturarPorMes(a);return t?` <span style="color:var(--txt3)">(${t})</span>`:'';})()}
             </span>
+            ${(()=>{
+              // "Alquiler abierto" es el estado del PAPEL, no el de la máquina. Si taller
+              // ya la marcó de vuelta, decir solo "abierto" confunde: parece que el equipo
+              // sigue en la obra. Se aclara el estado real y qué falta hacer en cada caso.
+              // (Mateo, 5/11/26: "la S-15 está en el taller y ahí me la indicás como abierto".)
+              const c = hastaCuandoCorreAlq(a);
+              return c.volvio
+                ? `<span style="display:block;color:var(--verde);font-size:.74rem;margin-top:2px">Ya volvió al depósito el ${fmtD(c.fecha)} — no suma más días. Falta facturar estos ${dias} y cerrar el alquiler.</span>`
+                : `<span style="display:block;color:var(--txt3);font-size:.74rem;margin-top:2px">La máquina sigue en obra: mañana suma un día más.</span>`;
+            })()}
             ${viejo?`<span style="display:block;color:var(--rojo);font-size:.74rem;margin-top:2px">
               ⚠ Viene facturado desde antes de ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}: estos días son de meses anteriores.
               Si Walter ya los facturó por fuera, no los cargues acá — cerrá el alquiler y abrí uno nuevo desde ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}.
@@ -16911,8 +17057,19 @@ function renderFacturacion(){
       // facturado quedaba saldado, cuando en realidad la máquina sigue sumando días.
       const sinFactDias = a.abierto ? diasSinFacturarAlq(a) : 0;
       const periodoTxt = a.abierto
-        ? `Abierto desde ${fmtD(a.inicio)} · facturado hasta el ${fmtD(a.fin)}`
-          + (sinFactDias ? ` · <b style="color:#b3791f">${sinFactDias} día${sinFactDias!==1?'s':''} sin facturar</b>` : ' · al día')
+        ? (()=>{
+            // "Abierto desde..." habla del alquiler, no de la máquina. Si ya volvió hay
+            // que decirlo acá también, o parece que el equipo sigue afuera.
+            // (Mateo, 5/11/26: "la S-15 está en el taller y ahí me la indicás como abierto".)
+            const c = hastaCuandoCorreAlq(a);
+            const cab = c.volvio
+              ? `Volvió el ${fmtD(c.fecha)} — el alquiler quedó sin cerrar · facturado hasta el ${fmtD(a.fin)}`
+              : `Abierto desde ${fmtD(a.inicio)} · facturado hasta el ${fmtD(a.fin)}`;
+            if(!sinFactDias) return cab + ' · al día';
+            const porMes = textoDiasSinFacturarPorMes(a);
+            return cab + ` · <b style="color:#b3791f">${sinFactDias} día${sinFactDias!==1?'s':''} sin facturar</b>`
+                       + (porMes ? ` <span style="color:var(--txt3)">(${porMes})</span>` : '');
+          })()
         : ((!a.retiradoAnticipado && !a.modoHoras && a.fin && finFact!==a.fin)
           ? `${fmtD(a.inicio)} al ${fmtD(a.fin)} (retiro) · A facturar: ${fmtD(a.inicio)} al ${fmtD(finFact)}`
           : `${fmtD(a.inicio)} al ${fmtD(a.fin)}`);
@@ -18589,11 +18746,18 @@ async function agregarDiasFacturablesAlq(id, periodo){
   let mesFacturado = (periodo.mesFacturado) ? periodo.mesFacturado : mesActual;
   // Si el mes ya vino decidido desde el cuadro de varios equipos, no se vuelve a preguntar.
   if(!periodo.mesFacturado && mesDelPeriodo && mesDelPeriodo < mesActual){
+    // La pregunta decía los dos meses pero no la CONSECUENCIA de cada uno, que es lo
+    // único que importa acá: si el reporte de un mes ya cerrado coincide con los papeles
+    // y con lo que lleva la empresa a mano, mandar días viejos a ese mes lo descuadra.
+    // Mateo ordena sus papeles por la factura que emite Walter, así que lo normal es
+    // elegir el mes en que se emite. (5/11/26.)
     const alMesDelPeriodo = await confirmSiNo(
       `Esta factura cubre días que terminan en ${mesLabel(mesDelPeriodo)}, pero hoy estamos en ${mesLabel(mesActual)}.\n\n`+
-      `¿En qué mes tiene que contar para los reportes?`,
-      {si:`${mesLabel(mesDelPeriodo)} (cuando trabajó la máquina)`, no:`${mesLabel(mesActual)} (cuando se emitió la factura)`});
-    if(alMesDelPeriodo) mesFacturado = mesDelPeriodo;
+      `¿En qué mes tiene que contar para los reportes?\n\n`+
+      `· ${mesLabel(mesActual)}: es cuando se emite la factura. ${mesLabel(mesDelPeriodo)} no se mueve y sigue coincidiendo con los papeles.\n`+
+      `· ${mesLabel(mesDelPeriodo)}: es cuando trabajó la máquina. Le SUMA esta plata a un mes que quizás ya diste por cerrado.`,
+      {si:`${mesLabel(mesActual)} (cuando se emite)`, no:`${mesLabel(mesDelPeriodo)} (cuando trabajó)`});
+    if(!alMesDelPeriodo) mesFacturado = mesDelPeriodo;
   }
   a.diasAgregados.push({fecha:hoyISO(), desde, hasta:nuevaFin, dias:diasChunk, diasCobrados, tarifa, monto:montoChunk, detalle, mesFacturado, facturadoEn:Date.now(), numeroFactura});
 
@@ -19355,7 +19519,7 @@ function chunksFacturablesAlq(a){
   const diasBase = hayParciales ? (a.diasBase!=null ? a.diasBase : a.dias||0) : (a.dias||0);
   const finBase = hayParciales ? (a.finBase || a.fin) : (a.retiradoAnticipado || a.fin);
   if(!baseFusionadaEnChunk && (a.mesFacturado || a.sinFactura)){
-    chunks.push({monto:precioBase, dias:diasBase, diasCobrados:diasBase, inicio:a.inicio, fin:finBase, mes:a.mesFacturado || a.mesCuenta || null});
+    chunks.push({esBase:true, monto:precioBase, dias:diasBase, diasCobrados:diasBase, inicio:a.inicio, fin:finBase, mes:a.mesFacturado || a.mesCuenta || null});
   }
   (a.diasAgregados||[]).forEach(d=>{
     if(d.mesFacturado){
@@ -19374,7 +19538,13 @@ function chunksFacturablesAlq(a){
   // que valga igual en las cuatro solapas sin tener que filtrar en cada una. Un
   // alquiler de junio que se sigue facturando por tramos aporta solo los tramos
   // de septiembre en adelante; los de junio, julio y agosto quedan afuera.
-  return chunks.filter(chunkEntraEnElCorte);
+  const visibles = chunks.filter(chunkEntraEnElCorte);
+  // El flete se cobra UNA sola vez por alquiler y viaja con la primera factura. Si la
+  // porción base quedó absorbida dentro del primer tramo —lo normal en los abiertos—
+  // no hay ningún chunk marcado como base, y entonces el flete no tenía en qué mes
+  // contarse y desaparecía del cuadre. Se marca el primer tramo que sobrevive al corte.
+  if(visibles.length && !visibles.some(c=>c.esBase)) visibles[0].esBase = true;
+  return visibles;
 }
 // Cantidad de días de un CHUNK que caen dentro de [rangoInicio, rangoFin] y su monto
 // proporcional (prorrateando el monto del chunk según sus propios días totales).
@@ -19598,6 +19768,9 @@ function renderRepMaquinas(){
   const mesDelChunk = (chunk, a) => chunk.mes ? chunk.mes : String(a.inicio||'').slice(0,7);
 
   const porGrupo={};
+  // Acumulador del cuadre del mes (ver mas abajo). Se llena en el mismo recorrido
+  // que arma el reporte, para que no puedan dar numeros distintos.
+  const cuadre = {maquinas:0, fletes:0, extras:0, gravado:0, sinIva:0};
   repMaquinasFilasPorGrupo={};
 
   // ── LA PLANILLA DE RIVADAVIA TAMBIÉN ES TRABAJO DEL AUTOELEVADOR ─────────
@@ -19617,14 +19790,30 @@ function renderRepMaquinas(){
     // Un mes de 28 días facturado 6 de cada 7 son 24 días trabajados, y el rendimiento
     // por día sale de dividir por 24. Dividir por 28 lo hacía ver más barato de lo que
     // se cobró. Se guardan también los de calendario para poder aclararlo en el renglón.
-    let mDias=0, mMonto=0, mDiasCalendario=0;
+    let mDias=0, mMonto=0, mDiasCalendario=0, baseEnEsteMes=false;
     chunks.forEach(chunk=>{
       if(mesDelChunk(chunk, a) !== mesElegido) return;
       mDias += (chunk.diasCobrados!=null ? chunk.diasCobrados : (chunk.dias||0));
       mDiasCalendario += chunk.dias||0;
       mMonto += chunk.monto||0;
+      if(chunk.esBase) baseEnEsteMes = true;   // el flete viaja con la factura base
     });
     if(mDias>0){
+      // ── EL CUADRE CONTRA LOS PAPELES ───────────────────────────────────────
+      // El número grande del reporte es SOLO el valor de las máquinas: no lleva flete
+      // ni IVA. El total que tiene Walter en su planilla es el de las facturas, que sí
+      // los lleva. Comparar uno contra otro da una diferencia enorme aunque cada
+      // máquina coincida una por una — que es exactamente lo que pasó con octubre.
+      // Se arma la escalera completa acá, con los mismos números que el reporte, para
+      // que no haya dos cuentas distintas. (Mateo, 5/11/26.)
+      const extrasAlq = (a.fExtras||[]).reduce((s,x)=>s+(x.monto||0),0);
+      const fleteAlq  = baseEnEsteMes ? (a.fVal||0) : 0;
+      const extraMes  = baseEnEsteMes ? extrasAlq : 0;
+      cuadre.maquinas += mMonto;
+      cuadre.fletes   += fleteAlq;
+      cuadre.extras   += extraMes;
+      if(a.sinFactura) cuadre.sinIva  += mMonto + fleteAlq + extraMes;
+      else             cuadre.gravado += mMonto + fleteAlq + extraMes;
       const meta=alqMeta(a);
       const key=grupoKey(meta);
       if(!porGrupo[key]) porGrupo[key]={key, label:grupoLabel(meta), cantidad:0, dias:0, monto:0, diasCalendario:0, jornadasRiv:0, montoRiv:0};
@@ -19663,10 +19852,44 @@ function renderRepMaquinas(){
   // brazo de 16m no significa nada — son máquinas de precios muy distintos.
   const granTotal=stats.reduce((s,x)=>s+x.monto,0);
 
-  return nav + `<div style="margin-bottom:.9rem;font-size:.85rem;color:var(--txt2)">
+  // ── CUADRE CONTRA LA PLANILLA DE WALTER ───────────────────────────────────
+  // El número de arriba son los valores de MÁQUINA. La planilla de Walter tiene el
+  // total de las FACTURAS, que además del alquiler llevan el flete y el IVA. Son dos
+  // cosas distintas y por eso no coincidían aunque cada máquina diera bien una por una.
+  // Acá está la escalera de una a la otra, para poder comparar lo comparable.
+  const ivaCuadre   = cuadre.gravado * 0.21;
+  const totalCuadre = cuadre.maquinas + cuadre.fletes + cuadre.extras + ivaCuadre;
+  const fila = (lab, val, fuerte) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0${fuerte?';border-top:1px solid var(--border);margin-top:4px;padding-top:6px':''}">
+      <span style="color:${fuerte?'var(--txt)':'var(--txt2)'};${fuerte?'font-weight:700':''}">${lab}</span>
+      <span style="color:var(--txt);${fuerte?'font-weight:700':''};white-space:nowrap">${fmt(val)}</span>
+    </div>`;
+  const cajaCuadre = granTotal>0 ? `<details style="background:var(--bg2);border-radius:12px;padding:.7rem .9rem;margin-bottom:1rem;box-shadow:var(--sombra)">
+      <summary style="cursor:pointer;list-style:none;font-size:.8rem;font-weight:700;color:var(--txt2)">
+        ¿No te cuadra con la planilla de Walter? Tocá acá
+      </summary>
+      <div style="margin-top:.6rem;font-size:.82rem">
+        <div style="font-size:.78rem;color:var(--txt3);line-height:1.5;margin-bottom:.5rem">
+          El número de arriba son solo los valores de máquina. La factura además lleva el flete y el IVA.
+        </div>
+        ${fila('Valor de las máquinas', cuadre.maquinas)}
+        ${fila('+ Fletes facturados', cuadre.fletes)}
+        ${cuadre.extras?fila('+ Otros conceptos (peajes, viajes en falso)', cuadre.extras):''}
+        ${fila('Subtotal sin IVA', cuadre.maquinas + cuadre.fletes + cuadre.extras, true)}
+        ${fila('+ IVA 21%', ivaCuadre)}
+        ${cuadre.sinIva?`<div style="font-size:.76rem;color:var(--txt3);padding:2px 0">(${fmt(cuadre.sinIva)} va sin factura: no paga IVA)</div>`:''}
+        ${fila('TOTAL facturado en el mes', totalCuadre, true)}
+        <div style="font-size:.78rem;color:var(--txt3);line-height:1.5;margin-top:.6rem">
+          Este último es el que se compara con la planilla de Walter. Si todavía no coincide,
+          la diferencia está en facturas que él emitió y que acá no están marcadas — fijate en
+          Facturación qué quedó pendiente de ese mes.
+        </div>
+      </div>
+    </details>` : '';
+
+  return nav + cajaCuadre + `<div style="margin-bottom:.9rem;font-size:.85rem;color:var(--txt2)">
       Facturado en ${tituloMes}:
       <b style="color:var(--txt);font-size:1.05rem">${fmt(granTotal)}</b>
-      <span style="color:var(--txt3);font-size:.76rem"> · valores de máquina, sin flete</span>
+      <span style="color:var(--txt3);font-size:.76rem"> · valores de máquina, sin flete ni IVA</span>
     </div>` +
     stats.map(x=>`<div class="eq-item" style="cursor:pointer;flex-direction:column;align-items:flex-start;gap:4px" onclick="mostrarDetalleGrupoMaquina('${x.key}')">
       <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
@@ -19686,7 +19909,27 @@ function mostrarDetalleGrupoMaquina(key){
   const fmtD=str=>{ if(!str) return '—'; const [y,m,d]=str.split('-'); return `${d}/${m}/${y.slice(2)}`; };
   document.getElementById('repgrupo-det-titulo').textContent = filas.length ? grupoLabel(alqMeta(filas[0].a)) : 'Detalle';
   const ordenadas = [...filas].sort((x,y)=>(y.a.inicio||'').localeCompare(x.a.inicio||''));
-  document.getElementById('repgrupo-det-contenido').innerHTML = ordenadas.length
+  // ── DE DÓNDE SALE EL NÚMERO ───────────────────────────────────────────────
+  // Arriba del detalle va la suma, los días y el promedio EXACTO, con la división
+  // escrita. Es para poder verificar el renglón sin sacar la calculadora.
+  //
+  // El promedio NO es un precio: es el total dividido los días. Multiplicarlo de
+  // vuelta por los días NO devuelve el total, porque en pantalla va redondeado al
+  // peso. Con $8.455.000 en 46 días el promedio real es $183.804,35: si se toma
+  // "184.000" y se multiplica, dan $9.000 de más. Pasó el 5/11/26 con la de 12m.
+  const sumaMonto = ordenadas.reduce((s,x)=>s+(x.monto||0), 0);
+  const sumaDias  = ordenadas.reduce((s,x)=>s+(x.dias||0), 0);
+  const promExacto = sumaDias>0 ? sumaMonto/sumaDias : 0;
+  const promTxt = sumaDias>0
+    ? promExacto.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2})
+    : '—';
+  const cabeceraDet = ordenadas.length
+    ? `<div style="background:var(--bg3);border-radius:10px;padding:.6rem .8rem;margin-bottom:.7rem;font-size:.8rem;color:var(--txt2);line-height:1.6">
+         <div>Suma de los ${ordenadas.length} renglones: <b style="color:var(--txt)">${fmt(sumaMonto)}</b> en <b style="color:var(--txt)">${fmtDias(sumaDias)}</b> día${sumaDias!==1?'s':''} facturado${sumaDias!==1?'s':''}.</div>
+         <div style="font-size:.76rem;color:var(--txt3);margin-top:2px">Promedio = ${fmt(sumaMonto)} ÷ ${fmtDias(sumaDias)} = <b style="color:var(--txt2)">$${promTxt}</b> por día. El promedio sale del total, no al revés: multiplicarlo redondeado no vuelve a dar el total.</div>
+       </div>`
+    : '';
+  document.getElementById('repgrupo-det-contenido').innerHTML = cabeceraDet + (ordenadas.length
     ? ordenadas.map(({a,dias,diasCalendario,monto})=>{
       // Los renglones de la planilla Rivadavia no son alquileres de verdad: su id es un
       // texto ('riv-123') y no existen en ALQUILERES. Mandarlos a verDetalleAlq rompía
@@ -19700,9 +19943,28 @@ function mostrarDetalleGrupoMaquina(key){
           <span style="font-weight:700;color:var(--verde);font-size:.85rem">${fmt(monto)}</span>
         </div>
         <div style="font-size:.78rem;color:var(--txt2)">${a.cliente} · ${fmtD(a.inicio)} al ${fmtD(a.fin)} · ${fmtDias(dias)} día${dias!==1?'s':''} facturado${dias!==1?'s':''}${(diasCalendario>dias)?` de ${fmtDias(diasCalendario)} de calendario`:''}${a.mesFacturado?' · '+mesLabel(a.mesFacturado):''}</div>
+        ${/* A cuánto salió el día en ESTE alquiler, y si se cobró con una tarifa que ya
+             no es la de la lista. Cada alquiler guarda la tarifa con la que se cotizó
+             (tarifaDiaUsada) y esa se respeta aunque después suba la lista — eso está
+             bien, pero sin decirlo en ningún lado el total del reporte no cerraba con
+             la cuenta a mano y no había forma de saber por qué.
+             Dos veces en un día: la 12m ($9.000 = 1 día a la tarifa vieja) y la 6m
+             ($42.000 = 7 días a la vieja). (Mateo, 5/11/26.) */''}
+        ${(()=>{
+          const partes = [];
+          if(dias>0) partes.push(`sale ${fmt(monto/dias)} por día`);
+          if(a.precioEspecial) partes.push('<span style="color:#b3791f;font-weight:700">precio especial</span>');
+          if(a.sinFactura) partes.push('sin factura');
+          // La tarifa congelada contra la de la lista de HOY. Solo se avisa si cambió.
+          const hoyDia = (precioTipo(a.tipo || (EQUIPOS.find(e=>e.id===a.equipoId)||{}).tipo) || {}).dia;
+          if(a.tarifaDiaUsada!=null && hoyDia && a.tarifaDiaUsada !== hoyDia){
+            partes.push(`<span style="color:var(--azul);font-weight:700">cotizado a ${fmt(a.tarifaDiaUsada)}/día — hoy la lista dice ${fmt(hoyDia)}</span>`);
+          }
+          return partes.length ? `<div style="font-size:.74rem;color:var(--txt3)">${partes.join(' · ')}</div>` : '';
+        })()}
       </div>`;
     }).join('')
-    : '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:1rem">No hay alquileres en este grupo.</p>';
+    : '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin-top:1rem">No hay alquileres en este grupo.</p>');
   document.getElementById('modal-repgrupo-det').style.display='flex';
 }
 // ═══════════════════════════════════════════════════════════════════════════
