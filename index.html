@@ -17902,9 +17902,32 @@ function recalcCerrarAbierto(){
   diasBox.style.display='block';
   const yaCargado=a.dias||0;
   const totalNuevo=yaCargado+diasExtra;
-  resumenEl.textContent = diasExtra>0
+  // ── LA PLATA, ACÁ, MIENTRAS SE ELIGE LA FECHA ───────────────────────────
+  // Antes este cuadro solo decía cuántos días iban a ser. El monto aparecía recién
+  // dos pantallas después, cuando ya había que decidir. Ahora se ve de entrada y se
+  // recalcula al mover la fecha. (Mateo, 10/11/26.)
+  //
+  // Usa la tarifa PACTADA del alquiler sin preguntar nada (ver tarifaPactadaAlq): es
+  // una vista previa. Si la lista cambió, la elección entre la pactada y la actual
+  // sigue estando más adelante, en tarifaParaTramo.
+  const eqPrev = EQUIPOS.find(e=>e.id===a.equipoId);
+  const pPrev  = tarifaPactadaAlq(a, eqPrev);
+  let previa = '';
+  if(diasExtra>0 && pPrev && pPrev.dia){
+    const partes = [];
+    if(pPrev.sem){
+      const sug = sugerenciaPaqueteAlq(a, pPrev, yaCargado, diasExtra, '');
+      partes.push(`Con paquete: ${sug.total.detalle} = ${fmt(sug.total.monto)}`
+        + (yaCargado>0 ? ` · ya cargados ${fmt(sug.yaCargado)} → a facturar ${fmt(sug.sugerido)}` : ''));
+    }
+    partes.push(`Días sueltos: ${diasExtra} × ${fmt(pPrev.dia)} = ${fmt(diasExtra*pPrev.dia)}`);
+    previa = partes.join('\n');
+  }
+  resumenEl.textContent = (diasExtra>0
     ? `Van a ser ${totalNuevo} día${totalNuevo!==1?'s':''} en total (${yaCargado} ya cargado${yaCargado!==1?'s':''} + ${diasExtra} nuevo${diasExtra!==1?'s':''})`
-    : `Sigue en ${totalNuevo} día${totalNuevo!==1?'s':''} en total — no hay días nuevos que agregar.`;
+    : `Sigue en ${totalNuevo} día${totalNuevo!==1?'s':''} en total — no hay días nuevos que agregar.`)
+    + (previa ? '\n' + previa : '');
+  resumenEl.style.whiteSpace = 'pre-line';
   document.getElementById('cerrarab-diasfacturar').value = diasExtra;
 }
 /* ── QUÉ TARIFA SE USA PARA UN TRAMO NUEVO ─────────────────────────────────
@@ -17965,7 +17988,7 @@ async function continuarCerrarAlquilerAbierto(){
     // Qué tarifa se usa — ver tarifaParaTramo: si la lista cambió desde que se cargó
     // el alquiler, pregunta; si no, sigue con la pactada sin molestar.
     const {p, origen:origenTarifa} = await tarifaParaTramo(a, eq);
-    const comoPaquete = await confirmSiNo(`Vas a facturar ${diasAFacturar} día${diasAFacturar!==1?'s':''}.`, {si:'Paquete semanal', no:'Días sueltos (tarifa diaria)'});
+    const comoPaquete = await confirmSiNo(textoElegirCobro(a, p, (a.dias||0), diasAFacturar, origenTarifa), {si:'Paquete semanal', no:'Días sueltos (tarifa diaria)'});
 
     if(comoPaquete && p && p.sem){
       // El paquete se cotiza sobre el alquiler ENTERO (los días ya cargados + estos),
@@ -18660,7 +18683,7 @@ async function agregarDiasFacturablesAlq(id, periodo){
       : `${String(periodo.diasACobrar).replace('.',',')} días cobrados de un período de ${dias}`;
   }
   else {
-  const comoPaquete = await confirmSiNo(`Vas a facturar ${dias} día${dias!==1?'s':''}${esPrimeraFactura?' (total)':' más'}.`, {si:'Paquete semanal', no:'Días sueltos (tarifa diaria)'});
+  const comoPaquete = await confirmSiNo(textoElegirCobro(a, p, esPrimeraFactura ? 0 : (a.dias||0), dias, origenTarifa), {si:'Paquete semanal', no:'Días sueltos (tarifa diaria)'});
   if(comoPaquete && p && p.sem){
     // Misma función que usa "Confirmar fecha de retiro": el paquete se cotiza sobre
     // el alquiler ENTERO y se descuenta lo que ya tiene cargado. En la PRIMERA factura
@@ -19010,22 +19033,55 @@ function sugerenciaPaqueteAlq(a, p, diasYaCargados, diasNuevos, origenTarifa){
   const yaCargado   = diasYaCargados>0 ? (a.precio||0) : 0;
   const yaFacturado = diasYaCargados>0 ? montoFacturadoAlq(a) : 0;
   const sugerido = Math.max(0, total.monto - yaCargado);
+  // Dos renglones y listo. La versión larga explicaba la diferencia entre "cargado" y
+  // "facturado" en tres líneas y terminaba siendo más confusa que el número.
+  // Lo que hace falta saber es: qué se había cargado, cuánto da el alquiler entero con
+  // el paquete que corresponde, y cuánto hay que facturar ahora. (Mateo, 10/11/26.)
   let cabecera;
   if(diasYaCargados<=0){
-    cabecera = `Paquete semanal (${origenTarifa}): ${total.detalle} = ${fmt(total.monto)}.\n\n`;
+    cabecera = `${total.detalle} = ${fmt(total.monto)} (${origenTarifa}).\n\n`;
   } else {
-    cabecera = `El alquiler entero son ${diasTotales} días: ${total.detalle} = ${fmt(total.monto)} (${origenTarifa}).\n\n`
-      + (yaFacturado>0
-          ? `Ya facturado: ${fmt(yaFacturado)}.\n`
-          : `Todavía no se le facturó nada — los ${diasYaCargados} día${diasYaCargados!==1?'s':''} del principio estaban cargados, no facturados.\n`)
-      + `Ya cargado en el alquiler: ${fmt(yaCargado)}.\n`
-      + `A facturar ahora: ${fmt(sugerido)} — el alquiler queda en ${fmt(total.monto)}.\n`
+    const loPrevio = yaFacturado>0
+      ? `Ya facturado ${fmt(yaFacturado)}`
+      : `Se habían cargado ${diasYaCargados} día${diasYaCargados!==1?'s':''} (${fmt(yaCargado)}), sin facturar`;
+    cabecera = `${loPrevio}. Hoy son ${diasTotales} días en total y corresponde ${total.detalle} = ${fmt(total.monto)} (${origenTarifa}).\n`
+      + `A facturar ahora: ${fmt(sugerido)}.\n`
       + (total.monto < yaCargado
           ? `\n⚠️ El paquete del total da MENOS que lo ya cargado: sobran ${fmt(yaCargado-total.monto)}.\n`
           : '')
       + `\n`;
   }
   return {diasTotales, total, yaCargado, yaFacturado, sugerido, cabecera};
+}
+
+// La tarifa que rige este alquiler, SIN preguntar nada. Es la congelada al cotizarlo
+// (lo pactado con el cliente) o, si no tiene, la de la lista de hoy. Sirve para
+// mostrar una vista previa mientras se elige la fecha; la elección fina entre la
+// pactada y la actual sigue estando en tarifaParaTramo, cuando hace falta decidir.
+function tarifaPactadaAlq(a, eq){
+  if(a && a.tarifaDiaUsada != null) return {dia:a.tarifaDiaUsada, sem:a.tarifaSemUsada, mes:a.tarifaMesUsada};
+  return eq ? precioTipo(eq.tipo) : null;
+}
+
+// El cartel donde se elige CÓMO cobrar. Antes decía solo "Vas a facturar 26 días",
+// que es el tramo nuevo — y el paquete se calcula sobre el alquiler entero, así que
+// el número no se parecía a nada de lo que venía después. Ahora muestra los días
+// totales y cuánto sale con cada forma de cobro, para poder elegir viendo la plata.
+// (Mateo, 10/11/26: "me interesa ver realmente lo que se va a facturar".)
+function textoElegirCobro(a, p, diasYaCargados, diasNuevos, origenTarifa){
+  const ya = Math.max(0, diasYaCargados);
+  const total = ya + diasNuevos;
+  const linea1 = ya>0
+    ? `Se cobran ${total} días en total: ${ya} ya cargado${ya!==1?'s':''} + ${diasNuevos} nuevo${diasNuevos!==1?'s':''}.`
+    : `Se cobran ${diasNuevos} día${diasNuevos!==1?'s':''}.`;
+  if(!p || !p.sem) return linea1 + `\n\n¿Cómo los cobramos?`;
+  const sug = sugerenciaPaqueteAlq(a, p, ya, diasNuevos, origenTarifa);
+  const sueltos = diasNuevos * (p.dia||0);
+  return linea1
+    + `\n\nPaquete: ${sug.total.detalle} = ${fmt(sug.total.monto)}`
+    + (ya>0 ? ` → a facturar ahora ${fmt(sug.sugerido)}` : '')
+    + `\nDías sueltos: ${diasNuevos} × ${fmt(p.dia||0)} = ${fmt(sueltos)}`
+    + `\n\n¿Cómo los cobramos?`;
 }
 function presupuestoPorDias(tipo, dias){
   const p = precioTipo(tipo);
