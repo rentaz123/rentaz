@@ -782,6 +782,11 @@ if ('serviceWorker' in navigator) {
           <button id="btn-alinear-mant" style="display:none" onclick="cerrarMenuMas();alinearVencimientosMant()">Alinear vencimiento de las hojas</button>
           <button id="btn-faceid-menu" style="display:none" onclick="cerrarMenuMas();alternarFaceId()">Entrar con Face ID en este celular</button>
           <div style="height:1px;background:var(--border);margin:5px 8px"></div>
+          <!-- Qué versión del archivo está corriendo. Sale de la fecha del index.html que
+               sirvió GitHub, así que no hay que acordarse de actualizar ningún número a
+               mano: si dice una fecha vieja, es que todavía no se subió el archivo nuevo.
+               Evita discutir sobre un cambio que la app todavía no tiene. (10/11/26.) -->
+          <div id="menu-version" style="font-size:.7rem;color:var(--txt3);padding:4px 12px 2px;cursor:default"></div>
           <button onclick="cerrarMenuMas();logout()">Cerrar sesi&oacute;n</button>
         </div>
       </div>
@@ -6297,6 +6302,22 @@ function toggleVerClave(){
 // ── MENÚ DE LOS TRES PUNTITOS (arriba a la derecha) ───────────────────────
 // Acciones ocasionales que antes ocupaban lugar fijo en el menú de la izquierda.
 // El menú de la izquierda queda para lo de todos los días.
+
+/* ── QUÉ VERSIÓN ESTÁ CORRIENDO ───────────────────────────────────────────
+   document.lastModified es la fecha del index.html que sirvió el servidor. No hay
+   ningún número que mantener a mano: si el menú muestra una fecha vieja, el archivo
+   nuevo todavía no se subió. Sirve para no discutir sobre un cambio que la app que
+   se está mirando todavía no tiene. (10/11/26.) */
+function mostrarVersionApp(){
+  const el = document.getElementById('menu-version');
+  if(!el) return;
+  try{
+    const d = new Date(document.lastModified);
+    if(isNaN(d.getTime())){ el.textContent = ''; return; }
+    const p = n => String(n).padStart(2,'0');
+    el.textContent = `Versión del ${p(d.getDate())}/${p(d.getMonth()+1)}/${String(d.getFullYear()).slice(2)} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }catch(e){ el.textContent = ''; }
+}
 function toggleMenuMas(e){
   if(e) e.stopPropagation();
   const m = document.getElementById('menu-mas');
@@ -6304,6 +6325,7 @@ function toggleMenuMas(e){
   const abrir = !m.classList.contains('abierto');
   m.classList.toggle('abierto', abrir);
   if(abrir){
+    mostrarVersionApp();   // la fecha del archivo que esta corriendo
     // Bajar una copia de TODOS los datos es una acción de dueño. Hasta ahora el botón
     // estaba a la vista de cualquier rol por estar fuera de la caja que solo ve Mateo.
     const b = document.getElementById('btn-backup');
@@ -16178,10 +16200,20 @@ function verDetalleAlq(id){
   if(esTallerVista()){
     if(!a.retiroFisicoFecha){
       botones+=`<button onclick="marcarVueltaDeTaller(${a.id})" class="btn-nuevo" style="flex:1;padding:8px;font-size:.8rem">El equipo volvió al depósito</button>
-      <div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Marcalo apenas vuelve, aunque no esté nadie de oficina. Los días que se cobran los define Mateo después.</div>`;
+      <div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Marcalo apenas vuelve, aunque no esté nadie de oficina. Los días y lo que se cobra lo define Mateo después.</div>`;
     }
   } else {
-    botones+=`<button onclick="${a.abierto?`abrirModalCerrarAbierto(${a.id})`:`toggleAbierto(${a.id})`}" class="btn-lim" title="${a.abierto?'Usar cuando el cliente avisa que retira — cierra el alquiler abierto y calcula los días reales':'Marcar sin fecha fija de retiro'}" style="flex:1;padding:8px;font-size:.8rem">${a.abierto?'Confirmar fecha de retiro':'Marcar como abierto'}</button>${a.abierto?'<div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Este alquiler es ABIERTO (sin fecha fija) — usar esto (no "retiro anticipado") apenas el cliente avise que retira.</div>':''}`;
+    botones+=`<button onclick="${a.abierto?`abrirModalCerrarAbierto(${a.id})`:`toggleAbierto(${a.id})`}" class="btn-lim" title="${a.abierto?'Usar cuando el cliente avisa que retira: define la fecha real y los días a facturar':'Convertir en alquiler abierto (sin fecha de retiro pactada)'}" style="flex:1;padding:8px;font-size:.8rem">${a.abierto?'Confirmar fecha de retiro':'Pasar a alquiler abierto'}</button>`;
+    /* Corregir una vuelta marcada por error. Solo Mateo: es deshacer algo que ya hizo
+       otra persona y cambia el estado de la máquina en toda la app. Ver
+       desmarcarVueltaDeTaller — el "Deshacer" general no sirve acá porque la pila vive
+       en el navegador de cada uno. (Mateo, 10/11/26: taller marcó la Genie de MOLFINO
+       cuando lo que volvió fue el autoelevador.) */
+    if(a.retiroFisicoFecha && esMateo()){
+      const fD = (()=>{ const [y,m,d]=String(a.retiroFisicoFecha).split("-"); return d+"/"+m+"/"+String(y).slice(2); })();
+      botones+=`<button onclick="desmarcarVueltaDeTaller(${a.id})" class="btn-lim" title="Borra la marca de vuelta: el equipo vuelve a figurar en obra" style="flex:1;padding:8px;font-size:.8rem;color:var(--rojo)">↩️ No volvió (corregir)</button>
+      <div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Marcado de vuelta el ${fD}${a.retiroFisicoPor?' por '+a.retiroFisicoPor:''}. Si se equivocaron de máquina, corregilo acá.</div>`;
+    }
   }
   if(!a.abierto && !a.pickupPendiente && !a.retiradoAnticipado){
     if(!esTallerVista()) botones+=`<button onclick="avisarTallerRetiro(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Avisar a taller: retirar equipo</button>`;
@@ -17901,12 +17933,17 @@ function recalcCerrarAbierto(){
   let previa = '';
   if(diasExtra>0 && pPrev && pPrev.dia){
     const partes = [];
+    let sugPrev = null;
     if(pPrev.sem){
-      const sug = sugerenciaPaqueteAlq(a, pPrev, yaCargado, diasExtra, '');
-      partes.push(`Con paquete: ${sug.total.detalle} = ${fmt(sug.total.monto)}`
-        + (yaCargado>0 ? ` · ya cargados ${fmt(sug.yaCargado)} → a facturar ${fmt(sug.sugerido)}` : ''));
+      sugPrev = sugerenciaPaqueteAlq(a, pPrev, yaCargado, diasExtra, '');
+      partes.push(`Con paquete: ${sugPrev.total.detalle} = ${fmt(sugPrev.total.monto)}`
+        + (sugPrev.yaFacturado>0 ? ` · ya facturados ${fmt(sugPrev.yaFacturado)} → a facturar ${fmt(sugPrev.sugerido)}` : ''));
     }
-    partes.push(`Días sueltos: ${diasExtra} × ${fmt(pPrev.dia)} = ${fmt(diasExtra*pPrev.dia)}`);
+    // Los días que la factura va a cubrir: el alquiler entero si lo anterior nunca se
+    // facturó, o solo los nuevos si ya hubo una factura parcial.
+    const dPrev = sugPrev ? sugPrev.diasQueCubre : diasExtra;
+    partes.push(`Días sueltos: ${dPrev} × ${fmt(pPrev.dia)} = ${fmt(dPrev*pPrev.dia)}`);
+    if(sugPrev && sugPrev.reemplaza) partes.push(`(los ${yaCargado} días del principio estaban cargados sin facturar — no se descuentan)`);
     previa = partes.join('\n');
   }
   resumenEl.textContent = (diasExtra>0
@@ -17976,34 +18013,40 @@ async function continuarCerrarAlquilerAbierto(){
     const {p, origen:origenTarifa} = await tarifaParaTramo(a, eq);
     const comoPaquete = await confirmSiNo(textoElegirCobro(a, p, (a.dias||0), diasAFacturar, origenTarifa), {si:'Paquete semanal', no:'Días sueltos (tarifa diaria)'});
 
+    // Si los días que ya tenía el alquiler nunca se facturaron, esta factura los
+    // REEMPLAZA y va por el total; si sí se facturaron, cubre solo los nuevos.
+    // Lo decide sugerenciaPaqueteAlq (reemplaza / diasQueCubre), que es la misma
+    // función que usa "Agregar factura parcial".
+    const sugCobro = sugerenciaPaqueteAlq(a, p, (a.dias||0), diasAFacturar, origenTarifa);
+    const diasCubiertos = sugCobro.diasQueCubre;
     if(comoPaquete && p && p.sem){
-      // El paquete se cotiza sobre el alquiler ENTERO (los días ya cargados + estos),
-      // no sobre el tramo suelto, y se descuenta lo que el alquiler ya tiene cargado.
-      // Ver sugerenciaPaqueteAlq: la misma función que usa "Agregar factura parcial".
-      const sug = sugerenciaPaqueteAlq(a, p, (a.dias||0), diasAFacturar, origenTarifa);
-      const montoStr=prompt(sug.cabecera + `Monto a facturar por estos ${diasAFacturar} día${diasAFacturar!==1?'s':''} (ajustalo si el acuerdo fue otro):`, sug.sugerido);
+      const montoStr=prompt(sugCobro.cabecera + `Monto a facturar por ${diasCubiertos} día${diasCubiertos!==1?'s':''} (ajustalo si el acuerdo fue otro):`, sugCobro.sugerido);
       if(montoStr===null) return;
       montoExtra=parseFloat(sinMiles(montoStr))||0;
       tarifa=null;
-      detalleExtra = (a.dias||0)>0
-        ? `Paquete del total (${sug.diasTotales} días: ${sug.total.detalle})`
-        : `Paquete semanal (${sug.total.detalle})`;
+      detalleExtra = sugCobro.reemplaza
+        ? `Paquete del alquiler entero (${sugCobro.diasTotales} días: ${sugCobro.total.detalle})`
+        : ((a.dias||0)>0
+            ? `Paquete del total (${sugCobro.diasTotales} días: ${sugCobro.total.detalle})`
+            : `Paquete semanal (${sugCobro.total.detalle})`);
     } else {
       if(comoPaquete){
         alert('Este equipo no tiene tarifa semanal cargada — se va a cobrar como días sueltos.');
       }
       let tarifaDia=0;
       if(p){ tarifaDia=p.dia||0; }
-      const tarifaStr=prompt(`Tarifa diaria a cobrar por estos ${diasAFacturar} día${diasAFacturar!==1?'s':''} (sugerida: ${fmt(tarifaDia)}${origenTarifa?' — '+origenTarifa:''}):`, tarifaDia||0);
+      const tarifaStr=prompt(`Tarifa diaria a cobrar por ${diasCubiertos} día${diasCubiertos!==1?'s':''} (sugerida: ${fmt(tarifaDia)}${origenTarifa?' — '+origenTarifa:''}):`, tarifaDia||0);
       if(tarifaStr===null) return;
-      tarifa=parseFloat(tarifaStr)||0;
-      montoExtra=tarifa*diasAFacturar;
-      detalleExtra='Días sueltos';
+      tarifa=parseFloat(sinMiles(tarifaStr))||0;
+      montoExtra=tarifa*diasCubiertos;
+      detalleExtra = sugCobro.reemplaza ? `Días sueltos (${diasCubiertos} del alquiler entero)` : 'Días sueltos';
     }
-    a.precio=(a.precio||0)+montoExtra;
+    // reemplaza = los días previos eran una estimación sin facturar: el precio del
+    // alquiler pasa a ser este monto, no se le suma encima.
+    a.precio = sugCobro.reemplaza ? montoExtra : ((a.precio||0)+montoExtra);
     recalcularTotalesAlq(a);
     if(!a.diasAgregados) a.diasAgregados=[];
-    a.diasAgregados.push({fecha:hoyISO(), dias:diasAFacturar, diasReales:diasExtra, tarifa, monto:montoExtra, detalle:detalleExtra});
+    a.diasAgregados.push({fecha:hoyISO(), dias:diasCubiertos, diasReales:diasExtra, tarifa, monto:montoExtra, detalle:detalleExtra});
   }
   // El período del alquiler (fin y cantidad de días reales en la calle) siempre se
   // actualiza con la fecha real de retiro, se le facture o no todo ese tiempo.
@@ -18087,6 +18130,72 @@ function avisarTallerRetiro(id){
    días). Si volvió el día pactado o después, no hay nada que resolver: los días
    son los del contrato.
    ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── "ESTE EQUIPO NO VOLVIÓ" — CORREGIR UNA VUELTA MARCADA POR ERROR ───────
+   Taller marca la vuelta desde el galpón y a veces se equivoca de máquina: marcó la
+   Genie de MOLFINO cuando lo que volvió fue el autoelevador. (Pasó el 10/11/26.)
+
+   El "Deshacer" general NO sirve para esto: la pila de deshacer vive en la memoria
+   del navegador de cada uno, así que lo que hizo taller en su celular no está en la
+   sesión de Mateo. Esto, en cambio, trabaja sobre el dato actual y funciona lo haya
+   marcado quien lo haya marcado, desde donde sea y cuando sea.
+
+   Deshace exactamente lo que hace marcarVueltaDeTaller:
+     · la fecha, hora y quién marcó la vuelta,
+     · el "pendiente de retirar" vuelve a quedar activo (la máquina sigue afuera),
+     · el aviso de "falta definir qué se cobra" que se había generado,
+     · y la lectura de horómetro, SOLO si la cargó esa misma marca de vuelta — si el
+       horómetro ya venía de antes o lo cargaron por otro lado, no se toca. */
+async function desmarcarVueltaDeTaller(id){
+  const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
+  if(!a.retiroFisicoFecha){ alert('Este alquiler no tiene marcada ninguna vuelta.'); return; }
+  const fmtD = s => String(s).split('-').reverse().join('/');
+  const quien = a.retiroFisicoPor ? ` por ${a.retiroFisicoPor}` : '';
+
+  // ¿La lectura del horómetro vino de esta vuelta? Se compara la fecha de la lectura
+  // con la de la vuelta: si coincide, la cargó esta marca y se saca con ella.
+  const chk = EQ_CHECKLIST[a.equipoId];
+  const horasDeEstaVuelta = !!(chk && chk.fecha && chk.fecha === a.retiroFisicoFecha && chk.horas!=null && chk.horas!=='');
+  const avisoHoras = horasDeEstaVuelta
+    ? `\n\nTambién se saca la lectura del horómetro de ese día (${chk.horas} hs) y el equipo vuelve a quedar pendiente de cargarlas.`
+    : '';
+
+  const ok = await confirmSiNo(
+    `${a.equipoNombre} · ${a.cliente}\n\n`+
+    `Está marcado como que volvió el ${fmtD(a.retiroFisicoFecha)}${quien}.\n\n`+
+    `Si fue un error, se borra esa marca: el equipo vuelve a figurar EN OBRA y pendiente de retirar.`+
+    avisoHoras,
+    {si:'Sí, no volvió', no:'Cancelar'});
+  if(!ok) return;
+
+  const fechaQueTenia = a.retiroFisicoFecha;
+  a.retiroFisicoFecha = null;
+  a.retiroFisicoHora  = null;
+  a.retiroFisicoPor   = null;
+  // Un alquiler ABIERTO no tiene "pendiente de retirar": simplemente sigue corriendo.
+  // En uno de fecha fija, volver atrás la vuelta lo deja otra vez esperando el retiro.
+  if(!a.abierto){
+    a.pickupPendiente = true;
+    if(!a.pickupPendienteDesde) a.pickupPendienteDesde = a.fin || hoyISO();
+  }
+  // El aviso de "falta definir qué se cobra" lo generó esta misma marca.
+  if(a.cobroPendiente && a.cobroPendiente.desde === fechaQueTenia) delete a.cobroPendiente;
+
+  if(horasDeEstaVuelta){
+    chk.horas = '';
+    chk.horasPor = null;
+    chk.horasEn = null;
+    chk.horasPendienteDesde = fechaQueTenia;   // vuelve a pedirlas cuando vuelva de verdad
+    guardarEqChecklist();
+  }
+
+  marcarAccionUndo(`Corregir: "${a.equipoNombre}" NO había vuelto — ${a.cliente}`, 'alquileres');
+  guardar();
+  refrescarDetalleAlqSiAbierto(id);
+  renderAlq(); renderDashboard(); renderEq(); renderCal();
+  if(typeof renderFacturacion==='function') renderFacturacion();
+  alert(`Listo. "${a.equipoNombre}" vuelve a figurar en obra, como si nunca se hubiera marcado la vuelta.`);
+}
 async function marcarVueltaDeTaller(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
   const fecha = await pedirFechaReal(
@@ -19014,30 +19123,44 @@ function montoFacturadoAlq(a){
 // El texto y el monto sugerido para el tramo que se está por cargar.
 // diasYaCargados: los días que el alquiler ya tiene encima (0 si este tramo los reemplaza).
 function sugerenciaPaqueteAlq(a, p, diasYaCargados, diasNuevos, origenTarifa){
-  const diasTotales = Math.max(0, diasYaCargados) + diasNuevos;
+  const ya = Math.max(0, diasYaCargados);
+  const diasTotales = ya + diasNuevos;
   const total = escalaPaquete(p, diasTotales);
-  const yaCargado   = diasYaCargados>0 ? (a.precio||0) : 0;
-  const yaFacturado = diasYaCargados>0 ? montoFacturadoAlq(a) : 0;
-  const sugerido = Math.max(0, total.monto - yaCargado);
-  // Dos renglones y listo. La versión larga explicaba la diferencia entre "cargado" y
-  // "facturado" en tres líneas y terminaba siendo más confusa que el número.
-  // Lo que hace falta saber es: qué se había cargado, cuánto da el alquiler entero con
-  // el paquete que corresponde, y cuánto hay que facturar ahora. (Mateo, 10/11/26.)
+  const yaCargado   = ya>0 ? (a.precio||0) : 0;
+  const yaFacturado = ya>0 ? montoFacturadoAlq(a) : 0;
+
+  /* ── SOLO SE DESCUENTA LO QUE SE FACTURÓ DE VERDAD ───────────────────────
+     Un alquiler abierto arranca con unos días cargados que son una ESTIMACIÓN: "por
+     ahora pongámosle 9 días". Si nunca se facturaron, no son un pago a cuenta — son
+     un número provisorio que esta factura reemplaza. La factura va por el total.
+
+     Si en cambio sí se facturaron (hubo una factura parcial de verdad), entonces sí
+     se descuentan: esta factura cubre solo lo que falta.
+
+     Antes se descontaba siempre lo CARGADO, y en el JLG de GRANA eso daba una factura
+     de $2.520.000 por "26 días" cuando correspondía una de $3.696.000 por los 35.
+     (Mateo, 10/11/26: "esos 9 días no me importan, no es que se hizo una factura
+     parcial — solo se marcó un posible alquiler de 9 días".) */
+  const reemplaza   = (ya>0 && yaFacturado<=0);
+  const diasQueCubre = reemplaza ? diasTotales : diasNuevos;
+  const sugerido    = Math.max(0, total.monto - yaFacturado);
+
   let cabecera;
-  if(diasYaCargados<=0){
+  if(ya<=0){
     cabecera = `${total.detalle} = ${fmt(total.monto)} (${origenTarifa}).\n\n`;
+  } else if(reemplaza){
+    cabecera = `Los ${ya} día${ya!==1?'s':''} del principio (${fmt(yaCargado)}) estaban cargados pero NUNCA se facturaron, así que no se descuentan.\n`
+      + `Son ${diasTotales} días en total y corresponde ${total.detalle} = ${fmt(total.monto)} (${origenTarifa}).\n`
+      + `A facturar: ${fmt(sugerido)} por los ${diasTotales} días.\n\n`;
   } else {
-    const loPrevio = yaFacturado>0
-      ? `Ya facturado ${fmt(yaFacturado)}`
-      : `Se habían cargado ${diasYaCargados} día${diasYaCargados!==1?'s':''} (${fmt(yaCargado)}), sin facturar`;
-    cabecera = `${loPrevio}. Hoy son ${diasTotales} días en total y corresponde ${total.detalle} = ${fmt(total.monto)} (${origenTarifa}).\n`
-      + `A facturar ahora: ${fmt(sugerido)}.\n`
-      + (total.monto < yaCargado
-          ? `\n⚠️ El paquete del total da MENOS que lo ya cargado: sobran ${fmt(yaCargado-total.monto)}.\n`
+    cabecera = `Ya facturado ${fmt(yaFacturado)}. Hoy son ${diasTotales} días en total y corresponde ${total.detalle} = ${fmt(total.monto)} (${origenTarifa}).\n`
+      + `A facturar ahora: ${fmt(sugerido)} por los ${diasNuevos} día${diasNuevos!==1?'s':''} nuevos.\n`
+      + (total.monto < yaFacturado
+          ? `\n⚠️ El paquete del total da MENOS que lo ya facturado: sobran ${fmt(yaFacturado-total.monto)}.\n`
           : '')
       + `\n`;
   }
-  return {diasTotales, total, yaCargado, yaFacturado, sugerido, cabecera};
+  return {diasTotales, total, yaCargado, yaFacturado, sugerido, cabecera, reemplaza, diasQueCubre};
 }
 
 // La tarifa que rige este alquiler, SIN preguntar nada. Es la congelada al cotizarlo
@@ -19057,16 +19180,26 @@ function tarifaPactadaAlq(a, eq){
 function textoElegirCobro(a, p, diasYaCargados, diasNuevos, origenTarifa){
   const ya = Math.max(0, diasYaCargados);
   const total = ya + diasNuevos;
-  const linea1 = ya>0
-    ? `Se cobran ${total} días en total: ${ya} ya cargado${ya!==1?'s':''} + ${diasNuevos} nuevo${diasNuevos!==1?'s':''}.`
-    : `Se cobran ${diasNuevos} día${diasNuevos!==1?'s':''}.`;
-  if(!p || !p.sem) return linea1 + `\n\n¿Cómo los cobramos?`;
+  if(!p || !p.sem){
+    const base = ya>0
+      ? `Se cobran ${total} días en total: ${ya} ya cargado${ya!==1?'s':''} + ${diasNuevos} nuevo${diasNuevos!==1?'s':''}.`
+      : `Se cobran ${diasNuevos} día${diasNuevos!==1?'s':''}.`;
+    return base + `\n\n¿Cómo los cobramos?`;
+  }
   const sug = sugerenciaPaqueteAlq(a, p, ya, diasNuevos, origenTarifa);
-  const sueltos = diasNuevos * (p.dia||0);
+  // Los días que esta factura cubre de verdad: si los previos nunca se facturaron,
+  // esta factura va por el alquiler entero y no por el tramo nuevo.
+  const d = sug.diasQueCubre;
+  const sueltos = d * (p.dia||0);
+  const linea1 = sug.reemplaza
+    ? `Se factura el alquiler entero: ${total} días (los ${ya} del principio estaban cargados pero sin facturar).`
+    : (ya>0
+        ? `Ya facturados ${fmt(sug.yaFacturado)}. Quedan ${diasNuevos} día${diasNuevos!==1?'s':''} nuevo${diasNuevos!==1?'s':''} — ${total} en total.`
+        : `Se cobran ${diasNuevos} día${diasNuevos!==1?'s':''}.`);
   return linea1
     + `\n\nPaquete: ${sug.total.detalle} = ${fmt(sug.total.monto)}`
-    + (ya>0 ? ` → a facturar ahora ${fmt(sug.sugerido)}` : '')
-    + `\nDías sueltos: ${diasNuevos} × ${fmt(p.dia||0)} = ${fmt(sueltos)}`
+    + (sug.yaFacturado>0 ? ` → a facturar ahora ${fmt(sug.sugerido)}` : '')
+    + `\nDías sueltos: ${d} × ${fmt(p.dia||0)} = ${fmt(sueltos)}`
     + `\n\n¿Cómo los cobramos?`;
 }
 function presupuestoPorDias(tipo, dias){
