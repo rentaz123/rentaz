@@ -6670,28 +6670,34 @@ function sumarMesesISO(iso, n){
 }
 function vencimientoMantenimiento(fecha){ return sumarMesesISO(fecha, MANT_MESES_VIGENCIA); }
 
-/* ── VENCIMIENTO FIJADO A MANO PARA TODA LA FLOTA ──────────────────────────
-   Lo normal es que la hoja valga 3 meses desde el día que se revisó la máquina.
-   Pero las plataformas de los clientes (las empresas que exigen la hoja para dejar
-   entrar el equipo) ya tienen cargada una fecha de vencimiento propia, y conviene
-   que todas las máquinas venzan EL MISMO DÍA: así se renuevan todas juntas, en una
-   sola pasada, y coinciden con lo que esas plataformas ya traen.
+/* ── DESDE CUÁNDO CORRE LA HOJA ───────────────────────────────────────────
+   Lo normal es que la hoja valga 3 meses contados desde el día que taller revisó
+   la máquina. Pero las plataformas de los clientes piden el certificado del período
+   que viene, y conviene que TODA la flota corra el mismo período: así se renuevan
+   todas juntas y coinciden con lo que esas plataformas esperan.
 
-   Para eso cada hoja puede llevar un "venceManual". Si está, manda ese; si no, vale
-   la cuenta de siempre. La FECHA DE REVISIÓN no se toca nunca: sigue siendo el día
-   real en que taller miró la máquina, y es la que usa la campaña trimestral.
+   Para eso cada hoja puede llevar un "vigenciaDesde". Si está, la vigencia arranca
+   ese día y vence 3 meses después. Si no, vale la cuenta de siempre desde la revisión.
 
-   Cuando taller vuelve a cargar la hoja, el vencimiento a mano se borra y arranca de
-   nuevo la cuenta de 3 meses — si no, una hoja renovada seguiría venciendo en una
-   fecha vieja sin que nadie se diera cuenta. (Pedido por Mateo el 5/11/26.) */
+   La FECHA DE REVISIÓN no se toca nunca: sigue siendo el día real en que taller miró
+   la máquina, y es la única que usa la campaña trimestral. Si se tocara, enero 2027
+   aparecería como "ya revisado" antes de que nadie mirara una sola máquina.
+
+   Cuando taller vuelve a cargar la hoja, el período fijado a mano se borra y arranca
+   de nuevo la cuenta desde la revisión — si no, una hoja renovada seguiría mostrando
+   un período viejo sin que nadie se diera cuenta. (Mateo, 5 y 6/11/26.) */
+function desdeHojaMant(h){
+  if(!h) return '';
+  if(h.vigenciaDesde && fechaValidaApp(h.vigenciaDesde)) return h.vigenciaDesde;
+  return h.fecha || '';
+}
 function venceHojaMant(h){
   if(!h) return '';
-  if(h.venceManual && fechaValidaApp(h.venceManual)) return h.venceManual;
-  return vencimientoMantenimiento(h.fecha);
+  return vencimientoMantenimiento(desdeHojaMant(h));
 }
-function venceEsManual(h){ return !!(h && h.venceManual && fechaValidaApp(h.venceManual)); }
+function vigenciaEsManual(h){ return !!(h && h.vigenciaDesde && fechaValidaApp(h.vigenciaDesde)); }
 
-// Pone la misma fecha de vencimiento a todas las hojas cargadas. Solo Mateo.
+// Pone el mismo período de vigencia a todas las hojas cargadas. Solo Mateo.
 async function alinearVencimientosMant(){
   if(!esMateo()){ alert('Esto lo maneja Mateo.'); return; }
   const flota = equiposActivos();
@@ -6701,37 +6707,38 @@ async function alinearVencimientosMant(){
     alert('Todavía no hay ninguna hoja de mantenimiento cargada, así que no hay nada que alinear.\n\nPrimero taller tiene que cargarlas desde cada máquina.');
     return;
   }
-  const fecha = prompt(
-    '¿Hasta qué día van a valer TODAS las hojas de mantenimiento? (AAAA-MM-DD)\n\n'+
-    'Se le pone esta misma fecha de vencimiento a las '+conHoja.length+' máquinas que ya tienen la hoja cargada.\n'+
-    'La fecha de revisión de cada una no se toca.',
-    '2027-01-01');
-  if(fecha===null) return;
-  if(!fechaValidaApp(fecha)){ alert('Esa fecha no es válida: '+porQueLaFechaEstaMal(fecha)+'.'); return; }
-
-  // Se dice cuántas estaban vencidas o por vencer, porque alinear las deja vigentes
-  // de un saque y eso tiene que ser una decisión consciente, no un efecto colateral.
-  const vencidas = conHoja.filter(e=>estadoMantenimiento(e.id).estado==='vencida').length;
   const fmtF = s => String(s).split('-').reverse().join('/');
+  const desde = prompt(
+    '¿DESDE qué día tienen que correr todas las hojas de mantenimiento? (AAAA-MM-DD)\n\n'+
+    'Se le pone este mismo período a las '+conHoja.length+' máquinas que ya tienen la hoja cargada.\n'+
+    'Vencen 3 meses después, y la fecha de revisión de cada una no se toca.',
+    '2027-01-01');
+  if(desde===null) return;
+  if(!fechaValidaApp(desde)){ alert('Esa fecha no es válida: '+porQueLaFechaEstaMal(desde)+'.'); return; }
+  const hasta = vencimientoMantenimiento(desde);
+
   const detalle = sinHoja.length
     ? '\n\nOJO: '+sinHoja.length+' máquina'+(sinHoja.length!==1?'s':'')+' no tiene'+(sinHoja.length!==1?'n':'')+' hoja cargada y no entra'+(sinHoja.length!==1?'n':'')+':\n· '+sinHoja.map(e=>e.nombre).join('\n· ')
     : '';
-  const aviso = vencidas
-    ? '\n\n'+vencidas+' de ellas está'+(vencidas!==1?'n':'')+' vencida'+(vencidas!==1?'s':'')+' hoy y van a pasar a figurar vigentes.'
+  const futuro = desde > hoyISO()
+    ? '\n\nEs una fecha futura: las hojas van a salir con ese período aunque la revisión se haga antes.'
     : '';
   const ok = await confirmSiNo(
-    'Todas las hojas van a vencer el '+fmtF(fecha)+'.\n\n'+
-    conHoja.length+' máquina'+(conHoja.length!==1?'s':'')+' con hoja cargada.'+aviso+detalle,
+    'Todas las hojas van a decir:\n\nVigente desde el '+fmtF(desde)+' hasta el '+fmtF(hasta)+'.\n\n'+
+    conHoja.length+' máquina'+(conHoja.length!==1?'s':'')+' con hoja cargada.'+futuro+detalle,
     {si:'Sí, alinear', no:'Cancelar'});
   if(!ok) return;
 
-  conHoja.forEach(e=>{ EQ_MANTENIMIENTO[e.id].venceManual = fecha; });
-  marcarAccionUndo('Alinear el vencimiento de '+conHoja.length+' hojas al '+fmtF(fecha), 'equipos');
+  conHoja.forEach(e=>{
+    EQ_MANTENIMIENTO[e.id].vigenciaDesde = desde;
+    delete EQ_MANTENIMIENTO[e.id].venceManual;   // queda de la versión anterior, ya no se usa
+  });
+  marcarAccionUndo('Alinear la vigencia de '+conHoja.length+' hojas desde el '+fmtF(desde), 'equipos');
   guardarEqMantenimiento();
   renderDashboard();
   if(typeof renderEq==='function') renderEq();
   if(document.getElementById('eq-ficha-mant')) renderEqFichaMantenimiento();
-  alert('Listo. Las '+conHoja.length+' hojas vencen el '+fmtF(fecha)+'.'+
+  alert('Listo. Las '+conHoja.length+' hojas valen del '+fmtF(desde)+' al '+fmtF(hasta)+'.'+
     (sinHoja.length?'\n\nQuedaron afuera '+sinHoja.length+' máquina'+(sinHoja.length!==1?'s':'')+' sin hoja cargada.':''));
 }
 
@@ -11598,8 +11605,8 @@ function renderEqFichaMantenimiento(){
       <div><label class="flabel">Fecha de la revisión</label><input type="date" id="mant-fecha" min="2020-01-01" max="2100-12-31" value="${fechaSugeridaMant(h0)}" onchange="refrescarVenceMant()"></div>
       <div><label class="flabel">Horas de uso</label><input type="number" id="mant-horas" value="${h0.horas!==undefined&&h0.horas!==''?h0.horas:(horasEq!==null?horasEq:'')}" placeholder="hs"></div>
     </div>
-    <div style="font-size:.72rem;color:var(--txt3);margin-bottom:.7rem">${venceEsManual(h0)
-      ? `Vence el <b id="mant-vence" style="color:var(--verde)">${fmtF(venceHojaMant(h0))}</b> — fecha fijada para toda la flota. Si volvés a cargar la hoja, pasa a valer ${MANT_MESES_VIGENCIA} meses desde la revisión.`
+    <div style="font-size:.72rem;color:var(--txt3);margin-bottom:.7rem">${vigenciaEsManual(h0)
+      ? `Vigente del <b style="color:var(--verde)">${fmtF(desdeHojaMant(h0))}</b> al <b style="color:var(--verde)">${fmtF(venceHojaMant(h0))}</b> — período fijado para toda la flota. Si volvés a cargar la hoja, pasa a valer ${MANT_MESES_VIGENCIA} meses desde la revisión.`
       : `Vence el <b id="mant-vence">${fmtF(vencimientoMantenimiento(h0.fecha||hoyISO()))}</b> (${MANT_MESES_VIGENCIA} meses)`}${horasEq!==null?` · el horómetro de la máquina marca ${horasEq} hs`:''}</div>
     <div style="margin-bottom:1rem"><label class="flabel">Quién la hizo</label><input type="text" class="mayus" id="mant-por" value="${String(h0.cargadoPor||(ROL_ACTUAL==='taller'?TALLER_RESPONSABLE:nombreUsuarioActual())||'').replace(/"/g,'&quot;')}" placeholder="Nombre"></div>`;
 
@@ -11686,8 +11693,16 @@ function descargarHojaMantenimiento(eqId){
     <hr class="top">
     <h1>Check List de Mantenimiento</h1>
     <div class="cab">
-      <div>Fecha: <span>${fmtF(h0.fecha)}</span></div>
-      <div>Fecha de vencimiento: <span>${fmtF(venceHojaMant(h0))}</span></div>
+      ${/* Si el período está fijado para toda la flota, la hoja que va a las plataformas
+           de los clientes tiene que mostrar ESE período — desde cuándo vale y hasta
+           cuándo. La fecha de revisión se muestra igual, aparte: es el día real en que
+           taller miró la máquina y no tiene por qué coincidir. (Mateo, 6/11/26.) */''}
+      ${vigenciaEsManual(h0)
+        ? `<div>Vigente desde: <span>${fmtF(desdeHojaMant(h0))}</span></div>
+           <div>Fecha de vencimiento: <span>${fmtF(venceHojaMant(h0))}</span></div>
+           <div>Fecha de revisión: <span>${fmtF(h0.fecha)}</span></div>`
+        : `<div>Fecha: <span>${fmtF(h0.fecha)}</span></div>
+           <div>Fecha de vencimiento: <span>${fmtF(venceHojaMant(h0))}</span></div>`}
       <div>Nombre/Código de la Máquina: <span>${esc(nombreMaq)}</span></div>
       <div>Horas de uso de la Máquina: <span>${esc(h0.horas||'-')} hs</span></div>
       <div>Nº de serie: <span>${esc(eq.nSerie||'-')}</span></div>
@@ -17953,25 +17968,17 @@ async function continuarCerrarAlquilerAbierto(){
     const comoPaquete = await confirmSiNo(`Vas a facturar ${diasAFacturar} día${diasAFacturar!==1?'s':''}.`, {si:'Paquete semanal', no:'Días sueltos (tarifa diaria)'});
 
     if(comoPaquete && p && p.sem){
-      // Misma regla de redondeo que el cotizador/calcPrecioAlq: 5+ días se arma en
-      // semanas (resto de 5 o 6 días redondea a una semana más), y 4+ semanas se
-      // convierten a mes si hay tarifa mensual cargada.
-      let semanas=Math.floor(diasAFacturar/7);
-      let resto=diasAFacturar%7;
-      if(resto>=5){ semanas+=1; resto=0; }
-      let meses=0;
-      if(p.mes && semanas>=4){ meses=Math.floor(semanas/4); semanas=semanas%4; }
-      const sugerido = meses*(p.mes||0) + semanas*(p.sem||0) + resto*p.dia;
-      const partes=[];
-      if(meses>0) partes.push(`${meses} mes${meses>1?'es':''}`);
-      if(semanas>0) partes.push(`${semanas} sem${semanas>1?'s':''}`);
-      if(resto>0) partes.push(`${resto} día${resto>1?'s':''}`);
-      const detalleSug = partes.join(' + ')||`${diasAFacturar} día${diasAFacturar>1?'s':''}`;
-      const montoStr=prompt(`Paquete semanal (${origenTarifa}): ${detalleSug} = ${fmt(sugerido)}.\n\nMonto a facturar por estos ${diasAFacturar} día${diasAFacturar!==1?'s':''} (ajustalo si el acuerdo con el cliente es otro):`, sugerido);
+      // El paquete se cotiza sobre el alquiler ENTERO (los días ya cargados + estos),
+      // no sobre el tramo suelto, y se descuenta lo que el alquiler ya tiene cargado.
+      // Ver sugerenciaPaqueteAlq: la misma función que usa "Agregar factura parcial".
+      const sug = sugerenciaPaqueteAlq(a, p, (a.dias||0), diasAFacturar, origenTarifa);
+      const montoStr=prompt(sug.cabecera + `Monto a facturar por estos ${diasAFacturar} día${diasAFacturar!==1?'s':''} (ajustalo si el acuerdo fue otro):`, sug.sugerido);
       if(montoStr===null) return;
-      montoExtra=parseFloat(montoStr)||0;
+      montoExtra=parseFloat(sinMiles(montoStr))||0;
       tarifa=null;
-      detalleExtra=`Paquete semanal (${detalleSug})`;
+      detalleExtra = (a.dias||0)>0
+        ? `Paquete del total (${sug.diasTotales} días: ${sug.total.detalle})`
+        : `Paquete semanal (${sug.total.detalle})`;
     } else {
       if(comoPaquete){
         alert('Este equipo no tiene tarifa semanal cargada — se va a cobrar como días sueltos.');
@@ -18655,25 +18662,17 @@ async function agregarDiasFacturablesAlq(id, periodo){
   else {
   const comoPaquete = await confirmSiNo(`Vas a facturar ${dias} día${dias!==1?'s':''}${esPrimeraFactura?' (total)':' más'}.`, {si:'Paquete semanal', no:'Días sueltos (tarifa diaria)'});
   if(comoPaquete && p && p.sem){
-    // Misma regla de redondeo que el cotizador/calcPrecioAlq: 5+ días se arma en
-    // semanas (resto de 5 o 6 días redondea a una semana más), y 4+ semanas se
-    // convierten a mes si hay tarifa mensual cargada.
-    let semanas=Math.floor(dias/7);
-    let resto=dias%7;
-    if(resto>=5){ semanas+=1; resto=0; }
-    let meses=0;
-    if(p.mes && semanas>=4){ meses=Math.floor(semanas/4); semanas=semanas%4; }
-    const sugerido = meses*(p.mes||0) + semanas*(p.sem||0) + resto*p.dia;
-    const partes=[];
-    if(meses>0) partes.push(`${meses} mes${meses>1?'es':''}`);
-    if(semanas>0) partes.push(`${semanas} sem${semanas>1?'s':''}`);
-    if(resto>0) partes.push(`${resto} día${resto>1?'s':''}`);
-    const detalleSug = partes.join(' + ')||`${dias} día${dias>1?'s':''}`;
-    const montoStr=prompt(`Paquete semanal (${origenTarifa}): ${detalleSug} = ${fmt(sugerido)}.\n\nMonto TOTAL a facturar por estos ${dias} día${dias!==1?'s':''} (ajustalo si el acuerdo con el cliente es otro):`, sugerido);
+    // Misma función que usa "Confirmar fecha de retiro": el paquete se cotiza sobre
+    // el alquiler ENTERO y se descuenta lo que ya tiene cargado. En la PRIMERA factura
+    // de un abierto el tramo reemplaza a la porción base, así que no hay nada previo.
+    const sug = sugerenciaPaqueteAlq(a, p, esPrimeraFactura ? 0 : (a.dias||0), dias, origenTarifa);
+    const montoStr=prompt(sug.cabecera + `Monto a facturar AHORA por estos ${dias} día${dias!==1?'s':''} (ajustalo si el acuerdo fue otro):`, sug.sugerido);
     if(montoStr===null) return;
-    montoFactura=parseFloat(montoStr)||0;
+    montoFactura=parseFloat(sinMiles(montoStr))||0;
     tarifa=null;
-    detalle=`Paquete semanal (${detalleSug})`;
+    detalle = (!esPrimeraFactura && (a.dias||0)>0)
+      ? `Paquete del total (${sug.diasTotales} días: ${sug.total.detalle})`
+      : `Paquete semanal (${sug.total.detalle})`;
   } else {
     if(comoPaquete){
       alert('Este equipo no tiene tarifa semanal cargada — se va a cobrar como días sueltos.');
@@ -18960,6 +18959,74 @@ function limpiarSelFact(){ factSeleccionados.clear(); renderFacturacion(); }
 // Precio por N dias segun la lista: 5+ dias se arma en semanas (un resto de 5 o 6 se
 // redondea a una semana mas) y 4+ semanas pasan a mes si hay tarifa mensual.
 // Es la misma regla del cotizador; aca esta una sola vez para que no se desincronice.
+
+/* ── EL PAQUETE SE CALCULA SOBRE EL ALQUILER ENTERO — UNA SOLA VEZ ─────────
+   Esto lo preguntan DOS pantallas: "Confirmar fecha de retiro" (cerrar un alquiler
+   abierto) y "Agregar factura parcial". Cada una tenía su propia copia de la escala
+   de semanas y meses, y las dos la aplicaban sobre el TRAMO NUEVO en vez de sobre la
+   duración total. Resultado: 9 días cargados + 26 nuevos se cobraban como 9 sueltos
+   más 1 mes, cuando 35 días son 1 mes + 1 semana — bastante menos.
+   (Mateo, 10/11/26, sobre el JLG de GRANA.)
+
+   Y una distinción que importa: CARGADO no es FACTURADO. Un alquiler abierto arranca
+   con unos días cargados (el precio base) que muchas veces todavía no se facturaron.
+   Antes el cartel decía "ya facturado" sobre plata que nadie había facturado. */
+
+// La escala de siempre: 5+ días se arma en semanas (un resto de 5 o 6 redondea a una
+// semana más) y 4+ semanas pasan a mes si hay tarifa mensual.
+function escalaPaquete(p, d){
+  let semanas=Math.floor(d/7), resto=d%7;
+  if(resto>=5){ semanas+=1; resto=0; }
+  let meses=0;
+  if(p && p.mes && semanas>=4){ meses=Math.floor(semanas/4); semanas=semanas%4; }
+  const partes=[];
+  if(meses>0)   partes.push(`${meses} mes${meses>1?'es':''}`);
+  if(semanas>0) partes.push(`${semanas} sem${semanas>1?'s':''}`);
+  if(resto>0)   partes.push(`${resto} día${resto!==1?'s':''}`);
+  return { monto: meses*((p&&p.mes)||0) + semanas*((p&&p.sem)||0) + resto*((p&&p.dia)||0),
+           detalle: partes.join(' + ') || `${d} día${d!==1?'s':''}` };
+}
+
+// Lo que REALMENTE se le facturó a este alquiler. Mira las marcas de facturación,
+// no el precio cargado. Mismo criterio que chunksFacturablesAlq, pero sin el corte
+// del arranque limpio: acá la pregunta es qué se le cobró al cliente, no qué entra
+// en los reportes.
+function montoFacturadoAlq(a){
+  if(!a) return 0;
+  const hayParciales = !!(a.diasAgregados && a.diasAgregados.length);
+  const baseFusionada = hayParciales && a.diasAgregados[0].desde===a.inicio;
+  const precioBase = hayParciales ? (a.precioBase!=null ? a.precioBase : (a.precio||0)) : (a.precio||0);
+  let total = 0;
+  if(!baseFusionada && (a.mesFacturado || a.sinFactura)) total += precioBase;
+  (a.diasAgregados||[]).forEach(d=>{ if(d.mesFacturado) total += (d.monto||0); });
+  return total;
+}
+
+// El texto y el monto sugerido para el tramo que se está por cargar.
+// diasYaCargados: los días que el alquiler ya tiene encima (0 si este tramo los reemplaza).
+function sugerenciaPaqueteAlq(a, p, diasYaCargados, diasNuevos, origenTarifa){
+  const diasTotales = Math.max(0, diasYaCargados) + diasNuevos;
+  const total = escalaPaquete(p, diasTotales);
+  const yaCargado   = diasYaCargados>0 ? (a.precio||0) : 0;
+  const yaFacturado = diasYaCargados>0 ? montoFacturadoAlq(a) : 0;
+  const sugerido = Math.max(0, total.monto - yaCargado);
+  let cabecera;
+  if(diasYaCargados<=0){
+    cabecera = `Paquete semanal (${origenTarifa}): ${total.detalle} = ${fmt(total.monto)}.\n\n`;
+  } else {
+    cabecera = `El alquiler entero son ${diasTotales} días: ${total.detalle} = ${fmt(total.monto)} (${origenTarifa}).\n\n`
+      + (yaFacturado>0
+          ? `Ya facturado: ${fmt(yaFacturado)}.\n`
+          : `Todavía no se le facturó nada — los ${diasYaCargados} día${diasYaCargados!==1?'s':''} del principio estaban cargados, no facturados.\n`)
+      + `Ya cargado en el alquiler: ${fmt(yaCargado)}.\n`
+      + `A facturar ahora: ${fmt(sugerido)} — el alquiler queda en ${fmt(total.monto)}.\n`
+      + (total.monto < yaCargado
+          ? `\n⚠️ El paquete del total da MENOS que lo ya cargado: sobran ${fmt(yaCargado-total.monto)}.\n`
+          : '')
+      + `\n`;
+  }
+  return {diasTotales, total, yaCargado, yaFacturado, sugerido, cabecera};
+}
 function presupuestoPorDias(tipo, dias){
   const p = precioTipo(tipo);
   if(!p || !p.dia || dias<=0) return {monto:0, detalle:''};
