@@ -10859,6 +10859,17 @@ function equiposConHorasPendientes(){
        Se mira el dato, no la marca: así se limpia solo, sin que nadie tenga que
        volver a escribir un número que la app ya tiene. */
     if(horasDeEquipo(e.id)!==null && d.fecha && d.fecha >= d.horasPendienteDesde) return false;
+    /* Y el pendiente nació de una VUELTA. Si esa vuelta se corrigió porque taller se
+       había equivocado de máquina (ver desmarcarVueltaDeTaller), no hay ningún retorno
+       del que cargar horas: pedirlas es pedir el horómetro de algo que no pasó.
+       Se comprueba contra los alquileres, que son el dato: si ninguno de esta máquina
+       quedó con la vuelta marcada ese día o después, el pendiente es un resto.
+       (Mateo, 10/11/26: corrigió la Genie de MOLFINO y el aviso seguía ahí.) */
+    const hayVuelta = (ALQUILERES||[]).some(a =>
+      a.equipoId===e.id && a.activo!==false &&
+      a.retiroFisicoFecha && !a.pickupPendiente &&
+      fechaValidaApp(a.retiroFisicoFecha) && a.retiroFisicoFecha >= d.horasPendienteDesde);
+    if(!hayVuelta) return false;
     return true;
   });
 }
@@ -18181,12 +18192,22 @@ async function desmarcarVueltaDeTaller(id){
   // El aviso de "falta definir qué se cobra" lo generó esta misma marca.
   if(a.cobroPendiente && a.cobroPendiente.desde === fechaQueTenia) delete a.cobroPendiente;
 
-  if(horasDeEstaVuelta){
-    chk.horas = '';
-    chk.horasPor = null;
-    chk.horasEn = null;
-    chk.horasPendienteDesde = fechaQueTenia;   // vuelve a pedirlas cuando vuelva de verdad
+  /* El horómetro. Dos casos, y en los dos el pendiente tiene que QUEDAR LIMPIO: si el
+     equipo no volvió, no hay horas de llegada que cargar.
+      · Si esta vuelta había cargado la lectura, se borra.
+      · Si la habían salteado, quedó un "pendiente" que ahora no corresponde.
+     Antes solo se contemplaba el primer caso y el aviso "Horómetros sin actualizar"
+     seguía pidiendo las horas de un retorno que ya se había corregido.
+     (Mateo, 10/11/26.) */
+  if(chk){
+    if(horasDeEstaVuelta){
+      chk.horas = '';
+      chk.horasPor = null;
+      chk.horasEn = null;
+    }
+    if(chk.horasPendienteDesde && chk.horasPendienteDesde >= fechaQueTenia) chk.horasPendienteDesde = null;
     guardarEqChecklist();
+    if(typeof actualizarFranjaHorometro==='function') actualizarFranjaHorometro();
   }
 
   marcarAccionUndo(`Corregir: "${a.equipoNombre}" NO había vuelto — ${a.cliente}`, 'alquileres');
