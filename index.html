@@ -2766,7 +2766,7 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
       <div id="cerrarab-error" style="display:none;color:var(--rojo);font-size:.82rem;font-weight:700;margin-bottom:.7rem"></div>
       <div id="cerrarab-resumen" style="font-size:.85rem;font-weight:700;color:var(--verde);margin-bottom:.8rem"></div>
       <div id="cerrarab-dias-box" style="margin-bottom:1rem">
-        <label class="flabel">Días a facturar (ajustalo si no corresponde cobrarle todos — ej: quedó puertas adentro para otra tarea)</label>
+        <label class="flabel">Días a facturar (ajustalo si no corresponde cobrarle todos — ej: quedó puertas adentro para otra tarea. Poné 0 para cerrar sin cobrar nada más)</label>
         <input type="number" id="cerrarab-diasfacturar" min="0">
       </div>
       <button onclick="continuarCerrarAlquilerAbierto()" class="btn-nuevo" style="width:100%;padding:.75rem">Continuar</button>
@@ -17833,40 +17833,26 @@ function abrirModalCerrarAbierto(id){
     ? (a.retiroFisicoHora || a.horaRetiro || a.horaEntrega || '08:00')
     : (a.horaRetiro || a.horaEntrega || '08:00');
 
-  // Atajo "cerrar sin facturar nada más": pone la fecha hasta donde ya está facturado.
-  // Solo aparece si con la fecha de hoy se facturarían días de más, que es justo el caso
-  // de los alquileres que arrastran meses.
+  /* ── SE SACÓ EL ATAJO "CERRAR SIN FACTURAR NADA MÁS" ──────────────────────
+     Era de cuando se hizo el arranque limpio de septiembre: servía para cerrar los
+     alquileres que arrastraban meses sin volver a cobrarlos. Esa situación ya pasó, y
+     mientras tanto el botón hacía dos cosas feas:
+
+      · Falseaba la fecha de retiro. La ponía en el último día CARGADO (14/10) aunque
+        la máquina hubiera vuelto el 10/11, y un toque sin querer dejaba el alquiler
+        cerrado un mes antes, con 26 días de alquiler perdidos.
+      · Decía "hasta donde ya está facturado" sobre días que estaban CARGADOS, no
+        facturados — la misma confusión que venimos sacando de todos lados.
+
+     Para cerrar sin cobrar nada más, ahora se pone 0 en "Días a facturar": el alquiler
+     queda con su fecha de retiro REAL y no se le suma un peso. (Mateo, 10/11/26.)
+     El contenedor #cerrarab-atajo queda vacío a propósito, por si alguna vez hay que
+     volver a poner algo ahí. */
   const atajo=document.getElementById('cerrarab-atajo');
-  const sinFacturar=diasSinFacturarAlq(a);
-  if(atajo){
-    if(sinFacturar>0 && a.fin){
-      const [y,m,d]=String(a.fin).split('-');
-      atajo.innerHTML=`<button type="button" onclick="cerrarAbiertoSinFacturarMas()" class="btn-lim" style="width:100%;padding:8px;font-size:.79rem;color:var(--azul);border-color:var(--azul)">
-        Cerrar sin facturar nada más (poner el ${d}/${m}/${y.slice(2)}, hasta donde ya está facturado)</button>
-        <div style="font-size:.73rem;color:var(--txt2);margin-top:4px;line-height:1.45">Con la fecha de hoy te facturaría <b>${sinFacturar} día${sinFacturar!==1?'s':''} más</b>. Usá este atajo si esos días ya se facturaron aparte o si vas a reingresar el alquiler desde este mes.</div>`;
-      atajo.style.display='block';
-    } else {
-      atajo.style.display='none';
-      atajo.innerHTML='';
-    }
-  }
+  if(atajo){ atajo.style.display='none'; atajo.innerHTML=''; }
 
   recalcCerrarAbierto();
   document.getElementById('modal-cerrar-abierto').style.display='flex';
-}
-// Pone la fecha de retiro en el último día ya facturado, así el cierre no agrega ni un
-// peso. Es el caso de los alquileres que vienen de meses atrás y se reingresan desde el
-// mes en curso: los días viejos ya están facturados, no hay que volver a cobrarlos.
-function cerrarAbiertoSinFacturarMas(){
-  const a=ALQUILERES.find(x=>x.id===cerrarAbiertoId); if(!a || !a.fin) return;
-  document.getElementById('cerrarab-fecha').value=a.fin;
-  // La hora importa por la regla del mediodía: antes de las 12:00 el día del retiro no
-  // se cuenta, y entonces el cierre daba un día MENOS que lo ya facturado — saltaba un
-  // aviso de "da menos días de los facturados" que acá no tiene sentido. Se elige la
-  // hora que hace que la cuenta dé exactamente los días que ya están facturados.
-  const conMañana=diasAlquilerPorFecha(a.inicio, a.fin, '08:00');
-  document.getElementById('cerrarab-hora').value = (conMañana < (a.dias||0)) ? '17:00' : '08:00';
-  recalcCerrarAbierto();
 }
 
 // Recalcula en vivo cada vez que se toca la fecha/hora de retiro en el modal — muestra el
