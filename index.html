@@ -829,19 +829,83 @@ if ('serviceWorker' in navigator) {
         <div style="font-size:.9rem;font-weight:700;color:var(--txt)">+ Cargar una solicitud</div>
         <div style="font-size:.78rem;color:var(--txt2);margin-top:2px">Llam&oacute; un cliente pidiendo un equipo: anot&aacute; los datos y le llega a la oficina.</div>
       </button>
-      <!-- Recordatorio del permiso temporal de taller. Un permiso que se prende "por
-           unos días" y nadie apaga deja de ser temporal. Ver renderAvisoPermisoTaller. -->
-      <div id="dash-permiso-taller"></div>
 
       <!-- Aviso de máquinas trabadas. Se llena solo desde renderDashboard() y queda
            vacío cuando no hay ninguna, así el panel no se ensucia. -->
       <div id="dash-puesta-al-dia"></div>
 
-      <!-- Tira de alertas: una sola línea con lo que de verdad hay que resolver, arriba
-           de todo. Cada cosa es un botón que abre su ventana. Se llena desde
-           renderTiraAlertas() leyendo los números que ya calcularon los paneles. -->
-      <div id="dash-alertas" style="display:none"></div>
+      <!-- ══ EL ORDEN DEL INICIO ══════════════════════════════════════════════
+           Pedido de Mateo el 11/11/26: "primero que todo se tiene que ver los
+           alquileres". Antes lo primero que aparecía era lo que estaba mal
+           (problemas, cotizaciones para seguir) y el día a día quedaba abajo.
+           Ahora el Inicio va en este orden:
+             1. Alquileres  — lo que pasa hoy y en los próximos días
+             2. Taller      — lo que hay que mover físicamente
+             3. Para resolver — lo que está mal o frena plata
+             4. Cotizaciones — seguimiento, que es de otro momento del día
+           Cada grupo se esconde entero si no tiene nada adentro, ver
+           ajustarDivisoresInicio(). -->
 
+      <!-- ══ 1. ALQUILERES ══ -->
+      <div class="dash-grupo" id="grp-alquileres">
+      <div class="sec-divider" style="margin-top:.2rem">Alquileres</div>
+      <!-- Alquileres: arrancan hoy, terminan hoy, de la semana, cargados hoy — en ese orden.
+           Las 4 quedan visibles para TODOS los roles (admin, taller, facturación). -->
+      <div class="dash-collapse" id="dc-alq-hoy">
+        <button class="dash-collapse-header" id="dch-alq-hoy" onclick="toggleDashCollapse('alqHoy')">
+          <span class="dc-title">Arrancan hoy</span>
+          <span class="dc-badge" id="dc-badge-alq-hoy"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-alq-hoy-container" style="display:none"></div>
+      </div>
+
+      <!-- Equipos que terminan/vuelven hoy (retorno programado para hoy), ordenados por hora
+           de vencimiento del contrato — visible para TODOS los roles. -->
+      <div class="dash-collapse" id="dc-vuelven-hoy" >
+        <button class="dash-collapse-header" id="dch-vuelven-hoy" onclick="toggleDashCollapse('vuelvenHoy')">
+          <span class="dc-title">Terminan hoy</span>
+          <span class="dc-badge" id="dc-badge-vuelven-hoy"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-vuelven-hoy-container" style="display:none"></div>
+      </div>
+
+      <div class="dash-collapse" id="dc-alq-semana">
+        <button class="dash-collapse-header" id="dch-alq-semana" onclick="toggleDashCollapse('alqSemana')">
+          <span class="dc-title">Arrancan esta semana y la próxima</span>
+          <span class="dc-badge" id="dc-badge-alq-semana"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-alq-semana-container" style="display:none"></div>
+      </div>
+
+      <!-- Equipos que se liberan en los próximos días (fin confirmado, no abiertos) — pantallazo
+           rápido para poder ofrecerlos antes de que se liberen del todo. -->
+      <div class="dash-collapse" id="dc-libera-semana" >
+        <button class="dash-collapse-header" id="dch-libera-semana" onclick="toggleDashCollapse('liberaSemana')">
+          <span class="dc-title">Se liberan esta semana y la próxima</span>
+          <span class="dc-badge" id="dc-badge-libera-semana"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-libera-semana-container" style="display:none"></div>
+      </div>
+
+      <!-- Cargado hoy -->
+      <div class="dash-collapse" id="dc-cargado-hoy">
+        <button class="dash-collapse-header" id="dch-cargado-hoy" onclick="toggleDashCollapse('cargadoHoy')">
+          <span class="dc-title">Cargado hoy</span>
+          <span class="dc-badge" id="dc-badge-cargado-hoy"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-cargado-hoy-container" style="display:none"></div>
+      </div>
+
+      </div><!-- /grp-alquileres -->
+
+      <!-- ══ 2. MOVIMIENTO DE TALLER ══ -->
+      <div class="dash-grupo" id="grp-taller">
+      <div class="sec-divider">Para mover</div>
       <!-- Para entregar (equipos con alquiler cargado pero todavía no salieron físicamente del depósito) -->
       <div class="dash-collapse" id="dc-para-entregar" >
         <button class="dash-collapse-header" id="dch-para-entregar" onclick="toggleDashCollapse('paraEntregar')">
@@ -850,6 +914,16 @@ if ('serviceWorker' in navigator) {
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-para-entregar-container" style="display:none"></div>
+      </div>
+
+      <!-- Para retirar (equipos con retiro confirmado pero todavía no retirados físicamente) -->
+      <div class="dash-collapse" id="dc-para-retirar" style="border-color:var(--rojo)">
+        <button class="dash-collapse-header" id="dch-para-retirar" onclick="toggleDashCollapse('paraRetirar')" style="color:var(--rojo)">
+          <span class="dc-title">Para retirar (taller)</span>
+          <span class="dc-badge" id="dc-badge-para-retirar" style="background:var(--rojo);color:#fff"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-para-retirar-container" style="display:none"></div>
       </div>
 
       <!-- Contratos listos para enviar (equipo ya salió con checklist completo, falta mandarle
@@ -863,16 +937,17 @@ if ('serviceWorker' in navigator) {
         <div class="dash-collapse-body" id="dash-contratos-listos-container" style="display:none"></div>
       </div>
 
-      <!-- Para retirar (equipos con retiro confirmado pero todavía no retirados físicamente) -->
-      <div class="dash-collapse" id="dc-para-retirar" style="border-color:var(--rojo)">
-        <button class="dash-collapse-header" id="dch-para-retirar" onclick="toggleDashCollapse('paraRetirar')" style="color:var(--rojo)">
-          <span class="dc-title">Para retirar (taller)</span>
-          <span class="dc-badge" id="dc-badge-para-retirar" style="background:var(--rojo);color:#fff"></span>
-          <span class="dc-arrow">▾</span>
-        </button>
-        <div class="dash-collapse-body" id="dash-para-retirar-container" style="display:none"></div>
-      </div>
+      </div><!-- /grp-taller -->
 
+      <!-- ══ 3. PARA RESOLVER ══
+           Baja de arriba de todo a acá a pedido de Mateo. Los chips de la tira de
+           alertas (renderTiraAlertas) van pegados al título, en la misma línea, para
+           poder saltar directo al que haga falta sin leer toda la lista. -->
+      <div class="dash-grupo" id="grp-resolver">
+      <div style="display:flex;align-items:center;gap:9px;flex-wrap:wrap">
+        <div class="sec-divider" style="margin:0;padding:1.1rem 0 .45rem">Para resolver</div>
+        <div id="dash-alertas" style="display:none"></div>
+      </div>
       <!-- Problemas reportados por taller (pendientes de solucionar) -->
       <div class="dash-collapse" id="dc-problemas" style="border-color:var(--rojo)">
         <button class="dash-collapse-header" id="dch-problemas" onclick="toggleDashCollapse('problemas')" style="color:var(--rojo)">
@@ -881,30 +956,6 @@ if ('serviceWorker' in navigator) {
           <span class="dc-arrow">▾</span>
         </button>
         <div class="dash-collapse-body" id="dash-problemas-container" style="display:none"></div>
-      </div>
-
-      <!-- Solicitudes en espera que YA se pueden cubrir con un equipo disponible ahora mismo
-           (ver avisarSolicitudesEsperaCubiertasNuevas para el aviso sonoro/banner en el momento
-           en que se libera; esto acá queda fijo en Inicio para que no se pierda si nadie vio el
-           banner en su momento — se actualiza solo en cada render del dashboard). -->
-      <div class="dash-collapse" id="dc-sol-espera" style="display:none">
-        <button class="dash-collapse-header" id="dch-sol-espera" onclick="toggleDashCollapse('solEspera')">
-          <span class="dc-title">Solicitudes que ya se pueden cubrir</span>
-          <span class="dc-badge" id="dc-badge-sol-espera"></span>
-          <span class="dc-arrow">▾</span>
-        </button>
-        <div class="dash-collapse-body" id="dash-sol-espera-container" style="display:none"></div>
-      </div>
-
-      <!-- Solicitudes de presupuesto largo (taller tomó datos de un cliente que pide más
-           de TOPE_DIAS_TALLER días) — SOLO visible para admin, ver renderDashboard. -->
-      <div class="dash-collapse" id="dc-solicitudes" style="display:none">
-        <button class="dash-collapse-header" id="dch-solicitudes" onclick="toggleDashCollapse('solicitudes')">
-          <span class="dc-title">Pasar presupuesto</span>
-          <span class="dc-badge" id="dc-badge-solicitudes"></span>
-          <span class="dc-arrow">▾</span>
-        </button>
-        <div class="dash-collapse-body" id="dash-solicitudes-container" style="display:none"></div>
       </div>
 
       <!-- Equipos que taller marcó como devueltos pero que todavía no tienen definido
@@ -965,6 +1016,47 @@ if ('serviceWorker' in navigator) {
         <div class="dash-collapse-body" id="dash-horaspend-container" style="display:none"></div>
       </div>
 
+      <!-- Solicitudes en espera que YA se pueden cubrir con un equipo disponible ahora mismo
+           (ver avisarSolicitudesEsperaCubiertasNuevas para el aviso sonoro/banner en el momento
+           en que se libera; esto acá queda fijo en Inicio para que no se pierda si nadie vio el
+           banner en su momento — se actualiza solo en cada render del dashboard). -->
+      <div class="dash-collapse" id="dc-sol-espera" style="display:none">
+        <button class="dash-collapse-header" id="dch-sol-espera" onclick="toggleDashCollapse('solEspera')">
+          <span class="dc-title">Solicitudes que ya se pueden cubrir</span>
+          <span class="dc-badge" id="dc-badge-sol-espera"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-sol-espera-container" style="display:none"></div>
+      </div>
+
+      <!-- Solicitudes de presupuesto largo (taller tomó datos de un cliente que pide más
+           de TOPE_DIAS_TALLER días) — SOLO visible para admin, ver renderDashboard. -->
+      <div class="dash-collapse" id="dc-solicitudes" style="display:none">
+        <button class="dash-collapse-header" id="dch-solicitudes" onclick="toggleDashCollapse('solicitudes')">
+          <span class="dc-title">Pasar presupuesto</span>
+          <span class="dc-badge" id="dc-badge-solicitudes"></span>
+          <span class="dc-arrow">▾</span>
+        </button>
+        <div class="dash-collapse-body" id="dash-solicitudes-container" style="display:none"></div>
+      </div>
+
+      <!-- Pago a Proveedores: aviso persistente en Inicio (no depende de agarrar el banner en vivo;
+           si la app estaba cerrada cuando llegó el cambio, esto igual avisa apenas se abre). -->
+      <div class="dash-collapse" id="dc-pp-home" style="border-color:var(--azul);display:none">
+        <button class="dash-collapse-header" onclick="goTo('pagoprov')" style="color:var(--azul)">
+          <span class="dc-title" id="dc-pp-home-title">Pago a Proveedores</span>
+          <span class="dc-badge" id="dc-badge-pp-home"></span>
+          <span class="dc-arrow">→</span>
+        </button>
+      </div>
+
+      </div><!-- /grp-resolver -->
+
+      <!-- ══ 4. COTIZACIONES ══
+           Seguimiento de lo cotizado. Va abajo a propósito: es una tarea de
+           sentarse a llamar, no algo que haya que ver al entrar. -->
+      <div class="dash-grupo" id="grp-cotiz">
+      <div class="sec-divider">Cotizaciones</div>
       <!-- SEGUIMIENTO DE COTIZACIONES. Todas las cotizaciones pasadas que todavía no se
            ganaron ni se dieron por perdidas, agrupadas por qué hay que hacer con cada una.
            El número de la pastilla cuenta SOLO las que hay que llamar hoy; las que están
@@ -989,67 +1081,7 @@ if ('serviceWorker' in navigator) {
         <div class="dash-collapse-body" id="dash-presuptaller-container" style="display:none"></div>
       </div>
 
-      <!-- Pago a Proveedores: aviso persistente en Inicio (no depende de agarrar el banner en vivo;
-           si la app estaba cerrada cuando llegó el cambio, esto igual avisa apenas se abre). -->
-      <div class="dash-collapse" id="dc-pp-home" style="border-color:var(--azul);display:none">
-        <button class="dash-collapse-header" onclick="goTo('pagoprov')" style="color:var(--azul)">
-          <span class="dc-title" id="dc-pp-home-title">Pago a Proveedores</span>
-          <span class="dc-badge" id="dc-badge-pp-home"></span>
-          <span class="dc-arrow">→</span>
-        </button>
-      </div>
-
-      <!-- Alquileres: arrancan hoy, terminan hoy, de la semana, cargados hoy — en ese orden.
-           Las 4 quedan visibles para TODOS los roles (admin, taller, facturación). -->
-      <div class="dash-collapse" id="dc-alq-hoy">
-        <button class="dash-collapse-header" id="dch-alq-hoy" onclick="toggleDashCollapse('alqHoy')">
-          <span class="dc-title">Arrancan hoy</span>
-          <span class="dc-badge" id="dc-badge-alq-hoy"></span>
-          <span class="dc-arrow">▾</span>
-        </button>
-        <div class="dash-collapse-body" id="dash-alq-hoy-container" style="display:none"></div>
-      </div>
-
-      <!-- Equipos que terminan/vuelven hoy (retorno programado para hoy), ordenados por hora
-           de vencimiento del contrato — visible para TODOS los roles. -->
-      <div class="dash-collapse" id="dc-vuelven-hoy" >
-        <button class="dash-collapse-header" id="dch-vuelven-hoy" onclick="toggleDashCollapse('vuelvenHoy')">
-          <span class="dc-title">Terminan hoy</span>
-          <span class="dc-badge" id="dc-badge-vuelven-hoy"></span>
-          <span class="dc-arrow">▾</span>
-        </button>
-        <div class="dash-collapse-body" id="dash-vuelven-hoy-container" style="display:none"></div>
-      </div>
-
-      <div class="dash-collapse" id="dc-alq-semana">
-        <button class="dash-collapse-header" id="dch-alq-semana" onclick="toggleDashCollapse('alqSemana')">
-          <span class="dc-title">Arrancan esta semana y la próxima</span>
-          <span class="dc-badge" id="dc-badge-alq-semana"></span>
-          <span class="dc-arrow">▾</span>
-        </button>
-        <div class="dash-collapse-body" id="dash-alq-semana-container" style="display:none"></div>
-      </div>
-
-      <!-- Equipos que se liberan en los próximos días (fin confirmado, no abiertos) — pantallazo
-           rápido para poder ofrecerlos antes de que se liberen del todo. -->
-      <div class="dash-collapse" id="dc-libera-semana" >
-        <button class="dash-collapse-header" id="dch-libera-semana" onclick="toggleDashCollapse('liberaSemana')">
-          <span class="dc-title">Se liberan esta semana y la próxima</span>
-          <span class="dc-badge" id="dc-badge-libera-semana"></span>
-          <span class="dc-arrow">▾</span>
-        </button>
-        <div class="dash-collapse-body" id="dash-libera-semana-container" style="display:none"></div>
-      </div>
-
-      <!-- Cargado hoy -->
-      <div class="dash-collapse" id="dc-cargado-hoy">
-        <button class="dash-collapse-header" id="dch-cargado-hoy" onclick="toggleDashCollapse('cargadoHoy')">
-          <span class="dc-title">Cargado hoy</span>
-          <span class="dc-badge" id="dc-badge-cargado-hoy"></span>
-          <span class="dc-arrow">▾</span>
-        </button>
-        <div class="dash-collapse-body" id="dash-cargado-hoy-container" style="display:none"></div>
-      </div>
+      </div><!-- /grp-cotiz -->
 
       <!-- REVISIÓN TRIMESTRAL. Va al final a propósito: es una tarea de una semana cada
            tres meses, no algo del día a día. Arriba estorbaba todos los días para algo
@@ -1063,6 +1095,11 @@ if ('serviceWorker' in navigator) {
         </button>
         <div class="dash-collapse-body" id="dash-revtrim-container" style="display:none"></div>
       </div>
+
+
+      <!-- Recordatorio del permiso temporal de taller. Va al final y en chico: es un
+           recordatorio, no una alerta. Ver renderAvisoPermisoTaller. -->
+      <div id="dash-permiso-taller"></div>
 
       <!-- Pagos / Vencimientos: en Inicio solo dejamos lo de HOY, para que no se le pase a nadie.
            El resto (semana, otros y pagados) vive en la pantalla "Impuestos y Servicios".
@@ -3976,7 +4013,46 @@ function renderNoCerrados(){
     return;
   }
 
-  cont.innerHTML = lista.map(p=>`<div style="border:1px solid var(--border);border-left:3px solid var(--txt3);border-radius:9px;padding:.75rem .9rem;margin-bottom:.6rem;background:var(--bg2)">
+  /* ── SEPARADAS POR MES ───────────────────────────────────────────────────
+     Antes salían todas juntas en una lista sola, y con el correr de los meses eso
+     dejó de decir nada: no se podía ver si este mes se cayeron más que el anterior.
+     Se agrupan por el mes en que se COTIZÓ (no en que se archivó): la cotización es
+     cuando el cliente pidió de verdad; archivarla es cuándo uno se sentó a marcarla,
+     que puede ser dos meses después y correría los números de mes.
+     Cada mes muestra cuántas fueron y cuánta plata quedó afuera. (Mateo, 11/11/26.) */
+  const porMes = {};
+  lista.forEach(p=>{
+    /* El mes sale del texto "2026-11-03" cuando está, y recién si no está se calcula
+       desde la marca de tiempo. Dando vueltas por new Date() las fechas sueltas se
+       corren un día (se leen como hora de Greenwich y acá son 3 horas menos), y una
+       cotización del 1 terminaba contada en el mes anterior. */
+    let ym = 'sin-fecha';
+    if(/^\d{4}-\d{2}/.test(String(p.fecha||''))){
+      ym = String(p.fecha).slice(0,7);
+    } else {
+      const ts = cotizCreadaEn(p);
+      if(ts){ const d=new Date(ts); ym = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+    }
+    (porMes[ym] = porMes[ym] || []).push(p);
+  });
+  // Mes más nuevo primero. Las que no tienen fecha van al final, no al principio.
+  const meses = Object.keys(porMes).sort((a,b)=>{
+    if(a==='sin-fecha') return 1;
+    if(b==='sin-fecha') return -1;
+    return b.localeCompare(a);
+  });
+
+  const tarjetaMes = ym=>{
+    const regs = porMes[ym];
+    const plata = regs.reduce((s,p)=>s+(Number(p.total)||0),0);
+    return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;
+                 border-bottom:1px solid var(--border);padding:.5rem 0 .3rem;margin:1.1rem 0 .6rem">
+        <span style="font-size:.86rem;font-weight:700;color:var(--txt)">${ym==='sin-fecha'?'Sin fecha de cotización':mesLabel(ym)}</span>
+        <span style="font-size:.78rem;color:var(--txt2)">${regs.length} ${regs.length===1?'cotización':'cotizaciones'} · ${fmt(plata)} que no entró</span>
+      </div>`;
+  };
+
+  const tarjetaCotiz = p=>`<div style="border:1px solid var(--border);border-left:3px solid var(--txt3);border-radius:9px;padding:.75rem .9rem;margin-bottom:.6rem;background:var(--bg2)">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
         <span style="font-weight:700;font-size:.9rem;color:var(--txt);overflow-wrap:anywhere">${p.clienteNombre||'(sin cliente)'}</span>
         <span style="font-weight:700;font-size:.86rem;color:var(--txt);white-space:nowrap">${fmt(p.total)}</span>
@@ -3990,7 +4066,11 @@ function renderNoCerrados(){
         <span style="font-size:.74rem;color:var(--txt3)">Cotizada el ${fmtFH(cotizCreadaEn(p))} · archivada el ${fmtFH(p.segArchivadaEn)}${p.segCerradaPor?' por '+p.segCerradaPor:''}</span>
         <button onclick="cotizVolverASeguir(${p.id})" class="btn-lim" style="padding:4px 10px;font-size:.73rem">Volver a seguirla</button>
       </div>
-    </div>`).join('');
+    </div>`;
+
+  cont.innerHTML = meses.map(ym =>
+    tarjetaMes(ym) + porMes[ym].map(tarjetaCotiz).join('')
+  ).join('');
 }
 
 // ── Volvieron pero falta definir qué se cobra ─────────────────────────────
@@ -4045,20 +4125,23 @@ function renderCobroPendiente(){
     }).join('');
 }
 
-// Mientras el permiso de taller esté prendido, se ve. A los días avisa hace cuánto:
-// la idea es que vuelva a apagarse al volver del viaje, no que quede así para siempre.
+/* Mientras el permiso de taller esté prendido, se ve. A los días avisa hace cuánto:
+   la idea es que vuelva a apagarse al volver del viaje, no que quede así para siempre.
+   Desde el 11/11/26 va al final del Inicio y en una sola línea chica. Antes era un
+   cartel grande arriba de todo: es un recordatorio, no una alerta — no hay nada roto
+   ni plata frenada, y estaba tapando los alquileres. (Pedido de Mateo.) */
 function renderAvisoPermisoTaller(){
   const caja = document.getElementById('dash-permiso-taller');
   if(!caja) return;
   const p = PERMISO_TALLER;
   if(!p || !p.alquileresLargos || !esMateo()){ caja.innerHTML=''; return; }
   const dias = p.prendidoEn ? Math.floor((Date.now()-p.prendidoEn)/86400000) : 0;
-  caja.innerHTML = `<div style="background:#e5a83b18;border:1px solid #e5a83b66;border-left:3px solid #e5a83b;border-radius:0 10px 10px 0;padding:.7rem .9rem;margin-bottom:1rem;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-      <div style="flex:1;min-width:200px">
-        <div style="font-size:.86rem;font-weight:700;color:var(--txt)">Taller puede cotizar y cargar alquileres de hasta ${p.topeDias} día${p.topeDias!==1?'s':''}</div>
-        <div style="font-size:.76rem;color:var(--txt2);margin-top:2px">Permiso temporal, prendido ${dias===0?'hoy':'hace '+dias+' día'+(dias!==1?'s':'')}${p.prendidoPor?' por '+p.prendidoPor:''}. Acordate de apagarlo cuando vuelvas.</div>
-      </div>
-      <button onclick="apagarPermisoTallerRapido()" class="btn-lim" style="width:auto;margin:0;padding:6px 12px;font-size:.78rem;flex-shrink:0">Apagar</button>
+  const desde = dias===0 ? 'desde hoy' : 'hace '+dias+' día'+(dias!==1?'s':'');
+  caja.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:1.1rem;padding:.4rem .6rem;border-left:2px solid #e5a83b;background:#e5a83b0e;border-radius:0 7px 7px 0">
+      <span style="font-size:.74rem;color:var(--txt2);flex:1;min-width:180px">
+        Taller está habilitado a cotizar y cargar alquileres de hasta <b>${p.topeDias} día${p.topeDias!==1?'s':''}</b> ${desde}${p.prendidoPor?' · lo prendió '+p.prendidoPor:''}
+      </span>
+      <button onclick="apagarPermisoTallerRapido()" class="btn-lim" style="width:auto;margin:0;padding:3px 10px;font-size:.72rem;flex-shrink:0">Apagar</button>
     </div>`;
 }
 async function apagarPermisoTallerRapido(){
@@ -7667,13 +7750,17 @@ function renderDashboard(){
     }
   }
   renderTiraAlertas();
+  ajustarDivisoresInicio();
 }
 
 // ── LA TIRA DE ALERTAS DEL INICIO ────────────────────────────────────────
-// Una sola línea arriba de todo con lo que DE VERDAD hay que resolver. Nada más.
-// Cada cosa es un botón: se toca y se abre esa ventana, ya desplegada y a la vista.
-// Así se entra a la app y en dos segundos se sabe si hay algo que atender, sin
-// tener tres listas largas abiertas tapando todo.
+// Los chips van pegados al título "Para resolver", en la misma línea. Cada uno es un
+// botón: se toca y se abre esa ventana, ya desplegada y a la vista. Así se sabe de un
+// vistazo si hay algo que atender sin tener tres listas largas abiertas tapando todo.
+//
+// Desde el 11/11/26 este grupo NO está arriba de todo: va después de los alquileres,
+// que es lo primero que Mateo quiere ver al entrar. Por eso los chips se achicaron y
+// perdieron su propio título (ahora el título es el del grupo).
 //
 // NO recalcula nada. Lee el número que cada panel ya puso en su propia etiqueta
 // (y si ese panel está visible o no). Es a propósito: si contara por su cuenta,
@@ -7709,15 +7796,31 @@ function renderTiraAlertas(){
   if(!chips.length){ caja.innerHTML=''; caja.style.display='none'; return; }
   caja.style.display='block';
   caja.innerHTML = `
-    <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:1rem">
-      <span style="font-size:.76rem;font-weight:700;color:var(--txt3);text-transform:uppercase;letter-spacing:.04em">Para resolver</span>
+    <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap">
       ${chips.map(c=>`<button onclick="irAlPanelDeInicio('${c.key}','${c.id}')"
-          style="display:inline-flex;align-items:center;gap:6px;background:${c.color}14;border:1px solid ${c.color}55;color:${c.color};
-                 border-radius:999px;padding:5px 12px;font-size:.79rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">
-          <span style="background:${c.color};color:#fff;border-radius:999px;min-width:17px;padding:0 5px;text-align:center;font-size:.72rem">${c.n}</span>
+          style="display:inline-flex;align-items:center;gap:5px;background:${c.color}10;border:1px solid ${c.color}44;color:${c.color};
+                 border-radius:999px;padding:2px 9px;font-size:.71rem;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">
+          <span style="background:${c.color};color:#fff;border-radius:999px;min-width:15px;padding:0 4px;text-align:center;font-size:.66rem">${c.n}</span>
           ${c.label}
         </button>`).join('')}
     </div>`;
+}
+
+/* ── LOS CUATRO GRUPOS DEL INICIO ─────────────────────────────────────────
+   Alquileres / Para mover / Para resolver / Cotizaciones. Cada grupo tiene su título,
+   pero un título solo, sin nada abajo, es peor que no tener título: ocupa lugar y hace
+   dudar de si falta algo. Así que el grupo entero se esconde cuando ninguno de sus
+   paneles está a la vista.
+   Mira el display que cada panel ya se puso (igual que renderTiraAlertas): si contara
+   por su cuenta, tarde o temprano diría algo distinto que el panel. (Mateo, 11/11/26.) */
+function ajustarDivisoresInicio(){
+  ['grp-alquileres','grp-taller','grp-resolver','grp-cotiz'].forEach(id=>{
+    const g = document.getElementById(id);
+    if(!g) return;
+    const hayAlguno = Array.from(g.querySelectorAll('.dash-collapse'))
+      .some(p => p.style.display !== 'none');
+    g.style.display = hayAlguno ? 'block' : 'none';
+  });
 }
 // Abre la ventana que se tocó en la tira y la deja a la vista. Si ya estaba abierta
 // no la cierra (sería lo contrario de lo que uno espera al tocar una alerta).
@@ -17303,13 +17406,90 @@ function sumarMinHHMM(hhmm, mins){
 // ── PASO 1: sale el equipo ────────────────────────────────────────
 // Se crea un registro ABIERTO (sin hora de entrada). La hora de salida viene autocargada
 // con la hora actual, pero es editable por si taller la carga tarde.
-function registrarSalidaRiv(){
+
+/* ── SALIDAS DUPLICADAS QUE YA QUEDARON CARGADAS ──────────────────────────
+   Hasta que se puso el aviso al registrar, un doble toque dejaba dos salidas iguales
+   (misma fecha y misma hora). Cada una se cobra, así que una duplicada le suma media
+   hora de más a la factura del mes. Esto las encuentra para poder revisarlas.
+   Se agrupan por fecha + hora de salida: dos salidas reales no pueden arrancar el
+   mismo día en el mismo minuto. (Mateo, 11/11/26.) */
+function salidasDuplicadasRiv(){
+  const porClave = {};
+  (PLANILLA_RIV||[]).forEach(r=>{
+    if(!r.fecha || !r.horaSalida) return;
+    const k = r.fecha + ' ' + r.horaSalida;
+    (porClave[k] = porClave[k] || []).push(r);
+  });
+  return Object.keys(porClave)
+    .filter(k => porClave[k].length > 1)
+    .sort().reverse()
+    .map(k => ({clave:k, regs:porClave[k]}));
+}
+function bloqueDuplicadosRiv(){
+  if(esTallerVista()) return '';
+  const grupos = salidasDuplicadasRiv();
+  if(!grupos.length) return '';
+  const fmtD = s => String(s).split('-').reverse().join('/');
+  const filas = grupos.map(g=>{
+    const [f, h] = g.clave.split(' ');
+    const facturado = g.regs.some(r=>r.mesFacturado);
+    const detalle = g.regs.map(r=>{
+      const datos = [r.lugar||'sin lugar', r.responsable||'sin responsable',
+                     r.horaEntrada?('entró '+r.horaEntrada):'sin hora de entrada',
+                     fmt(rivMontoReg(r))].join(' · ');
+      const btn = (!r.mesFacturado)
+        ? `<button onclick="borrarRegistroRiv(${r.id})" class="btn-lim" style="width:auto;margin:0;padding:3px 9px;font-size:.72rem;color:var(--rojo)">Borrar esta</button>`
+        : `<span style="font-size:.72rem;color:var(--txt3)">ya facturada</span>`;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;padding:4px 0;border-top:1px solid var(--border)">
+          <span style="font-size:.78rem;color:var(--txt2)">${datos}${r.cargadoPor?' · cargó '+r.cargadoPor:''}</span>${btn}
+        </div>`;
+    }).join('');
+    return `<div style="margin-bottom:.6rem">
+      <div style="font-size:.82rem;font-weight:700;color:var(--txt)">${fmtD(f)} a las ${h} — ${g.regs.length} salidas iguales</div>
+      ${detalle}
+      ${facturado?`<div style="font-size:.74rem;color:var(--rojo);margin-top:3px">Este mes ya está facturado. Si hay que sacar una, primero desmarcá el mes más abajo, borrala y volvé a facturarlo.</div>`:''}
+    </div>`;
+  }).join('');
+  return `<div style="background:rgba(229,168,59,.12);border-left:3px solid #e5a83b;border-radius:0 9px 9px 0;padding:11px 15px;margin-bottom:1.2rem">
+      <div style="font-size:.85rem;font-weight:700;color:var(--txt);margin-bottom:3px">
+        ${grupos.length} posible${grupos.length!==1?'s':''} salida${grupos.length!==1?'s':''} duplicada${grupos.length!==1?'s':''}
+      </div>
+      <div style="font-size:.78rem;color:var(--txt2);line-height:1.5;margin-bottom:8px">
+        Dos salidas cargadas el mismo día a la misma hora. Suele ser el botón tocado dos veces — y cada una se cobra aparte.
+        Revisalas: si una sobra, borrala.
+      </div>
+      ${filas}
+    </div>`;
+}
+async function registrarSalidaRiv(){
   const fecha=document.getElementById('riv-fecha').value;
   const hs=document.getElementById('riv-hsalida').value;
   const lugar=document.getElementById('riv-lugar').value.trim();
   const resp=document.getElementById('riv-resp').value.trim();
   if(!fecha){ alert('Poné la fecha'); return; }
   if(!hs){ alert('Falta la hora de salida'); return; }
+
+  /* ── DOBLE TOQUE = SALIDA DUPLICADA ───────────────────────────────────────
+     Al registrar una salida, el formulario se limpia y renderRivadavia vuelve a
+     poner la HORA ACTUAL en "hora salida". Si alguien toca el botón dos veces —en
+     el celular, en el galpón, pensando que no entró— la segunda cae en el mismo
+     minuto y queda un registro gemelo: misma fecha, misma hora, pero sin lugar ni
+     responsable porque esos campos sí se habían limpiado.
+     Es exactamente lo que pasó el 10/11/26 a las 15:11 (y ya había pasado en octubre).
+     Acá se corta: si ya hay una salida ese día a esa hora, se pregunta.
+     (Mateo, 11/11/26.) */
+  const gemelo = (PLANILLA_RIV||[]).find(r=>r.fecha===fecha && r.horaSalida===hs);
+  if(gemelo){
+    const abierto = !gemelo.horaEntrada;
+    const ok = await confirmSiNo(
+      `Ya hay una salida cargada el ${String(fecha).split('-').reverse().join('/')} a las ${hs}`+
+      (gemelo.lugar?` (${gemelo.lugar}`:'')+(gemelo.responsable?`, ${gemelo.responsable}`:'')+(gemelo.lugar?')':'')+
+      `${abierto?' y todavía está en la calle':''}.\n\n`+
+      `¿Es OTRA salida distinta, o se tocó el botón dos veces?`,
+      {si:'Es otra salida distinta', no:'Fue sin querer — no cargar'});
+    if(!ok) return;
+  }
+
   PLANILLA_RIV.push({
     id: Date.now(),
     fecha, lugar, horaSalida:hs, horaEntrada:null, responsable:resp,
@@ -17532,7 +17712,7 @@ function renderRivadavia(){
   // ── Historial mensual: solo registros CERRADOS (con hora de entrada) ──
   const cerrados = PLANILLA_RIV.filter(r=>r.horaEntrada);
   if(!cerrados.length){
-    cont.innerHTML = avisoPrecio + '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin:2rem 0">Todavía no hay registros cerrados. Registrá una salida arriba, y cuando el equipo vuelva, cerralo desde "En la calle ahora".</p>';
+    cont.innerHTML = avisoPrecio + bloqueDuplicadosRiv() + '<p style="color:var(--txt3);font-size:.85rem;text-align:center;margin:2rem 0">Todavía no hay registros cerrados. Registrá una salida arriba, y cuando el equipo vuelva, cerralo desde "En la calle ahora".</p>';
     return;
   }
 
@@ -17545,7 +17725,8 @@ function renderRivadavia(){
   });
   const meses=Object.values(porMes).sort((a,b)=>b.ym.localeCompare(a.ym));
 
-  let h=avisoPrecio;
+  // Las salidas duplicadas van arriba de todo: es plata cobrada de mas.
+  let h=avisoPrecio + bloqueDuplicadosRiv();
   meses.forEach(grupo=>{
     const regs=[...grupo.regs].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b.horaSalida||'').localeCompare(a.horaSalida||''));
     const totalMin=regs.reduce((s,r)=>s+rivMinutos(r),0);
@@ -17847,7 +18028,14 @@ async function marcarRetiroAnticipado(id){
   marcarAccionUndo(`Marcar retiro anticipado de "${a.equipoNombre}" — cliente ${a.cliente}`, 'alquileres');
   guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
-  alert(`Retiro anticipado registrado para el ${fmtD(fecha)}.`+detalleAjuste+(yaVolvioFisico?`\n\nEquipo liberado — ya figura disponible.`:`\n\nEl equipo sigue figurando como ocupado hasta que taller marque "Equipo retirado".`));
+  // Mismo criterio que en continuarCerrarAlquilerAbierto: si taller ya marcó la vuelta,
+  // se dice que está disponible y con qué fecha, no que falta que la marque.
+  const comoQueda = yaVolvioFisico
+    ? (yaMarcadaLaVuelta
+        ? `\n\nEl equipo ya está disponible — taller marcó que volvió el ${fmtD(a.retiroFisicoFecha)}${a.retiroFisicoPor?' ('+a.retiroFisicoPor+')':''}.`
+        : `\n\nEquipo liberado — ya figura disponible.`)
+    : `\n\nEl equipo sigue figurando como ocupado hasta que taller marque "Equipo retirado".`;
+  alert(`Retiro anticipado registrado para el ${fmtD(fecha)}.`+detalleAjuste+comoQueda);
 }
 
 // Cierra un alquiler ABIERTO: pide la fecha y hora real de retiro, calcula automáticamente
@@ -18103,7 +18291,17 @@ async function continuarCerrarAlquilerAbierto(){
   marcarAccionUndo(`Confirmar retiro de "${a.equipoNombre}" — cliente ${a.cliente}`, 'alquileres');
   guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
-  alert(`Retiro confirmado para el ${fmtD(fechaRetiro)} a las ${horaRetiro}.`+(diasAFacturar>0?` Se facturaron ${diasAFacturar} día(s) — ${detalleExtra} (${fmt(montoExtra)})${diasAFacturar!==diasExtra?` (de ${diasExtra} día(s) reales de diferencia)`:''}.`:(menosCargaDeLoFacturado?` ⚠️ Retira con ${Math.abs(diasExtra)} día(s) menos que los ya facturados — no se descontó nada, queda anotado en el historial del alquiler por si el cliente reclama.`:(diasExtra>0?` Hubo ${diasExtra} día(s) de diferencia por fecha, pero no se facturó nada extra.`:'')))+`\n\nEl equipo sigue figurando como ocupado hasta que taller marque "Equipo retirado".`);
+  /* CÓMO QUEDA EL EQUIPO. Esto antes decía SIEMPRE "sigue figurando como ocupado hasta
+     que taller marque Equipo retirado", incluso cuando taller ya lo había marcado y lo
+     único que faltaba era esto: definir cuánto se cobra. El cartel mentía — unas líneas
+     más arriba ya se había hecho pickupPendiente=false y la máquina estaba disponible.
+     Lo decía al revés de lo que había hecho, que es lo peor que puede hacer un cartel.
+     (Mateo, 11/11/26: "se supone que ese equipo ya volvió si lo marcaron como que
+     volvió".) */
+  const comoQueda = yaVolvioFisicamente
+    ? `\n\nEl equipo ya está disponible — taller marcó que volvió el ${fmtD(a.retiroFisicoFecha)}${a.retiroFisicoPor?' ('+a.retiroFisicoPor+')':''}.`
+    : `\n\nEl equipo sigue figurando como ocupado hasta que taller marque "Equipo retirado".`;
+  alert(`Retiro confirmado para el ${fmtD(fechaRetiro)} a las ${horaRetiro}.`+(diasAFacturar>0?` Se facturaron ${diasAFacturar} día(s) — ${detalleExtra} (${fmt(montoExtra)})${diasAFacturar!==diasExtra?` (de ${diasExtra} día(s) reales de diferencia)`:''}.`:(menosCargaDeLoFacturado?` ⚠️ Retira con ${Math.abs(diasExtra)} día(s) menos que los ya facturados — no se descontó nada, queda anotado en el historial del alquiler por si el cliente reclama.`:(diasExtra>0?` Hubo ${diasExtra} día(s) de diferencia por fecha, pero no se facturó nada extra.`:'')))+comoQueda);
 }
 
 // Para alquileres NO abiertos que ya tienen fecha de retiro definida (por ejemplo, llega
