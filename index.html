@@ -4498,6 +4498,8 @@ function cotizTarjeta(p, urgente){
       <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:.3rem">
         ${tel?`<a href="tel:${tel}" style="${btn};background:none;border:1px solid var(--border2);color:var(--txt2);text-decoration:none">${p.clienteTelefono}</a>`:''}
         <button onclick="cotizConfirmada(${p.id})" style="${btn};background:var(--verde);border:1px solid var(--verde);color:#fff">Lo tomó → pasar a alquiler</button>
+        <button onclick="cotizYaCargadaAparte(${p.id})" title="El cliente lo tomó y el alquiler ya lo cargaste a mano. Cierra la cotización sin crear nada."
+                style="${btn};background:none;border:1px solid var(--verde);color:var(--verde)">Ya lo cargué</button>
         <button onclick="cotizRegistrarContacto(${p.id})" style="${btn};background:none;border:1px solid var(--border2);color:var(--txt)">Lo sigue viendo · +${DIAS_RECORDAR_COTIZ} días</button>
         <button onclick="abrirModalNoCerro(${p.id})" style="${btn};background:none;border:1px solid var(--border2);color:var(--txt2)">No cerró</button>
       </div>
@@ -4512,6 +4514,59 @@ function cotizConfirmada(id){
   const p=(PRESUPUESTOS||[]).find(x=>x.id===id);
   if(!p || !p.cot){ alert('Esta cotización es vieja y no guarda los datos para pasarla a alquiler. Cargalo a mano.'); return; }
   convertirEnAlquiler(p.cot, p.id);
+}
+
+/* ── "YA LO CARGUÉ" ────────────────────────────────────────────────────────
+   El cliente dijo que sí, pero el alquiler se cargó a mano desde Alquileres en vez
+   de con el botón "Lo tomó". La cotización no se entera y queda llamando para
+   siempre en "Cotizaciones para seguir", pidiendo que se llame a un cliente que ya
+   cerró. Marcarla como "No cerró" sería mentir: la archivaría en Alquileres no
+   cerrados y la contaría como plata que no entró, cuando entró.
+   Esto la cierra igual que si se hubiera usado el botón, pero SIN crear ningún
+   alquiler — el alquiler ya existe. Queda anotado que se cerró así, para que
+   después no parezca que salió de acá. (Mateo, 12/11/26, caso CAPOGROSSI.) */
+async function cotizYaCargadaAparte(id){
+  const p=(PRESUPUESTOS||[]).find(x=>x.id===id); if(!p) return;
+  const ok = await confirmSiNo(
+    `¿El alquiler de ${p.clienteNombre||'este cliente'} ya está cargado?\n\n`+
+    `${p.equipo||''}${p.dias?' · '+p.dias+' día'+(p.dias!==1?'s':''):''} · ${fmt(p.total)}\n\n`+
+    `Se saca de "Cotizaciones para seguir" y queda cerrada como ganada.\n`+
+    `NO se crea ningún alquiler nuevo: se da por hecho que ya lo cargaste vos.`,
+    {si:'Sí, ya lo cargué', no:'No, dejala en la lista'});
+  if(!ok) return;
+  p.estadoConv = 'convertido';
+  // Se distingue de las que salieron del botón: ahí hay un alquiler que nació de esta
+  // cotización; acá el alquiler se cargó por otro lado y no están enlazados.
+  p.convCargadaAparte = true;
+  p.convCargadaAparteEn = Date.now();
+  p.convCargadaApartePor = nombreUsuarioActual() || '';
+  guardarSeguimientoCotiz(`Marcar como ya cargada la cotización de ${p.clienteNombre||'(sin cliente)'}`);
+  if(typeof filtrarHistorialPresup==='function') filtrarHistorialPresup();
+}
+
+/* La marcha atrás, por si se tocó el botón equivocado. Hace falta tenerla a mano:
+   el "Deshacer" general de la app está apagado (ver registrarPuntoUndo), así que sin
+   esto un clic de más dejaba la cotización cerrada para siempre y sin forma de
+   volver a la lista de seguimiento. Solo aplica a las cerradas con "Ya lo cargué":
+   las que se convirtieron de verdad tienen un alquiler atrás y no se tocan desde acá. */
+async function cotizDeshacerYaCargada(id, ev){
+  if(ev && ev.stopPropagation) ev.stopPropagation();
+  const p=(PRESUPUESTOS||[]).find(x=>x.id===id); if(!p) return;
+  if(!p.convCargadaAparte) return;
+  const ok = await confirmSiNo(
+    `¿Volver a poner en seguimiento la cotización de ${p.clienteNombre||'este cliente'}?\n\n`+
+    `Vuelve a "Cotizaciones para seguir". No se toca ningún alquiler.`,
+    {si:'Sí, volver a seguirla', no:'Dejar como está'});
+  if(!ok) return;
+  p.estadoConv = 'pendiente';
+  p.convCargadaAparte = false;
+  p.convCargadaAparteEn = null;
+  p.convCargadaApartePor = '';
+  // El reloj arranca de cero, igual que en cotizVolverASeguir: si no, aparecería
+  // como "conviene llamar" al instante solo por ser vieja.
+  p.segUltimoContacto = Date.now();
+  guardarSeguimientoCotiz(`Volver a seguir la cotización de ${p.clienteNombre||'(sin cliente)'}`);
+  if(typeof filtrarHistorialPresup==='function') filtrarHistorialPresup();
 }
 
 function renderSeguimientoCotiz(){
@@ -4580,7 +4635,8 @@ function renderSeguimientoCotiz(){
   // que no hay que borrar nada y que cada boton tiene un destino distinto.
   h += `<div style="font-size:.72rem;color:var(--txt3);margin-top:.9rem;line-height:1.6;border-top:1px solid var(--border);padding-top:.6rem">
       <b style="color:var(--txt2)">Cómo funciona:</b> a los ${DIAS_RECORDAR_COTIZ} días de cotizar, la cotización sube a "Conviene llamar".
-      Llamás y marcás: <b>Lo tomó</b> la pasa a alquiler · <b>Lo sigue viendo</b> la vuelve a traer en ${DIAS_RECORDAR_COTIZ} días ·
+      Llamás y marcás: <b>Lo tomó</b> la pasa a alquiler · <b>Ya lo cargué</b> la cierra igual pero sin crear nada,
+      para cuando el alquiler ya lo cargaste a mano · <b>Lo sigue viendo</b> la vuelve a traer en ${DIAS_RECORDAR_COTIZ} días ·
       <b>No cerró</b> te pide el motivo y la archiva en
       <a href="javascript:void(0)" onclick="goTo('nocerrados')" style="color:var(--verde);font-weight:700">Alquileres no cerrados</a>.
       No se borra nada nunca.
@@ -7328,8 +7384,16 @@ function renderDashboard(){
     </div>`;
   };
   const renderAlqItem=(a,enCurso)=>{
-    const color=enCurso?'var(--rojo)':'var(--azul)';
-    const label=enCurso?'En curso':'Próximo';
+    /* "EN CURSO" ES QUE EL EQUIPO SALIÓ, NO QUE LLEGÓ LA FECHA ────────────────
+       "Arrancan hoy" agarra todos los alquileres que empiezan hoy y los mostraba a
+       todos como "En curso", sin mirar si taller ya los había entregado. O sea: el
+       Inicio decía "En curso" mientras la lista de Alquileres decía "Para entregar
+       hoy" y el detalle decía "pendiente que taller lo entregue" — tres pantallas
+       diciendo cosas distintas del mismo alquiler, y la máquina todavía en el galpón.
+       Acá se usa el mismo criterio que las otras dos. (Mateo, 12/11/26, la 2032.) */
+    const faltaEntregar = enCurso && a.entregaPendiente;
+    const color = faltaEntregar ? 'var(--azul)' : (enCurso?'var(--rojo)':'var(--azul)');
+    const label = faltaEntregar ? 'Para entregar' : (enCurso?'En curso':'Próximo');
     return `<div class="pago-item" style="border-color:${color}33;background:${color}08;cursor:pointer;margin-bottom:.5rem" onclick="verDetalleAlq(${a.id})">
       <div style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0"></div>
       <div class="pago-info">
@@ -13704,13 +13768,21 @@ function renderHistorialPresupuestos(filtro){
     const fechaStr = f.toLocaleDateString('es-AR') + ' ' + f.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
     const convertido = p.estadoConv==='convertido';
     const badge = convertido
-      ? `<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--txt3);background:var(--bg);padding:2px 7px;border-radius:8px;margin-left:6px">Ya convertido</span>`
+      ? `<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--txt3);background:var(--bg);padding:2px 7px;border-radius:8px;margin-left:6px">${p.convCargadaAparte?'Cargado aparte':'Ya convertido'}</span>`
       : `<span style="font-size:.68rem;font-weight:700;text-transform:uppercase;color:var(--azul);background:var(--azul)18;padding:2px 7px;border-radius:8px;margin-left:6px">Pendiente</span>`;
     // Si se le hizo seguimiento, se ve acá también: evita volver a llamar al mismo
     // cliente dos veces en la semana sin querer. Y si se sacó de la lista, se avisa
     // — si no, parecería que sigue en seguimiento y nunca va a sonar.
     const fuera = !convertido && p.segArchivada;
-    const lineaSeg = fuera
+    // Las cerradas con "Ya lo cargué" también cuentan como ganadas, pero el alquiler
+    // se cargó por otro lado: no hay ninguno que haya nacido de esta cotización. Se
+    // aclara acá para no buscar un enlace que no existe. Ver cotizYaCargadaAparte.
+    const fmtFecha = ts => ts ? new Date(ts).toLocaleDateString('es-AR') : '';
+    const lineaSeg = (convertido && p.convCargadaAparte)
+      ? `<div style="font-size:.74rem;color:var(--txt3);margin-top:3px">El alquiler se cargó aparte, no desde esta cotización${p.convCargadaAparteEn?' · marcado el '+fmtFecha(p.convCargadaAparteEn):''}${p.convCargadaApartePor?' por '+p.convCargadaApartePor:''}
+           <button onclick="cotizDeshacerYaCargada(${p.id}, event)" style="background:none;border:none;padding:0 0 0 6px;font-family:inherit;font-size:.74rem;color:var(--verde);font-weight:700;cursor:pointer;text-decoration:underline">Volver a seguirla</button>
+         </div>`
+      : fuera
       ? `<div style="font-size:.74rem;color:var(--txt3);margin-top:3px">No cerró${p.segMotivo?' · '+p.segMotivo:''} — está en Alquileres no cerrados</div>`
       : (!convertido && p.segUltimoContacto)
       ? `<div style="font-size:.74rem;color:var(--txt3);margin-top:3px">Último llamado hace ${cotizDiasSinTocar(p)} día${cotizDiasSinTocar(p)!==1?'s':''}${p.segContactos?' · '+p.segContactos+' llamada'+(p.segContactos!==1?'s':''):''}</div>`
