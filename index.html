@@ -2667,6 +2667,22 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
           <div><label class="flabel">Email</label><input type="text" id="mcl-email" placeholder="mail@..."></div>
         </div>
         <div style="font-size:.72rem;color:var(--txt3);line-height:1.45">Se guarda todo en may&uacute;scula (menos el mail) para que la base quede pareja.</div>
+
+        <!-- Notas de la obra: lo que hoy hay que preguntarle a Walter cada vez.
+             Alturas de los salones, por dónde se entra, con quién hablar. -->
+        <div>
+          <label class="flabel">Datos de la obra / alturas</label>
+          <textarea id="mcl-notas" rows="3" placeholder="EJ: LA RURAL — SALÓN A 7M, SALÓN B 9M. SE ENTRA POR EL PORTÓN DE ATRÁS. CONTACTO EN OBRA: JUAN 3492-..."
+                    style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border2);border-radius:9px;background:var(--bg);color:var(--txt);font-family:inherit;font-size:.86rem;line-height:1.5;resize:vertical"></textarea>
+        </div>
+
+        <!-- Qué alquila habitualmente. Es de solo lectura: sale de los alquileres
+             ya cargados, no se escribe. Ver htmlResumenCliente. -->
+        <div id="mcl-historial-caja" style="display:none">
+          <label class="flabel">Qu&eacute; alquila habitualmente</label>
+          <div id="mcl-historial"></div>
+        </div>
+
         <div style="display:flex;gap:8px;margin-top:.3rem">
           <button onclick="guardarModalCliente()" class="btn-nuevo" style="flex:1;padding:.7rem">Guardar</button>
           <button onclick="cerrarModalCliente()" class="btn-lim" style="flex:1;padding:8px">Cancelar</button>
@@ -9748,7 +9764,14 @@ function renderPrecios(){
        Arriba están los valores fijos por destino.<br>
        El de <b>por km</b> sale de esta cuenta:
        <b>(km + ${fleteKmParam('kmExtra')}) × 2 × $/km + ${fleteKmParam('recargo')}%</b>.
-       Los cuatro valores se editan acá y el cotizador los toma al instante.</p>`));
+       Los cuatro valores se editan acá y el cotizador los toma al instante.</p>`) +
+    // La distancia a cada destino. No usa fleteCard porque esa arma una grilla de
+    // columnas angostas y acá hacen falta renglones de ancho completo.
+    (esTaller ? '' : `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:.9rem 1rem;margin-bottom:.7rem">
+        <div style="font-weight:700;color:var(--txt);margin-bottom:.2rem">Destinos y km</div>
+        <div style="font-size:.75rem;color:var(--txt3);margin-bottom:.5rem">Para no tener que buscar la distancia en el mapa cada vez</div>
+        <div id="destinos-km-cont"></div>
+      </div>`));
 
   const histHtml = esTaller ? '' :
     '<div style="margin-top:1.4rem"></div>' + cabeceraSecPrecios('historial', 'Historial de cambios', null)
@@ -9799,6 +9822,9 @@ function renderPrecios(){
     + `<div id="precios-resto">` + fletesHtml + histHtml + `</div>`;
   // El historial se trae de la base; si la seccion esta cerrada no hace falta pedirlo.
   if(!esTaller && preciosSec.historial) renderHistorialPrecios();
+  // La tabla de destinos se dibuja aparte porque tiene sus propios botones y se
+  // redibuja sola al corregir un km, sin rehacer toda la lista de precios.
+  if(!esTaller) renderDestinosKm();
   if(preciosBusca) filtrarPrecios();
 }
 
@@ -10312,6 +10338,91 @@ const FLETE_KM_BASE = {
   kmExtra: 5,      // km que se suman a cada tramo
   recargo: 25      // % sobre el total
 };
+/* ── LA TABLA DE DESTINOS Y KM ──────────────────────────────────────────────
+   Los km ya se venían aprendiendo solos (ver DESTINOS_KM): cada alquiler de Rosso
+   por km dejaba anotado su destino. Pero no había dónde VERLOS ni forma de cargar
+   uno antes de que apareciera el primer viaje. Acá está la lista completa, se puede
+   corregir un km que quedó mal y agregar a mano los destinos que todavía no se
+   usaron (Sunchales, San Cristóbal...).
+   Son kilómetros de UN tramo, los que da Google Maps. La cuenta del flete los
+   duplica y les suma el extra — por eso acá no hay plata: el precio sale de los
+   $/km de arriba y cambia solo cuando Rosso actualiza. (Mateo, 12/11/26.) */
+function cambiarKmDestino(clave, valor){
+  const km = parseFloat(valor);
+  const d = DESTINOS_KM[clave];
+  if(!d) return;
+  if(!(km>0)){ renderDestinosKm(); return; }
+  if(km === d.km) return;
+  d.km = km;
+  guardarDestinosKm();
+  renderDestinosKm();
+}
+async function borrarDestinoKm(clave){
+  const d = DESTINOS_KM[clave];
+  if(!d) return;
+  if(!(await confirmSiNo(`¿Borrar ${d.nombre} de la lista de destinos?\n\nNo toca ningún alquiler ya cargado. Si volvés a viajar ahí, se vuelve a anotar solo.`,
+       {si:'Borrar', no:'Dejarlo'}))) return;
+  delete DESTINOS_KM[clave];
+  guardarDestinosKm();
+  renderDestinosKm();
+}
+async function agregarDestinoKm(){
+  const nombre = (document.getElementById('dest-km-nombre').value||'').trim();
+  const km = parseFloat(document.getElementById('dest-km-val').value);
+  if(!nombre){ alert('Poné el nombre del destino.'); return; }
+  if(!(km>0)){ alert('Poné cuántos km hay hasta ahí (un solo tramo, como lo da Google Maps).'); return; }
+  const k = claveDestino(nombre);
+  const previo = DESTINOS_KM[k];
+  if(previo && previo.km !== km){
+    if(!(await confirmSiNo(`${previo.nombre} ya estaba con ${previo.km} km.\n\n¿Lo cambiamos a ${km} km?`,
+         {si:'Sí, corregir', no:'Dejar los '+previo.km+' km'}))) return;
+  }
+  // usos arranca en 0 a propósito: todavía no se viajó, se cargó de prepo.
+  DESTINOS_KM[k] = {nombre, km, usos:(previo&&previo.usos)||0, ultimoEn:(previo&&previo.ultimoEn)||null};
+  guardarDestinosKm();
+  document.getElementById('dest-km-nombre').value='';
+  document.getElementById('dest-km-val').value='';
+  renderDestinosKm();
+}
+function renderDestinosKm(){
+  const cont = document.getElementById('destinos-km-cont');
+  if(!cont) return;
+  const lista = destinosKmOrdenados();
+  const fmtD = ts => ts ? new Date(ts).toLocaleDateString('es-AR') : '';
+  const filas = lista.length ? lista.map(d=>{
+    const k = claveDestino(d.nombre);
+    return `<div style="display:flex;align-items:center;gap:9px;padding:5px 0;border-top:1px solid var(--border)">
+        <span style="flex:1;min-width:0;font-size:.84rem;color:var(--txt);font-weight:700;overflow-wrap:anywhere">${d.nombre}</span>
+        <span style="font-size:.73rem;color:var(--txt3);white-space:nowrap">${d.usos?d.usos+' viaje'+(d.usos!==1?'s':''):'sin viajes'}${d.ultimoEn?' · '+fmtD(d.ultimoEn):''}</span>
+        <input type="number" min="1" value="${d.km}" onchange="cambiarKmDestino('${k.replace(/'/g,"\\'")}',this.value)"
+               style="width:78px;flex:0 0 auto;text-align:right;padding:5px 7px;border:1px solid var(--border2);border-radius:7px;background:var(--bg);color:var(--txt);font-family:inherit;font-size:.84rem">
+        <span style="font-size:.76rem;color:var(--txt3);flex:0 0 auto">km</span>
+        <button onclick="borrarDestinoKm('${k.replace(/'/g,"\\'")}')" title="Borrar este destino"
+                style="background:none;border:none;color:var(--txt3);cursor:pointer;font-size:.95rem;padding:0 2px;flex:0 0 auto">&#10005;</button>
+      </div>`;
+  }).join('') : `<div style="font-size:.78rem;color:var(--txt3);padding:.5rem 0">
+        Todavía no hay destinos guardados. Se van anotando solos cada vez que cargás un alquiler con Rosso por km, o podés agregarlos acá abajo.
+      </div>`;
+  cont.innerHTML = filas + `
+    <div style="display:flex;gap:7px;flex-wrap:wrap;align-items:flex-end;margin-top:.8rem;padding-top:.7rem;border-top:1px solid var(--border2)">
+      <div style="flex:1;min-width:150px">
+        <label class="flabel">Agregar destino</label>
+        <input type="text" id="dest-km-nombre" class="mayus" placeholder="EJ: SUNCHALES"
+               style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--txt);font-family:inherit;font-size:.84rem">
+      </div>
+      <div style="width:92px">
+        <label class="flabel">Km</label>
+        <input type="number" id="dest-km-val" min="1" placeholder="45"
+               style="width:100%;box-sizing:border-box;padding:7px 9px;border:1px solid var(--border2);border-radius:8px;background:var(--bg);color:var(--txt);font-family:inherit;font-size:.84rem">
+      </div>
+      <button onclick="agregarDestinoKm()" class="btn-lim" style="width:auto;margin:0;padding:7px 14px;font-size:.8rem;flex:0 0 auto">Agregar</button>
+    </div>
+    <p style="font-size:.74rem;color:var(--txt3);margin:.6rem 0 0;line-height:1.6">
+      Son los km de <b>un solo tramo</b>, como los da Google Maps. El flete los duplica (ida y vuelta)
+      y les suma el km extra. Cuando Rosso actualiza el precio, se cambia arriba en <b>$/km</b> y estos destinos quedan igual.
+    </p>`;
+}
+
 function fleteKmParam(clave){
   const ov = FLETES_OVERRIDE.km || {};
   return ov[clave] != null ? ov[clave] : FLETE_KM_BASE[clave];
@@ -13195,6 +13306,9 @@ function renderCl(){
         ${c.cuit&&c.cuit!=='-'?`<span>CUIT: ${c.cuit}</span>`:''}
         ${c.email&&c.email!=='-'?`<span>${c.email}</span>`:''}
       </div>
+      <!-- Si tiene datos de la obra cargados, se avisa: si no, no hay forma de saber
+           cuáles ya están anotados sin abrirlos uno por uno. -->
+      ${c.notas?`<div style="font-size:.74rem;color:var(--txt2);margin-top:4px;line-height:1.45;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${c.notas}</div>`:''}
     </div>`).join('');
 }
 // Cancelar en CUALQUIER paso aborta todo. Antes solo cortaba el primero: los demas
@@ -13249,6 +13363,88 @@ let clienteEditandoId = null;
 function nuevoCl(){ abrirModalCliente(null); }
 function editCl(id){ abrirModalCliente(id); }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   QUÉ ALQUILA CADA EMPRESA
+
+   Cuando llama alguien nuevo de una empresa que ya es cliente, no sabe qué venían
+   usando: pide "una tijera" y hay que adivinar cuál. El dato está —son los
+   alquileres de los últimos años— pero desparramado en la lista general.
+   Acá se junta por cliente: qué máquinas se llevaron, cuántas veces, cuándo fue la
+   última y a qué destino. No se carga nada a mano: sale solo de los alquileres.
+
+   Aparte van las NOTAS de la obra, que sí se escriben: la altura de los salones de
+   La Rural, por dónde se entra, con quién hay que hablar. Eso hoy lo sabe Walter y
+   hay que preguntárselo cada vez. (Mateo, 12/11/26.) */
+function alquileresDeCliente(c){
+  if(!c) return [];
+  const porNombre = claveDestino(c.nombre||'');
+  return (ALQUILERES||[]).filter(a=>{
+    if(a.activo===false) return false;
+    // Por id es lo seguro. Los alquileres viejos no lo tienen, así que si no hay id
+    // se compara el nombre normalizado (sin acentos ni mayúsculas): "Molfino Hns." y
+    // "MOLFINO HNS." son la misma empresa.
+    if(a.clienteId!=null && c.id!=null) return a.clienteId===c.id;
+    return porNombre && claveDestino(a.cliente||'')===porNombre;
+  });
+}
+function resumenAlqCliente(c){
+  const alqs = alquileresDeCliente(c);
+  const fechaDe = a => a.inicio || '';
+  const porEquipo = {};
+  const porDestino = {};
+  alqs.forEach(a=>{
+    const nom = a.equipoNombre || a.tipo || '(sin equipo)';
+    const e = porEquipo[nom] = porEquipo[nom] || {nombre:nom, veces:0, ultima:'', dias:[]};
+    e.veces++;
+    if(fechaDe(a) > e.ultima) e.ultima = fechaDe(a);
+    if(a.dias>0) e.dias.push(a.dias);
+    const loc = (a.localidad||'').trim();
+    if(loc){
+      const k = claveDestino(loc);
+      const d = porDestino[k] = porDestino[k] || {nombre:loc, veces:0};
+      d.veces++;
+    }
+  });
+  const equipos = Object.values(porEquipo).sort((x,y)=> y.veces-x.veces || String(y.ultima).localeCompare(String(x.ultima)));
+  // La duración típica: la del medio, no el promedio. Un alquiler de 90 días entre
+  // nueve de 1 día levanta el promedio a 10 y no describe a nadie.
+  equipos.forEach(e=>{
+    if(!e.dias.length){ e.diasTipicos = 0; return; }
+    const ord = e.dias.slice().sort((a,b)=>a-b);
+    e.diasTipicos = ord[Math.floor(ord.length/2)];
+  });
+  const destinos = Object.values(porDestino).sort((x,y)=>y.veces-x.veces);
+  const ultima = alqs.reduce((m,a)=> fechaDe(a)>m ? fechaDe(a) : m, '');
+  return {alqs, equipos, destinos, total:alqs.length, ultima};
+}
+function htmlResumenCliente(c){
+  if(!c) return '';
+  const r = resumenAlqCliente(c);
+  const fmtD = s => { if(!s) return ''; const[y,m,d]=String(s).split('-'); return `${d}/${m}/${y}`; };
+  if(!r.total){
+    return `<div style="font-size:.78rem;color:var(--txt3);background:var(--bg3);border-radius:9px;padding:.6rem .75rem">
+        Todavía no hay alquileres cargados de esta empresa. Cuando los haya, acá vas a ver qué máquinas usa.
+      </div>`;
+  }
+  const filas = r.equipos.slice(0,8).map(e=>`
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:9px;padding:3px 0;border-top:1px solid var(--border)">
+        <span style="font-size:.8rem;color:var(--txt);font-weight:700;overflow-wrap:anywhere">${e.nombre}</span>
+        <span style="font-size:.74rem;color:var(--txt2);white-space:nowrap">${e.veces} ${e.veces===1?'vez':'veces'}${e.diasTipicos?' · '+e.diasTipicos+' día'+(e.diasTipicos!==1?'s':''):''} · ${fmtD(e.ultima)}</span>
+      </div>`).join('');
+  const masEquipos = r.equipos.length>8
+    ? `<div style="font-size:.73rem;color:var(--txt3);margin-top:3px">y ${r.equipos.length-8} equipo${r.equipos.length-8!==1?'s':''} más</div>` : '';
+  const dest = r.destinos.length
+    ? `<div style="font-size:.74rem;color:var(--txt2);margin-top:.5rem;padding-top:.4rem;border-top:1px solid var(--border)">
+         <span style="color:var(--txt3)">Dónde trabajan:</span> ${r.destinos.slice(0,4).map(d=>`${d.nombre}${d.veces>1?' ('+d.veces+')':''}`).join(' · ')}
+       </div>` : '';
+  return `<div style="background:var(--bg3);border-radius:9px;padding:.6rem .75rem">
+      <div style="font-size:.74rem;color:var(--txt3);margin-bottom:2px">
+        ${r.total} alquiler${r.total!==1?'es':''} · el último el ${fmtD(r.ultima)}
+      </div>
+      ${filas}${masEquipos}${dest}
+    </div>`;
+}
+
 function abrirModalCliente(id){
   const c = id ? CLIENTES.find(x=>x.id===id) : null;
   if(id && !c) return;
@@ -13257,6 +13453,17 @@ function abrirModalCliente(id){
   const poner=(campo,val)=>{ document.getElementById('mcl-'+campo).value = val||''; };
   poner('nombre', c&&c.nombre); poner('dir', c&&c.dir); poner('ciudad', c&&c.ciudad);
   poner('cuit', c&&c.cuit);     poner('tel', c&&c.tel); poner('email', c&&c.email);
+  poner('notas', c&&c.notas);
+  // El historial solo tiene sentido en un cliente que ya existe: en uno nuevo no hay
+  // nada que mostrar y una caja vacía confunde.
+  const caja = document.getElementById('mcl-historial-caja');
+  if(c){
+    document.getElementById('mcl-historial').innerHTML = htmlResumenCliente(c);
+    caja.style.display = 'block';
+  }else{
+    document.getElementById('mcl-historial').innerHTML = '';
+    caja.style.display = 'none';
+  }
   document.getElementById('modal-cliente').style.display='flex';
   document.getElementById('mcl-nombre').focus();
 }
@@ -13272,7 +13479,10 @@ function guardarModalCliente(){
   // minuscula: en mayuscula se lee mal y algunos servidores lo rebotan.
   const datos = {
     nombre, dir: aMayusCliente(v('dir')), ciudad: aMayusCliente(v('ciudad')),
-    cuit: aMayusCliente(v('cuit')), tel: aMayusCliente(v('tel')), email: aMinusEmail(v('email'))
+    cuit: aMayusCliente(v('cuit')), tel: aMayusCliente(v('tel')), email: aMinusEmail(v('email')),
+    // Las notas NO van a mayúscula: son renglones largos y en mayúscula no se leen.
+    // Solo se recortan los espacios de los costados.
+    notas: String(v('notas')||'').trim()
   };
   if(clienteEditandoId){
     const c = CLIENTES.find(x=>x.id===clienteEditandoId);
