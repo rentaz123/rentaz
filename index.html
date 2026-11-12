@@ -768,10 +768,18 @@ if ('serviceWorker' in navigator) {
       <button id="hamburger" onclick="toggleSidebar()">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <h1 id="hdr-title">Inicio</h1>
+      <!-- El título se queda con el espacio libre, así todo lo que va después (el semáforo
+           de la conexión, el aviso del permiso de taller y los tres puntitos) queda
+           pegado a la derecha, esté visible o no alguno de ellos. -->
+      <h1 id="hdr-title" style="flex:1;min-width:0">Inicio</h1>
       <!-- Semaforo de la conexion en vivo. Si deja de llegar lo de las otras
            computadoras, tiene que verse sin abrir nada. -->
       <div id="estado-vivo" style="display:none;align-items:center;gap:6px;margin-left:auto"></div>
+      <!-- Recordatorio del permiso temporal de taller. Vive acá arriba, en el rincón, y no
+           abajo del panel de Inicio: es un estado que conviene tener a la vista sin que
+           sea una cosa más para leer al entrar. Ver renderAvisoPermisoTaller.
+           (Pedido de Mateo, 12/11/26.) -->
+      <div id="dash-permiso-taller" style="margin-left:8px"></div>
       <!-- Acciones ocasionales. Lo de todos los dias va en el menu de la izquierda. -->
       <div id="mas-caja">
         <button id="btn-mas" onclick="toggleMenuMas(event)" title="M&aacute;s opciones" aria-label="M&aacute;s opciones">&#8942;</button>
@@ -1097,9 +1105,9 @@ if ('serviceWorker' in navigator) {
       </div>
 
 
-      <!-- Recordatorio del permiso temporal de taller. Va al final y en chico: es un
-           recordatorio, no una alerta. Ver renderAvisoPermisoTaller. -->
-      <div id="dash-permiso-taller"></div>
+      <!-- El recordatorio del permiso de taller ya no vive acá: se mudó al rincón de
+           arriba a la derecha, al lado de los tres puntitos (ver #dash-permiso-taller
+           en el topbar). -->
 
       <!-- Pagos / Vencimientos: en Inicio solo dejamos lo de HOY, para que no se le pase a nadie.
            El resto (semana, otros y pagados) vive en la pantalla "Impuestos y Servicios".
@@ -4152,23 +4160,26 @@ function renderAvisoPermisoTaller(){
   const p = PERMISO_TALLER;
   if(!p || !p.alquileresLargos || !esMateo()){ caja.innerHTML=''; return; }
   const dias = p.prendidoEn ? Math.floor((Date.now()-p.prendidoEn)/86400000) : 0;
-  const desde = dias===0 ? 'desde hoy' : 'hace '+dias+' día'+(dias!==1?'s':'');
-  caja.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:1.1rem;padding:.4rem .6rem;border-left:2px solid #e5a83b;background:#e5a83b0e;border-radius:0 7px 7px 0">
-      <span style="font-size:.74rem;color:var(--txt2);flex:1;min-width:180px">
-        Taller está habilitado a cotizar y cargar alquileres de hasta <b>${p.topeDias} día${p.topeDias!==1?'s':''}</b> ${desde}${p.prendidoPor?' · lo prendió '+p.prendidoPor:''}
+  const desde = dias===0 ? 'prendido hoy' : 'hace '+dias+' día'+(dias!==1?'s':'');
+  const tope = `${p.topeDias} día${p.topeDias!==1?'s':''}`;
+  /* Un recuadrito, no un cartel. El texto largo queda en el "title" (se ve al pasar el
+     mouse) y el detalle completo con el interruptor está en ⋮ → Permiso de taller, que
+     es adonde lleva el click. Antes esto era un bloque ancho abajo del Inicio y Mateo lo
+     leía como una cosa más por resolver cuando en realidad es un estado. */
+  caja.innerHTML = `<button onclick="abrirPermisoTaller()"
+      title="Taller está habilitado a cotizar y cargar alquileres de hasta ${tope} — ${desde}${p.prendidoPor?', lo prendió '+p.prendidoPor:''}. Tocá para cambiarlo o apagarlo."
+      style="display:inline-flex;align-items:center;gap:6px;background:#e5a83b1a;border:1px solid #e5a83b66;border-radius:8px;
+             padding:3px 9px;cursor:pointer;font-family:inherit;line-height:1.25;max-width:240px;text-align:left">
+      <span style="width:7px;height:7px;border-radius:50%;background:#e5a83b;flex-shrink:0"></span>
+      <span style="min-width:0">
+        <span style="display:block;font-size:.72rem;font-weight:700;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Taller: hasta ${tope}</span>
+        <span style="display:block;font-size:.65rem;color:var(--txt3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${desde}</span>
       </span>
-      <button onclick="apagarPermisoTallerRapido()" class="btn-lim" style="width:auto;margin:0;padding:3px 10px;font-size:.72rem;flex-shrink:0">Apagar</button>
-    </div>`;
+    </button>`;
 }
-async function apagarPermisoTallerRapido(){
-  if(!esMateo()) return;
-  if(!(await confirmSiNo(`¿Volver a limitar a taller?\n\nSe les saca el Cotizador y vuelven a cargar solo alquileres de ${TOPE_DIAS_TALLER} día o abiertos, como siempre.`, {si:'Apagar', no:'Dejarlo'}))) return;
-  PERMISO_TALLER = {alquileresLargos:false, topeDias:(PERMISO_TALLER&&PERMISO_TALLER.topeDias)||30, prendidoPor:'', prendidoEn:null};
-  marcarAccionUndo('Volver a limitar a taller', 'home');
-  guardarPermisoTaller_();
-  aplicarRestriccionesRol();
-  renderDashboard();
-}
+// El "Apagar" suelto que tenía el cartel viejo se sacó con el cartel: ahora el
+// recuadrito del rincón lleva al mismo lugar donde se prende, ⋮ → Permiso de taller,
+// así el permiso se maneja de un solo lado y no de dos.
 
 /* ── LA MÁQUINA FIGURA LIBRE PERO EL ALQUILER ESTÁ CORRIENDO ───────────────
    El alquiler del autoelevador de Molfino aparecía en Facturación sumando días,
@@ -5420,7 +5431,7 @@ function guardarPermisoTaller(){
   aplicarRestriccionesRol();
   renderDashboard();
   alert(on
-    ? `Listo. Taller ya tiene el Cotizador y puede cargar alquileres de hasta ${n} día${n!==1?'s':''}.\n\nVa a quedar un cartel en Inicio para que te acuerdes de apagarlo cuando vuelvas.`
+    ? `Listo. Taller ya tiene el Cotizador y puede cargar alquileres de hasta ${n} día${n!==1?'s':''}.\n\nVa a quedar un recuadro arriba a la derecha, al lado de los tres puntitos, para que te acuerdes de apagarlo cuando vuelvas.`
     : `Listo. Taller vuelve a cargar hasta ${TOPE_DIAS_TALLER} día o alquileres abiertos, y se le saca el Cotizador.`);
 }
 
