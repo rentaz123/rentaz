@@ -1388,6 +1388,13 @@ if ('serviceWorker' in navigator) {
             <div><label class="flabel">Hasta</label><input type="date" id="cot-fecha-hasta" min="2020-01-01" max="2100-12-31" onchange="calcDiasDesde()"></div>
           </div>
           <div id="per-fechas-resumen" style="display:none;font-size:.75rem;color:var(--verde);font-weight:700;margin-top:2px"></div>
+          <!-- Mismo criterio y mismo texto que en Alquileres, para que sea la misma idea
+               en los dos lados. Vale para el equipo principal y para los agregados. -->
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;margin-top:.6rem">
+            <input type="checkbox" id="cot-tarifa-clasica" onchange="cotizar();renderEquiposExtraCot()" style="margin-top:2px">
+            <span><span style="font-size:.83rem;font-weight:700;color:var(--txt)">Tarifa cl&aacute;sica</span>
+            <span style="display:block;font-size:.74rem;color:var(--txt2);margin-top:1px">D&iacute;as sueltos, sin descuento por semana o mes</span></span>
+          </label>
           <!-- PAQUETES: el MISMO equipo cotizado por varios períodos (1 día / 1 semana /
                1 mes) para que el cliente compare y elija uno. No se suman entre sí y el
                flete va una sola vez, al final, aclarando que se cobra aparte. Pedido por
@@ -8866,18 +8873,27 @@ function fmt(n){return'$'+Math.round(n).toLocaleString('es-AR');}
 // usando la regla de redondeo estándar (días/semanas/meses). No contempla precio especial
 // (eso solo aplica al equipo principal del cotizador). Se usa tanto para el equipo
 // principal como para los "equipos adicionales" agregados a la misma cotización.
-function calcBasePorTipo(tipo, dias){
+/* "Tarifa clásica" = días sueltos, sin el descuento por semana o mes. Es lo mismo que
+   el tilde que ya existía en Alquileres, ahora también en el Cotizador: hay clientes a
+   los que conviene pasarles el precio día por día en vez de armado en paquetes.
+   (Mateo, 17/11/26.) */
+function tarifaClasicaCot(){
+  const c = document.getElementById('cot-tarifa-clasica');
+  return !!(c && c.checked);
+}
+function calcBasePorTipo(tipo, dias, clasica){
   const p=precioTipo(tipo);
   let base=0, perLabel='', hayMes=false;
-  // Taller solo puede cotizar a tarifa diaria (sin el descuento por semana/mes) —
-  // mismo criterio que "tarifa clásica" en Alquileres, pero acá es automático y sin
-  // opción de desactivarlo, ya que taller no maneja los acuerdos comerciales del cliente.
+  // Taller solo puede cotizar a tarifa diaria (sin el descuento por semana/mes), porque
+  // no maneja los acuerdos comerciales del cliente. Para Mateo es una opción (el tilde
+  // de "Tarifa clásica"); para taller es automático y no se puede desactivar.
   const soloDiaTaller = ROL_ACTUAL==='taller';
-  if(soloDiaTaller || dias<=4||!p.sem){
+  const soloDia = soloDiaTaller || !!clasica;
+  if(soloDia || dias<=4||!p.sem){
     base=dias*p.dia;
     perLabel=`${dias} día${dias>1?'s':''}`;
     if(!p.sem&&dias>=5)perLabel=`${dias} días (precio diario)`;
-    else if(soloDiaTaller&&dias>4&&p.sem)perLabel=`${dias} días (tarifa diaria)`;
+    else if(soloDia&&dias>4&&p.sem)perLabel=`${dias} días (tarifa diaria)`;
   } else {
     let semanas=Math.floor(dias/7);
     let resto=dias%7;
@@ -8908,7 +8924,9 @@ function agregarEquipoExtraCot(){
   // Por defecto arranca con los mismos días que el equipo principal, pero es editable
   // aparte (así se puede cotizar, ej: uno por 1 día y otro por 1 semana o 1 mes).
   const diasDefault=parseInt(document.getElementById('cot-dias').value)||1;
-  cotEquiposExtra.push({tipo, dias:diasDefault, fleteGrupo:1});
+  // desde/hasta arrancan vacíos: son opcionales. Si se cargan, los días de ese equipo
+  // salen de las fechas y el presupuesto aclara en qué fechas va. Ver fechasEquipoExtra.
+  cotEquiposExtra.push({tipo, dias:diasDefault, fleteGrupo:1, desde:'', hasta:''});
   sel.value='';
   renderEquiposExtraCot();
   actualizarUIFlete();
@@ -8924,6 +8942,38 @@ function actualizarDiasEquipoExtra(idx, val){
   renderEquiposExtraCot();
   cotizar();
 }
+/* ── FECHAS DE CADA EQUIPO AGREGADO ─────────────────────────────────────────
+   En un presupuesto con varias máquinas, no siempre van todas los mismos días: una
+   entra la semana que viene y la otra dos semanas después. Antes solo se podía poner
+   la cantidad de días de cada una, así que el cliente recibía "10 días" sin saber
+   cuáles. Ahora se le puede poner desde/hasta a cada equipo (es opcional) y, si se
+   cargan, los días salen de las fechas. (Mateo, 17/11/26.) */
+function fechasEquipoExtra(it){
+  if(!it || !it.desde || !it.hasta) return null;
+  if(!fechaValidaApp(it.desde) || !fechaValidaApp(it.hasta)) return null;
+  if(it.hasta < it.desde) return null;
+  return {desde:it.desde, hasta:it.hasta};
+}
+// Los días que corresponden a un equipo agregado: si tiene fechas mandan ellas.
+function diasEquipoExtra(it){
+  const f = fechasEquipoExtra(it);
+  if(!f) return it.dias;
+  const ms = new Date(f.hasta+'T00:00:00') - new Date(f.desde+'T00:00:00');
+  return Math.max(1, Math.round(ms/86400000) + 1);
+}
+function textoFechasExtra(it){
+  const f = fechasEquipoExtra(it);
+  return f ? `${fmtFechaCot(f.desde)} al ${fmtFechaCot(f.hasta)}` : '';
+}
+function actualizarFechaEquipoExtra(idx, campo, val){
+  if(!cotEquiposExtra[idx]) return;
+  cotEquiposExtra[idx][campo] = val || '';
+  // Con las dos fechas cargadas, los días dejan de escribirse a mano.
+  const d = diasEquipoExtra(cotEquiposExtra[idx]);
+  if(fechasEquipoExtra(cotEquiposExtra[idx])) cotEquiposExtra[idx].dias = limitarDiasTaller(d);
+  renderEquiposExtraCot();
+  cotizar();
+}
 function onCotFleteGrupoChange(idx, val){
   if(cotEquiposExtra[idx]) cotEquiposExtra[idx].fleteGrupo = parseInt(val)||1;
   actualizarUIFlete();
@@ -8933,7 +8983,9 @@ function renderEquiposExtraCot(){
   const cont=document.getElementById('cot-extra-eq-list');
   if(!cont) return;
   cont.innerHTML = cotEquiposExtra.map((it,i)=>{
-    const r=calcBasePorTipo(it.tipo,it.dias);
+    const conFechas = !!fechasEquipoExtra(it);
+    const dias = diasEquipoExtra(it);
+    const r=calcBasePorTipo(it.tipo, dias, tarifaClasicaCot());
     const esPesada=PESADAS.includes(it.tipo);
     return `<div style="background:var(--bg3);border-radius:6px;padding:6px 10px;margin-top:4px;font-size:.8rem">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -8942,8 +8994,21 @@ function renderEquiposExtraCot(){
       </div>
       <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
         <label style="font-size:.75rem;color:var(--txt2);white-space:nowrap">Días de este equipo:</label>
-        <input type="number" min="1" max="365" value="${it.dias}" onchange="actualizarDiasEquipoExtra(${i},this.value)" style="width:70px;padding:4px 6px;font-size:.78rem">
+        <input type="number" min="1" max="365" value="${dias}" ${conFechas?'disabled':''} onchange="actualizarDiasEquipoExtra(${i},this.value)" style="width:70px;padding:4px 6px;font-size:.78rem">
         <span style="font-size:.72rem;color:var(--txt3)">${r.perLabel}</span>
+      </div>
+      <!-- Fechas de ESTE equipo. Opcionales: si se cargan las dos, los días salen de
+           ahí y el presupuesto aclara en qué fechas va esta máquina. -->
+      <div style="display:flex;align-items:center;gap:6px;margin-top:4px;flex-wrap:wrap">
+        <span style="font-size:.72rem;color:var(--txt2);white-space:nowrap">Fechas (opcional):</span>
+        <input type="date" min="2020-01-01" max="2100-12-31" value="${it.desde||''}"
+               onchange="actualizarFechaEquipoExtra(${i},'desde',this.value)"
+               style="width:auto;padding:3px 6px;font-size:.75rem">
+        <span style="font-size:.72rem;color:var(--txt3)">al</span>
+        <input type="date" min="2020-01-01" max="2100-12-31" value="${it.hasta||''}"
+               onchange="actualizarFechaEquipoExtra(${i},'hasta',this.value)"
+               style="width:auto;padding:3px 6px;font-size:.75rem">
+        ${(it.desde||it.hasta)&&!conFechas?`<span style="font-size:.72rem;color:var(--rojo);font-weight:700">Faltan las dos fechas (o la segunda es anterior)</span>`:''}
       </div>
       ${cotFlete2Activo?`
       <div style="display:flex;align-items:center;gap:6px;margin-top:4px">
@@ -9061,11 +9126,14 @@ function cotizar(){
   if(especial){
     base = parseFloat(document.getElementById('cot-especial-valor').value)||0;
     perLabel = `${dias} día${dias>1?'s':''} — Precio especial acordado`+(notaEspecial?' ('+notaEspecial+')':'');
-  } else if(ROL_ACTUAL==='taller' || dias<=4||!p.sem){
+  } else if(ROL_ACTUAL==='taller' || tarifaClasicaCot() || dias<=4||!p.sem){
+    // Días sueltos: porque se tildó "Tarifa clásica", porque es taller (que siempre
+    // cotiza así), o porque el período es tan corto que no llega a armar una semana.
+    const soloDia = ROL_ACTUAL==='taller' || tarifaClasicaCot();
     base=dias*p.dia;
     perLabel=`${dias} día${dias>1?'s':''}`;
     if(!p.sem&&dias>=5)perLabel=`${dias} días (precio diario)`;
-    else if(ROL_ACTUAL==='taller'&&dias>4&&p.sem)perLabel=`${dias} días (tarifa diaria)`;
+    else if(soloDia&&dias>4&&p.sem)perLabel=`${dias} días (tarifa diaria)`;
   } else {
     // REGLA DE REDONDEO (definida con Mateo):
     // 1-4 días: precio por día.
@@ -9085,14 +9153,23 @@ function cotizar(){
     if(meses>0) document.getElementById('warn-mes').style.display='block';
   }
   if(perModo==='fechas'&&fechaDesdeStr&&fechaHastaStr&&fechaHastaStr>=fechaDesdeStr&&!especial)
-    perLabel=`${dias} día${dias>1?'s':''}`;
+    // En modo fechas el período ya se ve en el rango, así que el label es solo los días.
+    // La aclaración de tarifa clásica sí se mantiene: si no, el presupuesto no dice por
+    // qué ese precio es más alto que el armado en semanas.
+    perLabel=`${dias} día${dias>1?'s':''}`
+      + ((tarifaClasicaCot() && dias>4 && p.sem) ? ' (tarifa clásica)' : '');
 
   // Equipos adicionales: cada uno con su PROPIO período (día/semana/mes), independiente
   // del principal. Sin precio especial (eso es solo para el equipo principal).
   const equiposExtra = cotEquiposExtra.map(it=>{
-    const r=calcBasePorTipo(it.tipo,it.dias);
+    const diasIt = diasEquipoExtra(it);
+    const r=calcBasePorTipo(it.tipo, diasIt, tarifaClasicaCot());
     if(r.hayMes) document.getElementById('warn-mes').style.display='block';
-    return {tipo:it.tipo, nombre:r.nombre, base:r.base, perLabel:r.perLabel, dias:it.dias, fleteGrupo: it.fleteGrupo||1};
+    // "rango" viaja con el equipo para que la pantalla, el PDF y el texto de WhatsApp
+    // digan todos lo mismo sin tener que rearmarlo tres veces.
+    return {tipo:it.tipo, nombre:r.nombre, base:r.base, perLabel:r.perLabel, dias:diasIt,
+            fleteGrupo: it.fleteGrupo||1,
+            desde:it.desde||'', hasta:it.hasta||'', rango:textoFechasExtra(it)};
   });
   const equiposExtraTotal = equiposExtra.reduce((s,x)=>s+x.base,0);
 
@@ -9223,7 +9300,7 @@ function cotizar(){
   const itemsLin = `
     <div class="res-lin"><span>${p.nombre}</span><span>${fmt(base)}</span></div>
     <div class="res-lin"><span style="color:var(--txt2);font-size:.76rem">${perLabel}${perModo==='fechas'&&fechaDesdeStr&&fechaHastaStr?' · '+fmtFechaCot(fechaDesdeStr)+' al '+fmtFechaCot(fechaHastaStr):''}</span></div>
-    ${equiposExtra.map(x=>`<div class="res-lin"><span>${x.nombre}</span><span>${fmt(x.base)}</span></div><div class="res-lin"><span style="color:var(--txt2);font-size:.76rem">${x.perLabel}</span></div>`).join('')}
+    ${equiposExtra.map(x=>`<div class="res-lin"><span>${x.nombre}</span><span>${fmt(x.base)}</span></div><div class="res-lin"><span style="color:var(--txt2);font-size:.76rem">${x.perLabel}${x.rango?' · '+x.rango:''}</span></div>`).join('')}
     ${fVal>0?`<div class="res-lin"><span>${(mixta?'Traslado equipo pesado':cotFlete2Activo?'Traslado (flete 1)':'Traslado ida y vuelta')+(destFlete?' '+destFlete:'')}</span><span>${fmt(fVal)}</span></div>`:''}
     ${fValLiviano>0?`<div class="res-lin"><span>${'Traslado equipo liviano'+(destFleteLiviano?' '+destFleteLiviano:'')}</span><span>${fmt(fValLiviano)}</span></div>`:''}
     ${fVal2>0?`<div class="res-lin"><span>${'Traslado (flete 2)'+(destFlete2?' '+destFlete2:'')}</span><span>${fmt(fVal2)}</span></div>`:''}
@@ -9240,7 +9317,7 @@ function cotizar(){
   // Si hay paquetes tildados mandan ellos, y el período suelto de arriba no se usa.
   const opcionesBase = paqDias.length
     ? paqDias.map(d=>{
-        const r=calcBasePorTipo(tipo, d);
+        const r=calcBasePorTipo(tipo, d, tarifaClasicaCot());
         if(r.hayMes) document.getElementById('warn-mes').style.display='block';
         return {tipo, nombre:r.nombre, base:r.base, perLabel:r.perLabel, dias:d};
       }).concat(equiposExtra)
@@ -9305,6 +9382,8 @@ function cotizar(){
   document.getElementById('res-card').style.display='block';
   window._cot={nombre:p.nombre,tipo,perLabel,base,equiposExtra,equiposExtraTotal,todosLosEquipos,sinTotal,paquetes:paqDias,fleteAparte,mostrarIva,fLabel,fVal,fDesglose,sub:subGuardado,iva:ivaGuardado,tot:totGuardado,cliente:cotCliente,
     dias, perModo,
+    // Se guarda para que al reabrir el presupuesto vuelva armado igual (ver verDetallePresup).
+    tarifaClasica: tarifaClasicaCot(),
     fechaDesde:perModo==='fechas'?fechaDesdeStr:'',fechaHasta:perModo==='fechas'?fechaHastaStr:'',
     fleteMode, rossoModo:fleteMode==='rosso'?document.getElementById('rosso-modo').value:'',
     rossoKm:fleteMode==='rosso'?parseFloat(document.getElementById('rosso-km-val').value)||0:0,
@@ -9377,7 +9456,9 @@ function copiar(){
     c.equiposExtra.forEach(x=>{
       txt+='\n';
       txt+=`Equipo: ${nombreConAlturaAclarada(x.nombre, TIPO_META[x.tipo]?.categoria)}\n`;
-      txt+=`Período: ${x.perLabel}\n`;
+      // Si este equipo tiene sus propias fechas, van acá: el cliente tiene que ver en
+      // qué fechas va cada máquina, no solo cuántos días.
+      txt+=`Período: ${x.perLabel}${x.rango?' ('+x.rango+')':''}\n`;
       txt+=`Valor alquiler: ${fmt(x.base)}\n`;
     });
   }
@@ -9460,6 +9541,9 @@ function limpiar(){
   document.getElementById('cot-extras-box').style.display='none';
   cotExtras=[]; renderExtrasCot();
   cotEquiposExtra=[]; renderEquiposExtraCot();
+  // El tilde de días sueltos también vuelve a cero: si no, se arrastra al presupuesto
+  // siguiente sin que nadie lo haya pedido.
+  const chkClas=document.getElementById('cot-tarifa-clasica'); if(chkClas) chkClas.checked=false;
   cotFlete2Activo=false; cotFleteMode2=null;
   ['sin','alej','rosso','otro'].forEach(x=>{ const b=document.getElementById('cot2-rb-'+x); if(b) b.classList.remove('sel'); });
   document.getElementById('cot2-f-alej').style.display='none';
@@ -13864,7 +13948,8 @@ function generarPDF(){
           <td class="precio" style="padding-bottom:2px">$ ${Math.round(c.base).toLocaleString('es-AR')},-</td>
         </tr>
         ${rangoFecha?`<tr><td class="rango" colspan="3">${rangoFecha}</td></tr>`:''}
-        ${(c.equiposExtra||[]).map(x=>`<tr><td style="padding-bottom:2px">${descripcionEquipoPDF(x.tipo)}</td><td class="cant" style="padding-bottom:2px">${x.dias||dias} día${(x.dias||dias)!==1?'s':''}</td><td class="precio" style="padding-bottom:2px">$ ${Math.round(x.base).toLocaleString('es-AR')},-</td></tr>`).join('')}
+        ${(c.equiposExtra||[]).map(x=>`<tr><td style="padding-bottom:2px">${descripcionEquipoPDF(x.tipo)}</td><td class="cant" style="padding-bottom:2px">${x.dias||dias} día${(x.dias||dias)!==1?'s':''}</td><td class="precio" style="padding-bottom:2px">$ ${Math.round(x.base).toLocaleString('es-AR')},-</td></tr>
+        ${x.rango?`<tr><td class="rango" colspan="3">${x.rango}</td></tr>`:''}`).join('')}
         ${c.fVal>0?`<tr class="con-flete"><td>${fleteDescripcion}</td><td class="cant">1</td><td class="precio">$ ${Math.round(fValCliente).toLocaleString('es-AR')},-</td></tr>`:''}
         ${c.mixta&&c.fValLiviano>0?`<tr class="con-flete"><td>${fleteDescripcionLiviano}</td><td class="cant">1</td><td class="precio">$ ${Math.round(c.fValLiviano).toLocaleString('es-AR')},-</td></tr>`:''}
         ${c.flete2Activo&&c.fVal2>0?`<tr class="con-flete"><td>${fleteDescripcion2}</td><td class="cant">1</td><td class="precio">$ ${Math.round(c.fVal2).toLocaleString('es-AR')},-</td></tr>`:''}
@@ -13996,8 +14081,12 @@ function cargarPresupuestoEnCotizador(c, presupId){
     document.getElementById('cot-especial-nota').value = c.precioEspecialNota||'';
   }
 
-  // Equipos adicionales, cada uno con su propio período y su grupo de flete
-  cotEquiposExtra = (c.equiposExtra||[]).map(x=>({tipo:x.tipo, dias:x.dias || c.dias || 1, fleteGrupo:x.fleteGrupo||1}));
+  // Equipos adicionales, cada uno con su propio período, sus fechas y su grupo de flete
+  cotEquiposExtra = (c.equiposExtra||[]).map(x=>({tipo:x.tipo, dias:x.dias || c.dias || 1,
+    fleteGrupo:x.fleteGrupo||1, desde:x.desde||'', hasta:x.hasta||''}));
+  // El tilde de días sueltos se recupera para que el presupuesto se vuelva a armar igual.
+  const chkClasica = document.getElementById('cot-tarifa-clasica');
+  if(chkClasica) chkClasica.checked = !!c.tarifaClasica;
   renderEquiposExtraCot();
 
   // Checks generales
