@@ -8591,6 +8591,28 @@ function rossoCobraComoPesada(tipos){
   const t = (tipos||[]).filter(Boolean);
   return hayPesadaEnGrupo(t) || t.length >= 2;
 }
+/* Deja el selector liviana/pesada en su valor y decide si se puede tocar.
+   Existe porque la misma regla estaba copiada en SEIS lugares (cotizador y alquiler,
+   flete 1 y 2, al elegir equipo y al tocar el botón "Rosso"), y las de los botones
+   se habían quedado con la regla vieja: al tocar "Rosso" volvía a poner "liviana"
+   pisando el valor correcto, con el cartel al lado diciendo lo contrario.
+   Una sola función = no se pueden volver a desincronizar. (Mateo, 17/11/26.) */
+function aplicarTipoRosso(selId, tipos){
+  const rt = document.getElementById(selId);
+  if(!rt) return;
+  const t = (tipos||[]).filter(Boolean);
+  rt.value = rossoCobraComoPesada(t) ? 'pesada' : 'liviana';
+  // Se puede corregir a mano solo cuando lo pesado sale de llevar dos juntas: eso es
+  // cómo cobra Rosso. Una máquina pesada de verdad queda trabada.
+  rt.disabled = hayPesadaEnGrupo(t) || t.length < 2;
+}
+// Los tipos de equipo de cada grupo de flete en el modal de ALQUILER.
+function tiposGrupoAlq(g){
+  return alqEquiposState
+    .filter(r => r.eqId && ((r.fleteGrupo||1)===g))
+    .map(r => (EQUIPOS.find(e=>e.id===r.eqId)||{}).tipo)
+    .filter(Boolean);
+}
 // El texto que explica por qué quedó marcado como pesado. Vacío = no hay nada que decir.
 function avisoPesadaTxt(tipos){
   const t = (tipos||[]).filter(Boolean);
@@ -8629,8 +8651,6 @@ function actualizarUIFlete(){
   const mixta = !cotFlete2Activo && esMixtaCot();
   const tiposG1 = equiposGrupoCot(1);
   const esPesadaGrupo1 = hayPesadaEnGrupo(tiposG1);
-  // Lo que determina la TARIFA de Rosso (incluye el caso de dos livianas juntas).
-  const rossoPesado1 = rossoCobraComoPesada(tiposG1);
 
   document.getElementById('flete-mixta-banner').style.display = mixta?'block':'none';
   document.getElementById('flete-liviana-box').style.display = mixta?'block':'none';
@@ -8667,10 +8687,7 @@ function actualizarUIFlete(){
       ['sin','alej','rosso','otro'].forEach(x=>document.getElementById('cot2-rb-'+x).classList.remove('sel'));
       document.getElementById('cot2-f-alej').style.display='none';
     }
-    const rt2=document.getElementById('cot2-rosso-tipo');
-    // Si lo pesado viene de llevar dos juntas, se puede corregir a mano: es una
-    // regla de cómo cobra Rosso, no una limitación física del camión.
-    if(rt2){ rt2.value=rossoCobraComoPesada(tiposG2)?'pesada':'liviana'; rt2.disabled=esPesadaGrupo2; }
+    aplicarTipoRosso('cot2-rosso-tipo', tiposG2);
     if(cotFleteMode2==='rosso') updateRossoDest2Cot();
   }
 
@@ -8694,15 +8711,10 @@ function actualizarUIFlete(){
       // Si el grupo 1 tiene algún equipo pesado, mantenemos la restricción de siempre:
       // solo Rosso puede trasladarlo.
       if(fleteMode==='alejandro'){ fleteMode=null; ['sin','alej','rosso'].forEach(x=>document.getElementById('rb-'+x).classList.remove('sel')); document.getElementById('f-alejandro').style.display='none'; document.getElementById('f-rosso').style.display='none'; }
-      const rt=document.getElementById('rosso-tipo');
-      rt.value='pesada'; rt.disabled=true;
-    } else {
-      // Ninguna pesada. Igual puede corresponder la tarifa de pesada si van dos
-      // máquinas en el mismo viaje. Acá el selector queda EDITABLE: es una regla de
-      // cómo cobra Rosso y puede haber un caso donde no la aplique.
-      const rt=document.getElementById('rosso-tipo');
-      if(rt){ rt.value = rossoPesado1 ? 'pesada' : 'liviana'; rt.disabled = false; }
     }
+    // El tipo de flete sale siempre de la misma regla, haya pesada o no (ver
+    // aplicarTipoRosso): también cubre el caso de dos livianas en el mismo viaje.
+    aplicarTipoRosso('rosso-tipo', tiposG1);
     if(fleteMode==='rosso') updateRossoDest();
   }
   cotizar();
@@ -8746,8 +8758,7 @@ function setFlete(m){
   document.getElementById('cot-localidad-box').style.display=m==='sin'?'none':'block';
   document.getElementById('cot-extras-box').style.display=m==='sin'?'none':'block';
   if(m==='rosso'){
-    const rt=document.getElementById('rosso-tipo');
-    rt.value=esPesadaGrupo1?'pesada':'liviana'; rt.disabled=true;
+    aplicarTipoRosso('rosso-tipo', equiposGrupoCot(1));
     updateRossoDest();
   }
   cotizar();
@@ -8789,8 +8800,7 @@ function setFlete2Cot(m){
   document.getElementById('cot2-f-otro').style.display = m==='otro'?'block':'none';
   document.getElementById('cot2-localidad-box').style.display = m==='sin'?'none':'block';
   if(m==='rosso'){
-    const rt=document.getElementById('cot2-rosso-tipo');
-    rt.value=esPesadaGrupo2?'pesada':'liviana'; rt.disabled=true;
+    aplicarTipoRosso('cot2-rosso-tipo', equiposGrupoCot(2));
     updateRossoDest2Cot();
   }
   cotizar();
@@ -15259,11 +15269,7 @@ function syncPesadaAlq(){
     ['sin','alej','rosso','otro'].forEach(x=>document.getElementById('alq-rb-'+x).classList.remove('sel'));
     document.getElementById('alq-f-alej').style.display='none';
   }
-  const rt=document.getElementById('alq-rosso-tipo');
-  // Editable solo cuando lo pesado viene de llevar DOS juntas: eso es cómo cobra
-  // Rosso y puede no aplicar. Una máquina pesada de verdad queda bloqueada.
-  rt.value = rossoCobraComoPesada(tiposG1) ? 'pesada' : 'liviana';
-  rt.disabled = esPesada || tiposG1.length < 2;
+  aplicarTipoRosso('alq-rosso-tipo', tiposG1);
   if(alqFleteMode==='rosso') updateAlqRossoDest();
   const rbAlej2=document.getElementById('alq2-rb-alej');
   if(rbAlej2){
@@ -15273,11 +15279,7 @@ function syncPesadaAlq(){
       ['sin','alej','rosso','otro'].forEach(x=>document.getElementById('alq2-rb-'+x).classList.remove('sel'));
       document.getElementById('alq2-f-alej').style.display='none';
     }
-    const rt2=document.getElementById('alq2-rosso-tipo');
-    if(rt2){
-      rt2.value = rossoCobraComoPesada(tiposG2) ? 'pesada' : 'liviana';
-      rt2.disabled = esPesada2 || tiposG2.length < 2;
-    }
+    aplicarTipoRosso('alq2-rosso-tipo', tiposG2);
     if(alqFleteMode2==='rosso') updateAlqRossoDest2();
   }
   return esPesada;
@@ -15433,8 +15435,7 @@ function setFleteAlq2(m){
   document.getElementById('alq2-localidad-box').style.display = (m==='sin')?'none':'block';
   actualizarCampoLocalidadAlq('2');
   if(m==='rosso'){
-    const rt=document.getElementById('alq2-rosso-tipo');
-    rt.value=esPesada2?'pesada':'liviana'; rt.disabled=true;
+    aplicarTipoRosso('alq2-rosso-tipo', tiposGrupoAlq(2));
     updateAlqRossoDest2();
   }
   calcTotalAlq();
@@ -15544,8 +15545,7 @@ function setFleteAlq(m){
   document.getElementById('alq-extras-box').style.display = (m==='sin')?'none':'block';
   actualizarCampoLocalidadAlq('');
   if(m==='rosso'){
-    const rt=document.getElementById('alq-rosso-tipo');
-    rt.value=esPesada?'pesada':'liviana'; rt.disabled=true;
+    aplicarTipoRosso('alq-rosso-tipo', tiposGrupoAlq(1));
     updateAlqRossoDest();
   }
   calcTotalAlq();
