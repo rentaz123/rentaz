@@ -17007,7 +17007,13 @@ function verDetalleAlq(id){
   } else {
     if(!esTallerVista()) botones+=`<div style="width:100%;font-size:.78rem;color:var(--txt3);padding:6px 2px">Sin facturar — se marca desde "Facturación"</div>`;
   }
-  botones+=`<button onclick="mostrarCambioEquipo(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Cambiar equipo (mismo precio)</button>`;
+  /* Se llamaba "Cambiar equipo (mismo precio)". Ese "(mismo precio)" era de cuando lo
+     único que se podía hacer era sustituir la máquina sin tocar la plata, y quedó
+     mintiendo: adentro ya se puede poner otro precio, repartir el alquiler entre las
+     dos máquinas y cobrar el viaje del cambio. Mateo buscó el botón para hacer eso y
+     no lo encontró, justamente porque el nombre decía lo contrario. (18/11/26.) */
+  botones+=`<button onclick="mostrarCambioEquipo(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem">Cambiar equipo</button>
+    <div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Sustituir la máquina. Adentro elegís si queda el mismo precio, si se reparte entre las dos, y si se cobra el viaje del cambio.</div>`;
   if(a.fTransportista && a.fTransportista!=='Sin flete'){
     const yaVinculado = !!a.fleteViajaConId;
     if(!esTallerVista()) botones+=`<button onclick="abrirViajeCompartido(${a.id})" class="btn-lim" style="flex:1;padding:8px;font-size:.8rem${yaVinculado?';border-color:var(--verde);color:var(--verde)':''}">${yaVinculado?'Viaje de flete compartido (ver/quitar)':'Marcar viaje de flete compartido'}</button>`;
@@ -18600,6 +18606,9 @@ function mostrarCambioEquipo(id){
     }).join('');
   box.innerHTML=`
     <div style="font-size:.72rem;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Entregar en lugar de "${a.equipoNombre}"</div>
+    <div style="font-size:.74rem;color:var(--txt2);background:var(--bg3);border-radius:7px;padding:6px 9px;margin-bottom:8px;line-height:1.5">
+      Abajo pod&eacute;s, adem&aacute;s, <b>repartir el alquiler</b> entre las dos m&aacute;quinas (ej: 1 d&iacute;a de una y el resto de la otra) y <b>cobrar el viaje del cambio</b>.
+    </div>
     <select id="cambio-equipo-select" style="margin-bottom:8px">${opciones}</select>
     <label class="flabel">Motivo / aclaración</label>
     <textarea id="cambio-equipo-nota" rows="2" placeholder="Ej: no había el equipo cotizado, se mandó uno más caro respetando el precio original" style="margin-bottom:8px"></textarea>
