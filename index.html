@@ -18745,12 +18745,6 @@ async function confirmarCambioEquipo(id){
     const ok=await confirmSiNo(`⚠️ "${nuevoEq.nombre}" está FUERA DE SERVICIO en este momento.\n\n¿Confirmás que lo querés entregar igual?`, {si:'Sí, entregarlo igual', no:'No'});
     if(!ok) return;
   }
-  const conflicto=alquilerSuperpuesto(nuevoId, a.inicio, a.fin, a.id);
-  if(conflicto){
-    const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
-    alert(`No se puede cambiar: "${nuevoEq.nombre}" ya está alquilado a ${conflicto.cliente} del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}.`);
-    return;
-  }
   const nota = document.getElementById('cambio-equipo-nota').value.trim();
   const precioNuevoCheck = document.getElementById('cambio-equipo-precio-check').checked;
   const repartirCheck = document.getElementById('cambio-equipo-repartir-check').checked;
@@ -18764,6 +18758,26 @@ async function confirmarCambioEquipo(id){
       alert('Revisá la fecha del cambio: tiene que estar dentro del alquiler y dejar al menos un día a cada equipo.');
       return;
     }
+  }
+
+  /* ── SOLO SE CHEQUEA EL PERÍODO QUE VA A USAR LA MÁQUINA NUEVA ─────────────
+     Antes se comparaba contra TODO el alquiler (a.inicio a a.fin). Con un cambio
+     repartido eso es más de lo que corresponde: si la Genie de Papel Técnica va del
+     17 al 19 y la Alo 60 entra recién el 18, el 17 no importa — ese día la Alo 60
+     estaba con Molfino, y lo estuvo legítimamente.
+     Resultado: "No se puede cambiar, ya está alquilado a MOLFINO del 11 al 17",
+     bloqueando un cambio que no pisaba a nadie. (Mateo, 18/11/26.) */
+  const desdeChequeo = reparto ? reparto.nuevo.desde : a.inicio;
+  const hastaChequeo = a.retiradoAnticipado || a.fin;
+  const conflicto=alquilerSuperpuesto(nuevoId, desdeChequeo, hastaChequeo, a.id);
+  if(conflicto){
+    const fmtD=str=>{const[y,m,d]=String(str).split('-');return`${d}/${m}/${y.slice(2)}`;};
+    const finConf = finBloqueoAlq(conflicto);
+    alert(`No se puede cambiar: "${nuevoEq.nombre}" está ocupado con ${conflicto.cliente}`
+      + (finConf ? ` hasta el ${fmtD(finConf)}` : ' (todavía no volvió al depósito)')
+      + `.\n\nSe necesita libre del ${fmtD(desdeChequeo)} al ${fmtD(hastaChequeo)}.`
+      + (reparto ? '' : '\n\nSi el cambio arranca más adelante, tildá "Se cobra repartido" y poné desde qué día entra el equipo nuevo.'));
+    return;
   }
 
   if(!a.sustituido){
