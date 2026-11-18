@@ -16801,7 +16801,13 @@ function resumenAlquilerHTML(a){
       ${clLinea?`<div style="font-size:.78rem;color:var(--txt2);margin-top:2px;line-height:1.45">${clLinea}</div>`:''}
     </div>
     ${a.grupoId?(()=>{const hermanos=ALQUILERES.filter(x=>x.grupoId===a.grupoId&&x.id!==a.id);return hermanos.length?`<div style="font-size:.78rem;color:var(--verde);background:var(--verde-light);border-radius:6px;padding:5px 10px;margin:4px 0">Mismo alquiler que: ${hermanos.map(h=>h.equipoNombre).join(', ')}</div>`:'';})():''}
-    ${a.sustituido?`<div style="font-size:.78rem;color:var(--azul);background:rgba(30,136,229,.1);border-radius:6px;padding:5px 10px;margin:4px 0">⚠ Sustituido — cotizado originalmente: ${a.equipoOriginalNombre}${a.precioCambiadoPorSustitucion?'':' (precio sin cambios)'}${a.sustitucionNota?`<div style="margin-top:4px;font-weight:400">Motivo: ${a.sustitucionNota}</div>`:''}${a.precioCambiadoPorSustitucion?`<div style="margin-top:4px;font-weight:700">Precio actualizado — aprobado por el cliente (antes: ${fmt(a.precioOriginalAlCambiar)})</div>`:''}</div>`:''}
+    ${a.sustituido?`<div style="font-size:.78rem;color:var(--azul);background:rgba(30,136,229,.1);border-radius:6px;padding:5px 10px;margin:4px 0">⚠ Sustituido — cotizado originalmente: ${a.equipoOriginalNombre}${a.precioCambiadoPorSustitucion?'':' (precio sin cambios)'}${a.sustitucionNota?`<div style="margin-top:4px;font-weight:400">Motivo: ${a.sustitucionNota}</div>`:''}${a.precioCambiadoPorSustitucion?`<div style="margin-top:4px;font-weight:700">Precio actualizado — aprobado por el cliente (antes: ${fmt(a.precioOriginalAlCambiar)})</div>`:''}${(a.tramosEquipo&&a.tramosEquipo.length>1)?`<div style="margin-top:5px;padding-top:5px;border-top:1px solid rgba(30,136,229,.3);font-weight:400">
+        <b>Se cobra repartido entre las dos máquinas:</b>
+        ${a.tramosEquipo.map(t=>{const fD=s=>{const p=String(s).split('-');return p[2]+'/'+p[1];};
+          return `<div style="margin-top:2px">${t.equipoNombre} — ${fD(t.desde)} al ${fD(t.hasta)} · ${t.dias} día${t.dias!==1?'s':''} · <b>${fmt(t.monto)}</b></div>`;}).join('')}
+      </div>`:''}${fleteCambioMonto(a)>0?`<div style="margin-top:5px;padding-top:5px;border-top:1px solid rgba(30,136,229,.3);font-weight:400">
+        <b>Viaje del cambio:</b> ${fmt(a.fleteCambio.monto)}${a.fleteCambio.fecha?' · '+(()=>{const p=String(a.fleteCambio.fecha).split('-');return p[2]+'/'+p[1]+'/'+p[0].slice(2);})():''}${a.fleteCambio.transportista?' · '+a.fleteCambio.transportista:''}
+      </div>`:''}</div>`:''}
     ${fila('Entrega', txtEntrega)}
     ${fila('Retiro', txtRetiro)}
     ${(a.diasNoCobrados && a.diasNoCobrados.length) ? fila('Días que no se cobran',
@@ -17057,10 +17063,19 @@ function verDetalleAlq(id){
 // anticipado, no. El mismo alquiler valía distinto según qué acción se hubiera hecho
 // último: en un alquiler de $1.000.000 con $130.000 de flete y $50.000 de extras, la
 // diferencia medida fue de $37.800. Ahora hay una sola función y todos la usan.
+/* El viaje del CAMBIO DE EQUIPO. Cuando se cambia la máquina a mitad del alquiler, el
+   camión sale una vez más: se lleva una y trae la otra. Es un viaje aparte del de
+   entrega y del de retiro, con su propia fecha y su propio fletero, y se le cobra al
+   cliente. Va separado de fVal a propósito: fVal se reparte mitad y mitad entre ida y
+   vuelta en el reporte de Fletes, y meter acá el tercer viaje ensuciaría esa cuenta.
+   (Mateo, 18/11/26.) */
+function fleteCambioMonto(a){
+  return (a && a.fleteCambio && a.fleteCambio.monto>0) ? a.fleteCambio.monto : 0;
+}
 function recalcularTotalesAlq(a){
   if(!a) return a;
   const extras=(a.fExtras||[]).reduce((s,x)=>s+(x.monto||0),0);
-  a.sub=(a.precio||0)+(a.fVal||0)+extras;
+  a.sub=(a.precio||0)+(a.fVal||0)+extras+fleteCambioMonto(a);
   a.iva=a.sinFactura?0:(a.sub||0)*0.21;
   a.tot=(a.sub||0)+(a.iva||0);
   return a;
@@ -18497,6 +18512,84 @@ function alquileresRivParaReportes(){
   });
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   CAMBIO DE EQUIPO A MITAD DEL ALQUILER, COBRANDO CADA UNO POR SEPARADO
+
+   El caso: PAPEL TECNICA alquila la Genie de 12m del 17 al 19. El 18 se le cambia
+   por una de 6m. Hay que cobrar 1 día de la de 12 y 2 días de la de 6, no 3 días
+   de una sola máquina.
+
+   Antes "Cambiar equipo" solo dejaba poner un precio nuevo a mano: había que sacar
+   la cuenta aparte y, además, el reporte por máquina le atribuía los 3 días enteros
+   a la de 6m — la de 12m perdía su día y los números no cuadraban con los papeles.
+
+   Ahora el alquiler guarda sus TRAMOS (qué máquina, qué días y cuánto cada una).
+   Sigue siendo UN alquiler y UNA factura, pero el reporte por máquina reparte los
+   días y la plata entre las dos. Ver repartirTramosEnReporte.
+
+   El día del cambio se cobra con la máquina que ENTRA (decidido con Mateo el
+   18/11/26): si el cambio es el 18, la de 12m se cobra solo el 17.
+   ══════════════════════════════════════════════════════════════════════════ */
+function tarifaDeAlquiler(a){
+  // La tarifa con la que se cotizó ESTE alquiler. Es la que se le pactó al cliente,
+  // haya cambiado o no la lista de precios desde entonces.
+  if(a && a.tarifaDiaUsada!=null) return {dia:a.tarifaDiaUsada, sem:a.tarifaSemUsada, mes:a.tarifaMesUsada};
+  const eq = EQUIPOS.find(e=>e.id===(a&&a.equipoId));
+  return eq ? precioTipo(eq.tipo) : null;
+}
+function diasEntreFechas(desde, hasta){
+  if(!desde || !hasta || hasta < desde) return 0;
+  return Math.round((new Date(hasta+'T00:00:00') - new Date(desde+'T00:00:00'))/86400000) + 1;
+}
+function correrDia(f, delta){
+  const d = new Date(f+'T00:00:00'); d.setDate(d.getDate()+delta);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function diaAnterior(f){ return correrDia(f,-1); }
+function diaSiguiente(f){ return correrDia(f, 1); }
+
+/* Calcula cómo queda repartido el alquiler si el equipo nuevo arranca en fechaCambio.
+   Devuelve null si la fecha no sirve (fuera del período, o dejaría un tramo en cero). */
+function calcRepartoCambioEquipo(a, nuevoEq, fechaCambio){
+  if(!a || !nuevoEq || !fechaCambio || !fechaValidaApp(fechaCambio)) return null;
+  const fin = a.retiradoAnticipado || a.fin;
+  if(!a.inicio || !fin) return null;
+  // El cambio tiene que caer DENTRO del alquiler y dejar al menos un día a cada uno.
+  if(fechaCambio <= a.inicio || fechaCambio > fin) return null;
+
+  const diasTotales = a.dias || diasEntreFechas(a.inicio, fin);
+  const hastaViejo = diaAnterior(fechaCambio);
+  let diasViejo = diasEntreFechas(a.inicio, hastaViejo);
+  if(diasViejo < 1 || diasViejo >= diasTotales) return null;
+  // El resto va al nuevo. Se calcula por resta para que la suma dé SIEMPRE los días
+  // del contrato: si se sacaran los dos por fecha, un día bonificado o la regla del
+  // mediodía podrían hacer que no cierren.
+  const diasNuevo = diasTotales - diasViejo;
+
+  const eqViejo = EQUIPOS.find(e=>e.id===a.equipoId);
+  const pViejo = tarifaDeAlquiler(a);
+  const pNuevo = precioTipo(nuevoEq.tipo);
+  const escViejo = pViejo ? escalaPaquete(pViejo, diasViejo) : {monto:0, detalle:''};
+  const escNuevo = pNuevo ? escalaPaquete(pNuevo, diasNuevo) : {monto:0, detalle:''};
+
+  return {
+    diasTotales,
+    viejo: {
+      equipoId: a.equipoId,
+      equipoNombre: a.equipoNombre || (eqViejo&&eqViejo.nombre) || '',
+      categoria: a.categoria, altura: a.altura, pesada: !!a.pesada,
+      desde: a.inicio, hasta: hastaViejo,
+      dias: diasViejo, monto: escViejo.monto, detalle: escViejo.detalle
+    },
+    nuevo: {
+      equipoId: nuevoEq.id,
+      equipoNombre: nuevoEq.nombre,
+      desde: fechaCambio, hasta: fin,
+      dias: diasNuevo, monto: escNuevo.monto, detalle: escNuevo.detalle
+    }
+  };
+}
+
 function mostrarCambioEquipo(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
   const box=document.getElementById('cambio-equipo-box');
@@ -18518,6 +18611,37 @@ function mostrarCambioEquipo(id){
       <input type="number" id="cambio-equipo-precio-valor" placeholder="${a.precio}">
     </div>
     <div id="cambio-equipo-precio-txt" style="font-size:.75rem;color:var(--txt2);margin-bottom:8px">El precio ya cotizado (${fmt(a.tot)}) no se modifica.</div>
+
+    <!-- Reparto: unos días con el equipo que sale y el resto con el que entra.
+         Ver calcRepartoCambioEquipo. -->
+    <label style="display:flex;align-items:flex-start;gap:8px;font-size:.78rem;font-weight:700;color:var(--txt2);cursor:pointer;margin-bottom:6px;">
+      <input type="checkbox" id="cambio-equipo-repartir-check" onchange="toggleCambioEquipoReparto(${a.id})" style="margin-top:2px">
+      <span>Se cobra repartido: unos d&iacute;as del equipo anterior y el resto del nuevo
+      <span style="display:block;font-weight:400;color:var(--txt3);margin-top:1px">Ej: 1 d&iacute;a de la de 12m y 2 d&iacute;as de la de 6m</span></span>
+    </label>
+    <div id="cambio-equipo-reparto-box" style="display:none;margin-bottom:8px">
+      <label class="flabel">&iquest;Desde qu&eacute; d&iacute;a trabaja el equipo nuevo?</label>
+      <input type="date" id="cambio-equipo-fecha" min="2020-01-01" max="2100-12-31" onchange="recalcCambioEquipoReparto(${a.id})" style="margin-bottom:6px">
+      <div id="cambio-equipo-reparto-detalle"></div>
+    </div>
+
+    <!-- El camión sale una vez más: se lleva una máquina y trae la otra. Ese viaje se
+         cobra aparte del de entrega y del de retiro. Ver fleteCambioMonto. -->
+    <label style="display:flex;align-items:flex-start;gap:8px;font-size:.78rem;font-weight:700;color:var(--txt2);cursor:pointer;margin-bottom:6px;">
+      <input type="checkbox" id="cambio-equipo-flete-check" onchange="toggleCambioEquipoFlete(${a.id})" style="margin-top:2px">
+      <span>Cobrar el viaje del cambio
+      <span style="display:block;font-weight:400;color:var(--txt3);margin-top:1px">El cami&oacute;n se lleva una y trae la otra &mdash; es un viaje aparte</span></span>
+    </label>
+    <div id="cambio-equipo-flete-box" style="display:none;margin-bottom:8px">
+      <div class="row2">
+        <div><label class="flabel">Monto del viaje</label><input type="number" id="cambio-equipo-flete-monto" value="${Math.round(a.fVal||0)}"></div>
+        <div><label class="flabel">Fecha del viaje</label><input type="date" id="cambio-equipo-flete-fecha" min="2020-01-01" max="2100-12-31"></div>
+      </div>
+      <label class="flabel">Fletero</label>
+      <input type="text" id="cambio-equipo-flete-quien" value="${(a.fTransportista&&a.fTransportista!=='Sin flete')?a.fTransportista:''}" placeholder="Ej: Rosso">
+      <div style="font-size:.73rem;color:var(--txt2);margin-top:4px">Se suma al total del alquiler y entra en el reporte de Fletes con esta fecha.</div>
+    </div>
+
     <div style="display:flex;gap:8px">
       <button onclick="confirmarCambioEquipo(${a.id})" class="btn-nuevo" style="flex:1;padding:7px;font-size:.8rem">Confirmar cambio</button>
       <button onclick="document.getElementById('cambio-equipo-box').style.display='none'" class="btn-lim" style="flex:1;padding:7px;font-size:.8rem">Cancelar</button>
@@ -18529,6 +18653,79 @@ function toggleCambioEquipoPrecio(){
   const on = document.getElementById('cambio-equipo-precio-check').checked;
   document.getElementById('cambio-equipo-precio-box').style.display = on?'block':'none';
   document.getElementById('cambio-equipo-precio-txt').style.display = on?'none':'block';
+}
+
+// Las dos formas de cambiar el precio no se pueden usar juntas: o se pone un total a
+// mano, o se reparte entre las dos máquinas. Tildar una apaga la otra.
+function toggleCambioEquipoReparto(id){
+  const on = document.getElementById('cambio-equipo-repartir-check').checked;
+  document.getElementById('cambio-equipo-reparto-box').style.display = on?'block':'none';
+  if(on){
+    const chkPrecio = document.getElementById('cambio-equipo-precio-check');
+    if(chkPrecio && chkPrecio.checked){ chkPrecio.checked=false; toggleCambioEquipoPrecio(); }
+    document.getElementById('cambio-equipo-precio-txt').style.display='none';
+    const f = document.getElementById('cambio-equipo-fecha');
+    // Arranca en HOY si hoy cae dentro del alquiler; si no, en el día siguiente al inicio
+    // (que es el primer día posible: el equipo viejo tiene que quedarse con al menos uno).
+    if(!f.value){
+      const a = ALQUILERES.find(x=>x.id===id);
+      if(a && a.inicio){
+        const hoy = hoyISO();
+        const fin = a.retiradoAnticipado || a.fin;
+        f.value = (hoy > a.inicio && hoy <= fin) ? hoy : diaSiguiente(a.inicio);
+      }
+    }
+  } else {
+    document.getElementById('cambio-equipo-precio-txt').style.display =
+      document.getElementById('cambio-equipo-precio-check').checked ? 'none':'block';
+  }
+  recalcCambioEquipoReparto(id);
+}
+
+function toggleCambioEquipoFlete(id){
+  const on = document.getElementById('cambio-equipo-flete-check').checked;
+  document.getElementById('cambio-equipo-flete-box').style.display = on?'block':'none';
+  if(on){
+    const f = document.getElementById('cambio-equipo-flete-fecha');
+    // La fecha del viaje es, por defecto, el día en que entra el equipo nuevo.
+    if(!f.value){
+      const fCambio = document.getElementById('cambio-equipo-fecha');
+      f.value = (fCambio && fCambio.value) ? fCambio.value : hoyISO();
+    }
+  }
+}
+
+// Muestra en vivo cómo queda el reparto, antes de confirmar nada.
+function recalcCambioEquipoReparto(id){
+  const cont = document.getElementById('cambio-equipo-reparto-detalle');
+  if(!cont) return;
+  const chk = document.getElementById('cambio-equipo-repartir-check');
+  if(!chk || !chk.checked){ cont.innerHTML=''; return; }
+  const a = ALQUILERES.find(x=>x.id===id);
+  const nuevoEq = EQUIPOS.find(e=>e.id===parseInt(document.getElementById('cambio-equipo-select').value));
+  const fecha = document.getElementById('cambio-equipo-fecha').value;
+  const r = calcRepartoCambioEquipo(a, nuevoEq, fecha);
+  if(!r){
+    cont.innerHTML = `<div style="font-size:.76rem;color:var(--rojo);font-weight:700">
+      Esa fecha no sirve: tiene que estar dentro del alquiler y dejar al menos un día a cada equipo.</div>`;
+    return;
+  }
+  const fD = s => { const p=String(s).split('-'); return `${p[2]}/${p[1]}`; };
+  const total = r.viejo.monto + r.nuevo.monto;
+  const fila = t => `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-size:.78rem">
+      <span style="color:var(--txt)"><b>${t.equipoNombre}</b><br>
+        <span style="color:var(--txt2);font-size:.74rem">${fD(t.desde)} al ${fD(t.hasta)} · ${t.dias} día${t.dias!==1?'s':''}${t.detalle?' ('+t.detalle+')':''}</span></span>
+      <span style="font-weight:700;white-space:nowrap">${fmt(t.monto)}</span>
+    </div>`;
+  cont.innerHTML = `<div style="background:var(--bg3);border-radius:7px;padding:7px 9px">
+      ${fila(r.viejo)}${fila(r.nuevo)}
+      <div style="display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--border);margin-top:4px;padding-top:4px;font-size:.8rem;font-weight:700">
+        <span>Alquiler (sin flete)</span><span>${fmt(total)}</span>
+      </div>
+      <div style="font-size:.73rem;color:var(--txt2);margin-top:3px">Antes: ${fmt(a.precio||0)} · ${r.diasTotales} días del mismo equipo</div>
+    </div>
+    <label class="flabel" style="margin-top:6px">Si no es ese el valor, corregilo acá</label>
+    <input type="number" id="cambio-equipo-reparto-total" value="${Math.round(total)}">`;
 }
 
 async function confirmarCambioEquipo(id){
@@ -18547,6 +18744,18 @@ async function confirmarCambioEquipo(id){
   }
   const nota = document.getElementById('cambio-equipo-nota').value.trim();
   const precioNuevoCheck = document.getElementById('cambio-equipo-precio-check').checked;
+  const repartirCheck = document.getElementById('cambio-equipo-repartir-check').checked;
+
+  // Si se pidió repartir, se valida ANTES de tocar nada del alquiler: si la fecha no
+  // sirve, no se cambia ni el equipo (quedaría el equipo nuevo con el precio viejo).
+  let reparto = null;
+  if(repartirCheck){
+    reparto = calcRepartoCambioEquipo(a, nuevoEq, document.getElementById('cambio-equipo-fecha').value);
+    if(!reparto){
+      alert('Revisá la fecha del cambio: tiene que estar dentro del alquiler y dejar al menos un día a cada equipo.');
+      return;
+    }
+  }
 
   if(!a.sustituido){
     a.equipoOriginalId=a.equipoId;
@@ -18564,9 +18773,57 @@ async function confirmarCambioEquipo(id){
     if(!a.precioOriginalAlCambiar) a.precioOriginalAlCambiar=a.precio;
     a.precio=precioNuevo;
     a.precioCambiadoPorSustitucion=true;
-    const sub=a.precio+(a.fVal||0)+(a.fExtras?a.fExtras.reduce((s,x)=>s+x.monto,0):0);
-    a.sub=sub; a.iva=a.sinFactura?0:sub*0.21; a.tot=sub+a.iva;
   }
+
+  if(reparto){
+    // Los tramos quedan guardados en el alquiler: son los que después usa el reporte
+    // por máquina para repartir los días y la plata entre las dos (ver tramosDeAlquiler).
+    const totalTocado = parseFloat((document.getElementById('cambio-equipo-reparto-total')||{}).value);
+    const totalCalc = reparto.viejo.monto + reparto.nuevo.monto;
+    const total = (totalTocado>0) ? totalTocado : totalCalc;
+    // Si se corrigió el total a mano, los tramos se ajustan en la misma proporción,
+    // para que la suma de los tramos sea SIEMPRE igual al precio del alquiler. Si no,
+    // el reporte por máquina diría una cosa y la factura otra.
+    const factor = totalCalc>0 ? (total/totalCalc) : 1;
+    a.tramosEquipo = [reparto.viejo, reparto.nuevo].map(t=>({
+      equipoId:t.equipoId, equipoNombre:t.equipoNombre,
+      categoria:t.categoria, altura:t.altura, pesada:t.pesada,
+      desde:t.desde, hasta:t.hasta, dias:t.dias,
+      monto: Math.round(t.monto*factor), detalle:t.detalle
+    }));
+    // El segundo tramo (el equipo nuevo) todavía no tiene su categoría/altura: se la
+    // ponemos acá, que es cuando ya sabemos cuál quedó.
+    a.tramosEquipo[1].categoria = a.categoria;
+    a.tramosEquipo[1].altura    = a.altura;
+    a.tramosEquipo[1].pesada    = !!a.pesada;
+    // Redondeos: el último tramo absorbe la diferencia para que cierre exacto.
+    const sumaTramos = a.tramosEquipo.reduce((s,t)=>s+t.monto,0);
+    a.tramosEquipo[1].monto += Math.round(total) - sumaTramos;
+
+    if(!a.precioOriginalAlCambiar) a.precioOriginalAlCambiar = a.precio;
+    a.precio = Math.round(total);
+    a.precioCambiadoPorSustitucion = true;
+  }
+
+  // El viaje del cambio: el camión sale a llevar una y traer la otra.
+  if(document.getElementById('cambio-equipo-flete-check').checked){
+    const montoF = parseFloat(document.getElementById('cambio-equipo-flete-monto').value)||0;
+    const fechaF = document.getElementById('cambio-equipo-flete-fecha').value;
+    if(montoF>0 && fechaF && fechaValidaApp(fechaF)){
+      a.fleteCambio = {
+        monto: Math.round(montoF),
+        fecha: fechaF,
+        transportista: (document.getElementById('cambio-equipo-flete-quien').value||'').trim() || a.fTransportista || '',
+        saleEquipo: a.equipoOriginalNombre || '',
+        entraEquipo: nuevoEq.nombre
+      };
+    } else {
+      alert('No se cargó el viaje del cambio: falta el monto o la fecha. El cambio de equipo sí se guardó.');
+    }
+  }
+
+  // Una sola cuenta para el total, con flete, extras y el viaje del cambio incluidos.
+  recalcularTotalesAlq(a);
 
   guardar(); refrescarDetalleAlqSiAbierto(id); renderAlq(); renderDashboard(); renderEq(); renderCal(); renderFacturacion();
 }
@@ -20948,6 +21205,43 @@ function alqMeta(a){
   if(eq) return equipoMeta(eq);
   return {categoria:'otro', altura:0, pesada:false};
 }
+// La misma cuenta, pero para un tramo (una de las máquinas que pasó por el alquiler).
+function tramoMeta(t){
+  if(t && t.categoria!==undefined && t.altura!==undefined) return {categoria:t.categoria, altura:t.altura, pesada:!!t.pesada};
+  const eq=EQUIPOS.find(e=>e.id===(t&&t.equipoId));
+  if(eq) return equipoMeta(eq);
+  return {categoria:'otro', altura:0, pesada:false};
+}
+
+/* Reparte los días y la plata de UN mes entre las máquinas que pasaron por el alquiler.
+   Sin cambio de equipo devuelve una sola parte con todo, así el reporte funciona igual
+   que siempre. Con cambio repartido (ver calcRepartoCambioEquipo) devuelve una parte por
+   máquina, en proporción a lo que le toca a cada una.
+
+   Se reparte PROPORCIONALMENTE y no por fechas a propósito: el mes ya viene resuelto
+   (puede ser un mes parcial, o la factura de un mes distinto al del calendario), y
+   volver a cortarlo por fechas daría números que no cuadran con lo facturado.
+   La última parte absorbe el redondeo para que la suma dé exacto. */
+function repartirTramosEnReporte(a, mDias, mDiasCalendario, mMonto){
+  const tramos = (a && a.tramosEquipo && a.tramosEquipo.length>1) ? a.tramosEquipo : null;
+  if(!tramos) return [{meta:alqMeta(a), dias:mDias, diasCalendario:mDiasCalendario, monto:mMonto, tramo:null}];
+
+  const totalMonto = tramos.reduce((s,t)=>s+(t.monto||0),0);
+  const totalDias  = tramos.reduce((s,t)=>s+(t.dias||0),0);
+  const partes = tramos.map(t=>({
+    meta: tramoMeta(t),
+    dias: totalDias>0 ? mDias*((t.dias||0)/totalDias) : 0,
+    diasCalendario: totalDias>0 ? mDiasCalendario*((t.dias||0)/totalDias) : 0,
+    monto: totalMonto>0 ? mMonto*((t.monto||0)/totalMonto) : 0,
+    tramo: t
+  }));
+  // Que la suma cierre exacta contra lo que se facturó.
+  const u = partes[partes.length-1];
+  u.dias           += mDias           - partes.reduce((s,p)=>s+p.dias,0);
+  u.diasCalendario += mDiasCalendario - partes.reduce((s,p)=>s+p.diasCalendario,0);
+  u.monto          += mMonto          - partes.reduce((s,p)=>s+p.monto,0);
+  return partes;
+}
 
 // Los días del reporte pueden no ser enteros: las jornadas por hora de Rivadavia se
 // convierten a días equivalentes, y una factura puede cobrar media jornada. Se muestra
@@ -21023,27 +21317,41 @@ function renderRepMaquinas(){
       // Se arma la escalera completa acá, con los mismos números que el reporte, para
       // que no haya dos cuentas distintas. (Mateo, 5/11/26.)
       const extrasAlq = (a.fExtras||[]).reduce((s,x)=>s+(x.monto||0),0);
-      const fleteAlq  = baseEnEsteMes ? (a.fVal||0) : 0;
+      // El viaje del cambio de equipo cuenta en el mes de SU fecha, no en el de la
+      // factura base: es un viaje aparte, hecho otro día. Ver fleteCambioMonto.
+      const fleteCambioMes = (fleteCambioMonto(a)>0 && String(a.fleteCambio.fecha||'').slice(0,7)===mesElegido)
+        ? a.fleteCambio.monto : 0;
+      const fleteAlq  = (baseEnEsteMes ? (a.fVal||0) : 0) + fleteCambioMes;
       const extraMes  = baseEnEsteMes ? extrasAlq : 0;
       cuadre.maquinas += mMonto;
       cuadre.fletes   += fleteAlq;
       cuadre.extras   += extraMes;
       if(a.sinFactura) cuadre.sinIva  += mMonto + fleteAlq + extraMes;
       else             cuadre.gravado += mMonto + fleteAlq + extraMes;
-      const meta=alqMeta(a);
-      const key=grupoKey(meta);
-      if(!porGrupo[key]) porGrupo[key]={key, label:grupoLabel(meta), cantidad:0, dias:0, monto:0, diasCalendario:0, jornadasRiv:0, montoRiv:0};
-      if(a._rivadavia){
-        porGrupo[key].jornadasRiv+=1;
-        porGrupo[key].montoRiv+=mMonto;
-      } else {
-        porGrupo[key].cantidad+=1;
-      }
-      porGrupo[key].dias+=mDias;
-      porGrupo[key].diasCalendario+=mDiasCalendario;
-      porGrupo[key].monto+=mMonto;
-      if(!repMaquinasFilasPorGrupo[key]) repMaquinasFilasPorGrupo[key]=[];
-      repMaquinasFilasPorGrupo[key].push({a, dias:mDias, diasCalendario:mDiasCalendario, monto:mMonto});
+      /* Un alquiler puede haber usado DOS máquinas distintas (se cambió el equipo a
+         mitad de camino y se cobró repartido, ver calcRepartoCambioEquipo). En ese
+         caso no puede contar entero en el renglón de una sola: los días y la plata se
+         reparten entre las dos, cada una en su grupo.
+         Si no hubo cambio, repartirTramosEnReporte devuelve un solo tramo con todo y
+         esto funciona igual que siempre. (Mateo, 18/11/26.) */
+      repartirTramosEnReporte(a, mDias, mDiasCalendario, mMonto).forEach((parte, i)=>{
+        const key=grupoKey(parte.meta);
+        if(!porGrupo[key]) porGrupo[key]={key, label:grupoLabel(parte.meta), cantidad:0, dias:0, monto:0, diasCalendario:0, jornadasRiv:0, montoRiv:0};
+        if(a._rivadavia){
+          porGrupo[key].jornadasRiv+=1;
+          porGrupo[key].montoRiv+=parte.monto;
+        } else {
+          // El alquiler se cuenta UNA vez, en el grupo del primer tramo: si no, dos
+          // máquinas de un mismo alquiler lo contarían dos veces en "N alquileres".
+          if(i===0) porGrupo[key].cantidad+=1;
+        }
+        porGrupo[key].dias+=parte.dias;
+        porGrupo[key].diasCalendario+=parte.diasCalendario;
+        porGrupo[key].monto+=parte.monto;
+        if(!repMaquinasFilasPorGrupo[key]) repMaquinasFilasPorGrupo[key]=[];
+        repMaquinasFilasPorGrupo[key].push({a, dias:parte.dias, diasCalendario:parte.diasCalendario,
+                                            monto:parte.monto, tramo:parte.tramo||null});
+      });
     }
   });
 
@@ -21375,6 +21683,12 @@ function fleteEventos(a){
     montoIda = hasIdaOv ? a.fCostoIdaOverride : montoTotal;
   }
   const eventos=[];
+  // El viaje del cambio de equipo es un tercer tramo, con su fecha y su fletero.
+  if(fleteCambioMonto(a) > 0 && a.fleteCambio.fecha){
+    eventos.push({mes:String(a.fleteCambio.fecha).slice(0,7), fecha:a.fleteCambio.fecha,
+                  tipo:'cambio', monto:a.fleteCambio.monto,
+                  transportista: a.fleteCambio.transportista || a.fTransportista});
+  }
   if(fechaIda) eventos.push({mes:fechaIda.slice(0,7), fecha:fechaIda, tipo:'ida', monto: montoIda, transportista: transportistaIda});
   if(fechaVuelta) eventos.push({mes:fechaVuelta.slice(0,7), fecha:fechaVuelta, tipo:'vuelta', monto: montoVuelta, transportista: transportistaVuelta});
   return eventos;
@@ -21395,9 +21709,10 @@ function renderRepFletes(){
       huboAlgo=true;
       if(!porMes[ev.mes]) porMes[ev.mes]={};
       const nombre=ev.transportista;
-      if(!porMes[ev.mes][nombre]) porMes[ev.mes][nombre]={nombre, ida:0, vuelta:0, monto:0};
+       if(!porMes[ev.mes][nombre]) porMes[ev.mes][nombre]={nombre, ida:0, vuelta:0, cambio:0, monto:0};
       const f=porMes[ev.mes][nombre];
-      if(ev.tipo==='ida') f.ida+=1; else f.vuelta+=1;
+       // El viaje del cambio de equipo se cuenta aparte: no es una ida ni una vuelta.
+       if(ev.tipo==='ida') f.ida+=1; else if(ev.tipo==='cambio') f.cambio+=1; else f.vuelta+=1;
       f.monto += ev.monto;
     });
   });
@@ -21416,7 +21731,7 @@ function renderRepFletes(){
           <h4 style="font-size:.9rem">${x.nombre}</h4>
           <span style="font-weight:700;color:var(--verde);font-size:.9rem">${fmt(x.monto)}</span>
         </div>
-        <div style="font-size:.78rem;color:var(--txt2)">Viajes de ida: ${x.ida} · Viajes de vuelta (retiro): ${x.vuelta} · Total viajes: ${x.ida+x.vuelta} · Tocá para ver el detalle</div>
+        <div style="font-size:.78rem;color:var(--txt2)">Viajes de ida: ${x.ida} · Viajes de vuelta (retiro): ${x.vuelta}${x.cambio?' · Cambios de equipo: '+x.cambio:''} · Total viajes: ${x.ida+x.vuelta+(x.cambio||0)} · Tocá para ver el detalle</div>
       </div>`).join('');
   }).join('');
 }
@@ -21440,17 +21755,18 @@ function verDetalleFletero(nombre, mes){
   filas.sort((x,y)=>y.ev.fecha.localeCompare(x.ev.fecha));
   document.getElementById('fletero-det-titulo').textContent=''+nombre+(mes?' · '+mesLabel(mes):'');
   let totalMonto=0, totalIda=0, totalVuelta=0;
-  filas.forEach(({ev})=>{ totalMonto+=ev.monto; if(ev.tipo==='ida') totalIda++; else totalVuelta++; });
+  let totalCambio=0;
+  filas.forEach(({ev})=>{ totalMonto+=ev.monto; if(ev.tipo==='ida') totalIda++; else if(ev.tipo==='cambio') totalCambio++; else totalVuelta++; });
   const filasHtml=filas.map(({a,ev})=>`<div class="eq-item" style="cursor:pointer;flex-direction:column;align-items:flex-start;gap:4px" onclick="document.getElementById('modal-fletero-det').style.display='none';verDetalleAlq(${a.id})">
       <div style="display:flex;justify-content:space-between;width:100%;align-items:center">
-        <div style="font-size:.85rem;font-weight:700;color:var(--txt)">${ev.tipo==='ida'?'Ida':'Vuelta'} — ${a.equipoNombre}</div>
+        <div style="font-size:.85rem;font-weight:700;color:var(--txt)">${ev.tipo==='ida'?'Ida':(ev.tipo==='cambio'?'Cambio de equipo':'Vuelta')} — ${a.equipoNombre}</div>
         <span style="font-weight:700;color:var(--verde);font-size:.82rem">${fmt(ev.monto)}</span>
       </div>
       <div style="font-size:.75rem;color:var(--txt2)">${a.cliente} · ${a.localidad||'—'}</div>
       <div style="font-size:.75rem;color:var(--txt2)">${fmtD(ev.fecha)}</div>
     </div>`).join('');
   document.getElementById('fletero-det-contenido').innerHTML=
-    `<div style="font-size:.82rem;color:var(--txt2);margin-bottom:.8rem">Total: <b style="color:var(--verde)">${fmt(totalMonto)}</b> · ${totalIda} viajes de ida · ${totalVuelta} viajes de vuelta</div>` + filasHtml;
+    `<div style="font-size:.82rem;color:var(--txt2);margin-bottom:.8rem">Total: <b style="color:var(--verde)">${fmt(totalMonto)}</b> · ${totalIda} viajes de ida · ${totalVuelta} viajes de vuelta${totalCambio?' · '+totalCambio+' cambios de equipo':''}</div>` + filasHtml;
   document.getElementById('modal-fletero-det').style.display='flex';
 }
 
