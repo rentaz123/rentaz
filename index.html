@@ -881,7 +881,7 @@ if ('serviceWorker' in navigator) {
 
       <div class="dash-collapse" id="dc-alq-semana">
         <button class="dash-collapse-header" id="dch-alq-semana" onclick="toggleDashCollapse('alqSemana')">
-          <span class="dc-title">Arrancan esta semana y la próxima</span>
+          <span class="dc-title">Salen esta semana y la próxima</span>
           <span class="dc-badge" id="dc-badge-alq-semana"></span>
           <span class="dc-arrow">▾</span>
         </button>
@@ -7477,8 +7477,31 @@ function renderDashboard(){
   // pausado (o dado de baja, o por hora) no ocupa el equipo, así que no tiene por qué
   // seguir anunciándose como algo que arranca. Si se reanuda, vuelve a aparecer solo.
   const arrancaDeVerdad = a => a.activo!==false && !a.modoHoras && !a.pausado;
-  const alqEstaSemanaList=ALQUILERES.filter(a=>arrancaDeVerdad(a)&&a.inicio>hoyStr2&&a.inicio<=finSemanaActualStr).sort(porFechaYHora('inicio','horaEntrega'));
-  const alqProximaSemanaList=ALQUILERES.filter(a=>arrancaDeVerdad(a)&&a.inicio>finSemanaActualStr&&a.inicio<=finSemStr).sort(porFechaYHora('inicio','horaEntrega'));
+  /* ── ESTAS LISTAS VAN POR EL DÍA EN QUE TALLER TIENE QUE CARGAR ────────────
+     Antes se armaban con a.inicio (el día que arranca el alquiler). Con "El equipo
+     sale antes del depósito" eso no sirve para taller: un alquiler que arranca el
+     lunes pero se carga el domingo aparecía con la fecha del lunes, y el domingo se
+     les pasaba. Peor todavía, uno que arranca el lunes siguiente —fuera de la
+     ventana— pero que se carga el domingo (dentro de la ventana) no aparecía.
+
+     fechaAvisoEntrega(a) devuelve la fecha de carga si sale antes, y si no la de
+     inicio: es la misma que usa "Para entregar". Así las dos pantallas hablan del
+     mismo día y el orden es el del trabajo real. (Mateo, 19/11/26.) */
+  const cmpPorCarga = (x,y) => {
+    const fx=fechaAvisoEntrega(x), fy=fechaAvisoEntrega(y);
+    if(fx!==fy) return String(fx).localeCompare(String(fy));
+    return String(horaAvisoEntrega(x)||'').localeCompare(String(horaAvisoEntrega(y)||''));
+  };
+  const alqEstaSemanaList=ALQUILERES.filter(a=>{
+    if(!arrancaDeVerdad(a)) return false;
+    const f=fechaAvisoEntrega(a);
+    return f>hoyStr2 && f<=finSemanaActualStr;
+  }).sort(cmpPorCarga);
+  const alqProximaSemanaList=ALQUILERES.filter(a=>{
+    if(!arrancaDeVerdad(a)) return false;
+    const f=fechaAvisoEntrega(a);
+    return f>finSemanaActualStr && f<=finSemStr;
+  }).sort(cmpPorCarga);
   // Equipos que se liberan en los próximos días: alquileres con fecha de retorno YA
   // CONFIRMADA (no "abiertos", que no tienen fecha definida) cuyo "fin" cae en lo que
   // resta de esta semana o en la semana que viene — para poder ofrecerle ese equipo a
@@ -7516,10 +7539,20 @@ function renderDashboard(){
     const faltaEntregar = enCurso && a.entregaPendiente;
     const color = faltaEntregar ? 'var(--azul)' : (enCurso?'var(--rojo)':'var(--azul)');
     const label = faltaEntregar ? 'Para entregar' : (enCurso?'En curso':'Próximo');
-    return `<div class="pago-item" style="border-color:${color}33;background:${color}08;cursor:pointer;margin-bottom:.5rem" onclick="verDetalleAlq(${a.id})">
-      <div style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0"></div>
+    /* Si el camión carga ANTES de que arranque el alquiler, ese es el día que le
+       importa a taller. Va bien visible y en naranja: con solo la fecha de inicio
+       del alquiler, el día de la carga se les pasaba. (Mateo, 19/11/26.) */
+    const cargaAntes = a.salidaDeposito && a.inicio && a.salidaDeposito < a.inicio;
+    const lineaCarga = cargaAntes
+      ? `<div class="pago-meta" style="font-size:.82rem;margin-top:3px;color:#b3791f;font-weight:700">
+           Cargar el ${fmtD2(a.salidaDeposito)}${a.horaSalidaDeposito?' '+a.horaSalidaDeposito:''} — un día antes de que arranque
+         </div>`
+      : '';
+    return `<div class="pago-item" style="border-color:${cargaAntes?'#b3791f':color}33;background:${cargaAntes?'#b3791f':color}08;cursor:pointer;margin-bottom:.5rem" onclick="verDetalleAlq(${a.id})">
+      <div style="width:11px;height:11px;border-radius:50%;background:${cargaAntes?'#b3791f':color};flex-shrink:0"></div>
       <div class="pago-info">
         <div class="pago-concepto" style="font-size:1rem">${a.equipoNombre}</div>
+        ${lineaCarga}
         <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${a.cliente} · ${destacado(a.inicio,a.horaEntrega)} – ${fmtD2(a.fin)}${a.fTransportista&&a.fTransportista!=='Sin flete'?' · '+a.fTransportista:''}</div>
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
@@ -7784,11 +7817,11 @@ function renderDashboard(){
     `<div style="font-size:.72rem;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Esta semana</div>` +
     (alqEstaSemanaList.length
       ? alqEstaSemanaList.map(a=>renderAlqItem(a,false)).join('')
-      : '<p style="color:var(--txt3);font-size:.85rem;padding:.2rem 0 .6rem">No hay alquileres que arranquen el resto de esta semana.</p>') +
+      : '<p style="color:var(--txt3);font-size:.85rem;padding:.2rem 0 .6rem">No hay equipos que salgan el resto de esta semana.</p>') +
     `<div style="font-size:.72rem;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin:.8rem 0 6px;border-top:1px solid var(--border2);padding-top:.6rem">Semana que viene</div>` +
     (alqProximaSemanaList.length
       ? alqProximaSemanaList.map(a=>renderAlqItem(a,false)).join('')
-      : '<p style="color:var(--txt3);font-size:.85rem;padding:.2rem 0">No hay alquileres que arranquen la semana que viene.</p>');
+      : '<p style="color:var(--txt3);font-size:.85rem;padding:.2rem 0">No hay equipos que salgan la semana que viene.</p>');
   badgeDash('dc-badge-libera-semana', alqLiberaEstaSemanaList.length+alqLiberaProximaSemanaList.length);
   document.getElementById('dash-libera-semana-container').innerHTML =
     `<div style="font-size:.72rem;font-weight:700;color:var(--txt2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px">Esta semana</div>` +
