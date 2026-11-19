@@ -8649,13 +8649,27 @@ function esMixtaCot(){
   const hayLiviana=tipos.some(t=>!PESADAS.includes(t));
   return hayPesada && hayLiviana;
 }
+
+/* ── SI YA HAY UN "FLETE 2" CARGADO A MANO, LO MIXTO NO APLICA ──────────────
+   El modo "mixta" es un atajo: cuando hay un pesado y un liviano juntos, la app
+   arma sola dos fletes (el pesado con Rosso, el liviano con Alejandro). Pero si uno
+   ya activó el Flete 2 y lo cargó a mano —por ejemplo los DOS con Rosso, porque el
+   trabajo es fuera de la ciudad— ese atajo sobra: los dos fletes ya están puestos.
+
+   La pantalla ya lo tenía en cuenta y escondía el selector del tramo liviano, pero
+   cotizar() lo calculaba sin esa condición. Resultado: el presupuesto se quedaba
+   esperando que se eligiera un tramo liviano que no estaba a la vista, y no se podía
+   avanzar. Dos cuentas distintas para lo mismo, otra vez. (Mateo, 19/11/26.) */
+function cotEsMixtaEfectiva(){
+  return !cotFlete2Activo && esMixtaCot();
+}
 // Decide qué bloque de flete mostrar (el selector normal Sin/Alejandro/Rosso, o el
 // esquema mixto de dos fletes) según los equipos actuales de la cotización, y ajusta
 // los estados/controles en consecuencia. Se llama cada vez que cambia el equipo
 // principal o la lista de equipos adicionales.
 function actualizarUIFlete(){
   const tipo=document.getElementById('cot-eq').value;
-  const mixta = !cotFlete2Activo && esMixtaCot();
+  const mixta = cotEsMixtaEfectiva();
   const tiposG1 = equiposGrupoCot(1);
   const esPesadaGrupo1 = hayPesadaEnGrupo(tiposG1);
 
@@ -9112,7 +9126,7 @@ function cotizar(){
   document.getElementById('cot-dias').value=dias;
   document.getElementById('warn-mes').style.display='none';
   if(!tipo||fleteMode===null){document.getElementById('res-card').style.display='none';return;}
-  const mixta=esMixtaCot();
+  const mixta=cotEsMixtaEfectiva();
   const fleteEspecialActivo=document.getElementById('cot-flete-especial-check').checked;
   // Si es mixta (pesado + liviano) y no hay flete especial que reemplace todo, hace
   // falta que el usuario elija también el tramo liviano (Sin flete / Alejandro) antes
@@ -11743,6 +11757,18 @@ function getRetirosDia(f){
   // que anunciar en el calendario.
   return ALQUILERES.filter(a=>!a.pausado && a.activo!==false && !a.abierto && !a.retiradoAnticipado && a.fechaRetiro===fStr);
 }
+/* ── EL DÍA QUE EL CAMIÓN CARGA, ANTES DE QUE ARRANQUE EL ALQUILER ──────────
+   Con "El equipo sale antes del depósito" el camión lo carga el día anterior. Ese día
+   la máquina ya está comprometida —se va arriba del camión— pero el alquiler todavía
+   no empezó, así que el calendario no mostraba nada: el 24 se veía libre y la máquina
+   figuraba disponible para prometérsela a otro. (Mateo, 19/11/26.) */
+function getSalidasDepositoDia(f){
+  const fStr = (typeof fechaISOLocal==='function') ? fechaISOLocal(f) : f.toISOString().slice(0,10);
+  return ALQUILERES.filter(a =>
+    !a.pausado && a.activo!==false && !a.modoHoras &&
+    a.salidaDeposito && a.inicio &&
+    a.salidaDeposito === fStr && a.salidaDeposito < a.inicio);
+}
 function renderAlm(){
   const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const hoy=new Date(); hoy.setHours(0,0,0,0);
@@ -11789,6 +11815,11 @@ function renderAlm(){
     // ya coloreado de ese mismo alquiler (caso de alquileres viejos con retiro = fin + 1 día).
     retiros.filter(a=>!alqs.some(x=>x.id===a.id)).forEach(a=>{
       h+=`<div class="alm-bloque" style="background:var(--bg3);color:var(--azul);border:1px dashed var(--azul)" onclick="verDetalleAlq(${a.id})" title="Retiro: ${a.equipoNombre} · ${a.cliente} (${a.horaRetiro||'08:00'})">${a.equipoNombre.split(' ')[0]}</div>`;
+    });
+    // El camión carga ese día aunque el alquiler arranque después (ver getSalidasDepositoDia).
+    getSalidasDepositoDia(f).forEach(a=>{
+      const fD = s => { const p=String(s||'').split('-'); return p.length===3?`${p[2]}/${p[1]}`:''; };
+      h+=`<div class="alm-bloque" style="background:var(--bg3);color:#b3791f;border:1px dashed #b3791f" onclick="verDetalleAlq(${a.id})" title="Sale del depósito: ${a.equipoNombre} · ${a.cliente}${a.horaSalidaDeposito?' ('+a.horaSalidaDeposito+')':''} — el alquiler arranca el ${fD(a.inicio)}">Carga ${a.equipoNombre.split(' ')[0]}</div>`;
     });
     h+='</div>';
   }
@@ -16434,8 +16465,18 @@ async function guardarAlq(){
   // importe viejo porque nadie la volvía a dibujar (reportado el 3/11/26: el detalle
   // decía $948.640 y la lista $425.920, sobre el mismo alquiler).
   guardar(); cerrarModalAlq(); renderAlq(); renderDashboard(); renderEq(); renderFacturacion(); renderCal(); renderReportes();
+  /* Si el camión carga ANTES de que arranque el alquiler, hay que decirlo al guardar:
+     es un cambio operativo que le llega a taller otro día, y sin confirmación no hay
+     forma de saber si quedó registrado. El cuadro lo explicaba mientras se editaba,
+     pero al guardar no se decía nada. (Mateo, 19/11/26.) */
+  const fmtDS = s => { const p=String(s||'').split('-'); return p.length===3 ? `${p[2]}/${p[1]}` : ''; };
+  const avisoSalidaAntes = salidaDeposito
+    ? `\n\nTaller lo va a ver en "Para entregar" el ${fmtDS(salidaDeposito)}`
+      + (horaSalidaDeposito ? ` a las ${horaSalidaDeposito}` : '')
+      + `, para cargarlo antes.\nEl alquiler igual arranca el ${fmtDS(desde)} y se factura desde esa fecha.`
+    : '';
   if(editando){
-    alert('Alquiler actualizado correctamente');
+    alert('Alquiler actualizado correctamente'+avisoSalidaAntes);
   } else if(primerAlqId && ROL_ACTUAL==='taller' && arrancaHoyOAntes(primerAlqId)){
     // El contrato + checklist de salida los arma taller — si el alquiler lo cargó
     // oficina (admin/facturación), no se le abre esta ventana: le va a llegar el
@@ -16452,7 +16493,7 @@ async function guardarAlq(){
     const avisoEspera = solEsperaCerradasAuto.length
       ? `\n\nAdemás se cerró ${solEsperaCerradasAuto.length===1?'la solicitud en espera':'las '+solEsperaCerradasAuto.length+' solicitudes en espera'} de ${alqClienteElegido?.nombre||'este cliente'} por ${solEsperaCerradasAuto.map(s=>s.tipoNombre).join(' / ')} — ya no hace falta marcarla a mano.`
       : '';
-    alert('Alquiler guardado correctamente'+avisoEspera);
+    alert('Alquiler guardado correctamente'+avisoSalidaAntes+avisoEspera);
   }
 }
 
