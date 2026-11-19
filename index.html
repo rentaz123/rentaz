@@ -2044,8 +2044,11 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
         <div style="font-size:.8rem;font-weight:700;color:var(--txt);margin-bottom:.2rem">Sale el equipo</div>
         <div style="font-size:.72rem;color:var(--txt3);margin-bottom:.7rem">La hora de salida ya está puesta con la hora actual. Cargá a dónde va y quién lo lleva, y dale OK. Cuando el equipo vuelva, cerrás el registro desde la lista de abajo.</div>
         <div class="row2" style="margin-bottom:.6rem">
-          <div><label class="flabel">Fecha</label><input type="date" id="riv-fecha"></div>
-          <div><label class="flabel">Hora salida</label><input type="time" id="riv-hsalida"></div>
+          <!-- La fecha y la hora las pone el reloj y se re-sellan solas mientras la
+               pantalla está abierta (ver sellarHoraSalidaRiv). Apenas alguien las
+               escribe a mano, deja de tocarlas: ese dato es a propósito. -->
+          <div><label class="flabel">Fecha</label><input type="date" id="riv-fecha" oninput="marcarRivEscritoAMano('riv-fecha')"></div>
+          <div><label class="flabel">Hora salida</label><input type="time" id="riv-hsalida" oninput="marcarRivEscritoAMano('riv-hsalida')"></div>
         </div>
         <div style="margin-bottom:.6rem"><label class="flabel">Lugar de trabajo</label>
           <input type="text" id="riv-lugar" list="riv-lugares" placeholder="Depósito, Otro o escribí..." autocomplete="off">
@@ -2165,6 +2168,9 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
             <div><label class="flabel">Hora de salida</label><input type="time" id="alq-hora-entrega" value="08:00" onchange="calcDiasAlq()"></div>
             <div><label class="flabel">Hora de reingreso</label><input type="time" id="alq-hora-retiro" value="08:00" onchange="calcDiasAlq()"></div>
           </div>
+          <!-- Dos máquinas saliendo a la misma hora: el camión es uno solo. Se avisa acá
+               mismo, mientras se carga, y no recién al guardar. Ver salidasQueSePisan(). -->
+          <div id="alq-pisa-salida-aviso" style="display:none;font-size:.76rem;font-weight:700;line-height:1.5;margin-bottom:.5rem;border-radius:8px;padding:.5rem .65rem"></div>
           <div id="alq-per-dias-bloque" class="row2" style="margin-bottom:.4rem;display:none">
             <div><label class="flabel">Cantidad de días</label><input type="number" min="1" id="alq-dias-cant" placeholder="Ej: 5" oninput="calcDiasAlqManual()"></div>
             <div><label class="flabel">Empieza el</label><input type="date" id="alq-dias-inicio" min="2020-01-01" max="2100-12-31" onchange="calcDiasAlqManual()"></div>
@@ -2288,7 +2294,7 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
             </div>
             <div id="alq-localidad-box" style="display:none;margin-top:.6rem">
               <label class="flabel" id="alq-localidad-label">Localidad de destino *</label>
-              <input type="text" id="alq-localidad" list="localidades-list" placeholder="Ej: Rafaela, Susana, Bella Italia..." oninput="document.getElementById('alq-disponibilidad-aviso').dataset.localidadTouched='1';sugerirKmPorLocalidad()">
+              <input type="text" id="alq-localidad" list="localidades-list" placeholder="Ej: Rafaela, Susana, Bella Italia..." oninput="document.getElementById('alq-disponibilidad-aviso').dataset.localidadTouched='1';sugerirKmPorLocalidad();avisoPisaSalida()">
               <datalist id="localidades-list"></datalist>
             </div>
             <div id="alq-extras-box" style="display:none;margin-top:.6rem">
@@ -7151,6 +7157,93 @@ function equipoLibreSinReservaFutura(eq, alquileresArr){
 }
 function hayEquipoLibreDeTipo(tipo){ return EQUIPOS.some(eq=>eq.tipo===tipo && equipoLibreSinReservaFutura(eq)); }
 function solicitudSePuedeCubrir(s){ return tiposDeSolicitud(s).some(t=>hayEquipoLibreDeTipo(t.tipo)); }
+
+/* ══ CUÁNDO SE VA A LIBERAR UN EQUIPO ════════════════════════════════════════
+   Hasta acá la app solo sabía contestar "hay equipo libre" o "no hay equipo libre".
+   Eso no alcanza para atender el teléfono: cuando Papel Técnica pregunta si tengo
+   algo para el lunes, lo que necesito saber es CUÁNDO vuelve la máquina que está
+   afuera, para poder decirle "el martes la tenés" en vez de "no tengo".
+   El aviso del momento en que se libera (beep + cartel, ver
+   avisarSolicitudesEsperaCubiertasNuevas) sigue estando, pero depende de tener la
+   app abierta justo en ese instante. Esto es lo contrario: se calcula siempre, y
+   deja ver la fecha con anticipación.
+
+   Devuelve {fecha, cliente, equipo, alqId, vencida} o null si no se puede saber
+   (alquiler abierto sin fecha de vuelta, o equipo en taller). null NO es "nunca":
+   es "no tengo con qué contestar", y así se muestra. */
+function proximaLiberacionEq(eq){
+  if(!eq) return null;
+  if(eq.estado==='taller') return null;      // no hay fecha de salida de taller
+  const hoy = hoyISO();
+  // Lo que todavía tiene comprometida a esta máquina: alquileres vivos que aún no
+  // volvieron físicamente. Un alquiler ya retirado no la compromete más.
+  const comprometidos = ALQUILERES.filter(a=>{
+    if(a.equipoId!==eq.id || a.activo===false || a.modoHoras) return false;
+    const yaVolvio = a.retiroFisicoFecha && !a.pickupPendiente
+      && fechaValidaApp(a.retiroFisicoFecha) && a.retiroFisicoFecha<=hoy;
+    return !yaVolvio;
+  });
+  if(!comprometidos.length) return {fecha:hoy, cliente:'', equipo:eq, alqId:null, vencida:false};
+  // Si hay varios encadenados, la máquina recién queda libre cuando termina el último.
+  let ultima='', duenio=null;
+  for(const a of comprometidos){
+    if(a.abierto && !a.retiradoAnticipado) return null;   // sin fecha de fin, no se sabe
+    const fin = a.retiradoAnticipado || a.fin;
+    if(!fin || !fechaValidaApp(fin)) return null;
+    if(fin>ultima){ ultima=fin; duenio=a; }
+  }
+  return {
+    fecha: diaSiguiente(ultima),
+    cliente: (duenio&&duenio.cliente)||'',
+    equipo: eq,
+    alqId: (duenio&&duenio.id)||null,
+    // El alquiler ya terminó pero la máquina no volvió: la fecha es la que figura,
+    // pero no es una promesa — primero hay que ir a buscarla.
+    vencida: ultima < hoy
+  };
+}
+// La más temprana entre todos los equipos de ese tipo.
+function proximaLiberacionTipo(tipo){
+  let mejor=null;
+  EQUIPOS.filter(e=>e.tipo===tipo).forEach(eq=>{
+    const l=proximaLiberacionEq(eq);
+    if(!l) return;
+    if(!mejor || l.fecha<mejor.fecha) mejor=l;
+  });
+  return mejor;
+}
+/* Para una solicitud en espera: la primera máquina que se libera de CUALQUIERA de los
+   tipos que el cliente aceptó. Agrega "llegaATiempo" comparando con la fecha que pidió,
+   que es lo que decide si le puedo decir que sí por teléfono. */
+function proximaLiberacionSolicitud(s){
+  let mejor=null;
+  tiposDeSolicitud(s).forEach(t=>{
+    const l=proximaLiberacionTipo(t.tipo);
+    if(!l) return;
+    if(!mejor || l.fecha<mejor.fecha) mejor=Object.assign({}, l, {tipoNombre:t.tipoNombre});
+  });
+  if(!mejor) return null;
+  mejor.llegaATiempo = !!(s.fechaDeseada && fechaValidaApp(s.fechaDeseada) && mejor.fecha<=s.fechaDeseada);
+  return mejor;
+}
+/* La línea que se muestra en la solicitud cuando todavía no hay equipo libre.
+   Sigue diciendo que no hay —eso no cambió—, pero ahora agrega cuándo vuelve uno,
+   que es lo que se necesita para contestarle al cliente. Vacío si ya se puede cubrir. */
+function textoLiberacionSolicitud(s){
+  if(solicitudSePuedeCubrir(s)) return '';
+  const l=proximaLiberacionSolicitud(s);
+  const fD=str=>{const[,m,d]=String(str).split('-');return`${d}/${m}`;};
+  if(!l) return 'Todavía no hay equipo libre de lo que pidió, y ninguno tiene fecha de vuelta';
+  const quien = l.cliente ? `${l.equipo.nombre}, vuelve de ${l.cliente}` : l.equipo.nombre;
+  if(l.vencida) return `Todavía no hay equipo libre — tendría que haber vuelto el ${fD(l.fecha)} (${quien}) y no volvió`;
+  return `Todavía no hay equipo libre — se libera el ${fD(l.fecha)} (${quien})`;
+}
+// Cuántos días faltan para que se libere algo de lo que pidió (null si no se sabe).
+function diasHastaLiberacionSolicitud(s){
+  const l=proximaLiberacionSolicitud(s);
+  if(!l) return null;
+  return Math.round((new Date(l.fecha+'T00:00:00') - new Date(hoyISO()+'T00:00:00'))/86400000);
+}
 // Una solicitud en espera no se vence sola: queda "pendiente" hasta que alguien la cierre a
 // mano ("Marcar atendida" / "Se cubrió por otro medio"). Pero sí ENVEJECE, y si no se avisa
 // termina pasando lo del caso CORMORAN: pedían el equipo para el 20/08, se liberó un mes
@@ -7288,6 +7381,75 @@ function horaAvisoEntrega(a){
 // ¿Este alquiler sale del depósito antes de arrancar, y todavía no arrancó?
 function saleAntesYNoArranco(a, hoy){
   return !!a.salidaDeposito && a.inicio > (hoy || hoyISO());
+}
+
+/* ══ DOS MÁQUINAS SALIENDO A LA MISMA HORA ════════════════════════════════════
+   El camión es uno solo y el personal de taller también. Si quedan dos alquileres
+   cargados para salir el mismo día a las 8, nadie se entera hasta el día de la
+   entrega, con el cliente esperando. Hasta acá la app guardaba cada alquiler sin
+   mirar qué más había ese día.
+
+   NO se bloquea, y es a propósito: dos máquinas al MISMO destino sí pueden salir
+   juntas en el mismo viaje — es justo lo que Rosso cobra como flete pesado (ver
+   rossoCobraComoPesada). Lo que faltaba era verlo ANTES de guardar, no después.
+
+   Se compara el momento real de SALIDA, no el inicio del alquiler: si el equipo
+   se carga el día anterior a las 17, el horario que se pisa es ese.
+   Ver fechaAvisoEntrega / horaAvisoEntrega. (Mateo, 19/11/26.) */
+const MINUTOS_ENTRE_SALIDAS = 60;
+function minutosDeHora(h){
+  const m = /^(\d{1,2}):(\d{2})$/.exec(String(h||'').trim());
+  if(!m) return null;
+  const hh=+m[1], mm=+m[2];
+  if(hh>23 || mm>59) return null;
+  return hh*60 + mm;
+}
+// Alquileres ya cargados que salen el mismo día y dentro de la misma franja.
+// excluirIds: los que se están editando, para que uno no se pise consigo mismo.
+function salidasQueSePisan(fecha, hora, excluirIds, alquileresArr){
+  const min = minutosDeHora(hora);
+  if(!fecha || min==null) return [];
+  const excl = Array.isArray(excluirIds) ? excluirIds : (excluirIds!=null ? [excluirIds] : []);
+  return (alquileresArr||ALQUILERES).filter(a=>{
+    if(!a || a.activo===false || a.modoHoras || a.pausado) return false;
+    if(excl.includes(a.id)) return false;
+    // Ese ya salió del depósito: el viaje está hecho, no hay nada que pisar.
+    if(a.entregaFisicaFecha) return false;
+    if(fechaAvisoEntrega(a)!==fecha) return false;
+    const m2 = minutosDeHora(horaAvisoEntrega(a));
+    if(m2==null) return false;
+    return Math.abs(m2-min) < MINUTOS_ENTRE_SALIDAS;
+  });
+}
+// Dos salidas al mismo destino no son un problema: van en el mismo viaje.
+function mismoDestinoQueSalidas(localidad, lista){
+  const L = String(localidad||'').trim().toLowerCase();
+  if(!L || !lista.length) return false;
+  return lista.every(a=>String(a.localidad||'').trim().toLowerCase()===L);
+}
+/* El texto del aviso. Devuelve '' si no se pisa nada.
+   modo 'corto' para el cartelito del formulario, 'largo' para el cuadro de confirmar. */
+function textoSalidasQuePisan(fecha, hora, lista, localidad, modo){
+  if(!lista.length) return '';
+  const fD=str=>{const[,m,d]=String(str).split('-');return`${d}/${m}`;};
+  const juntos = mismoDestinoQueSalidas(localidad, lista);
+  const det = lista.map(a=>`${a.equipoNombre||'equipo'} — ${a.cliente}${a.localidad?' ('+a.localidad+')':''} a las ${horaAvisoEntrega(a)}`);
+  if(modo==='largo'){
+    const cab = lista.length===1
+      ? `Ya hay otro alquiler que sale el ${fD(fecha)} a esa misma hora:`
+      : `Ya hay ${lista.length} alquileres que salen el ${fD(fecha)} a esa misma hora:`;
+    const cierre = juntos
+      ? `\n\nVan al mismo destino (${localidad}), así que pueden salir en el mismo viaje. Acordate de cobrar un solo flete si los mandás juntos.`
+      : `\n\nSon destinos distintos: el camión no puede estar en los dos lugares a la vez. Conviene correr una de las dos horas.`;
+    return `${cab}\n\n• ${det.join('\n• ')}${cierre}`;
+  }
+  const cab = lista.length===1
+    ? `Ya hay otro alquiler saliendo el ${fD(fecha)} a esa hora`
+    : `Ya hay ${lista.length} alquileres saliendo el ${fD(fecha)} a esa hora`;
+  const cierre = juntos
+    ? ` — van al mismo destino, pueden ir en el mismo viaje (un solo flete).`
+    : ` — son destinos distintos, el camión no puede estar en los dos lados.`;
+  return `${cab}: ${det.join(' · ')}${cierre}`;
 }
 
 function pendientesDeEntrega(){
@@ -7697,11 +7859,22 @@ function renderDashboard(){
      Ahora también entran las que tienen fecha pedida cerca (o ya pasada), aunque no
      haya equipo. Las que no tienen fecha y no se pueden cubrir siguen sin molestar:
      ésas se miran cuando uno quiere. (Mateo, 13/11/26.) */
+  /* ── Y LAS QUE ESTÁN POR PODERSE CUBRIR ──────────────────────────────────
+     Avisar recién cuando el equipo YA está libre llega tarde: para ese entonces la
+     máquina está parada en el depósito y el cliente, si tenía apuro, ya alquiló en
+     otro lado. Lo que sirve es verlo venir. Así que también entran las solicitudes
+     cuya máquina vuelve dentro de los próximos días —aunque el cliente no haya dicho
+     para cuándo la quería— y se muestra la fecha de vuelta, que es lo que hace falta
+     para levantar el teléfono y ofrecérsela. (Mateo, 19/11/26.) */
   const DIAS_AVISO_SOL_ESPERA = 4;
+  const DIAS_AVISO_LIBERACION = 7;
   const solEsperaCubribles = (typeof SOLICITUDES_ESPERA!=='undefined')
     ? SOLICITUDES_ESPERA.filter(s=>{
         if(s.estado!=='pendiente') return false;
         if(solicitudSePuedeCubrir(s)) return true;
+        // Se libera pronto algo de lo que pidió: hay que avisarlo ya.
+        const faltanLib = diasHastaLiberacionSolicitud(s);
+        if(faltanLib!=null && faltanLib<=DIAS_AVISO_LIBERACION) return true;
         if(!s.fechaDeseada || !fechaValidaApp(s.fechaDeseada)) return false;
         // Cuántos días faltan para la fecha que pidió el cliente.
         const faltan = Math.round((new Date(s.fechaDeseada+'T00:00:00') - new Date(hoyISO()+'T00:00:00'))/86400000);
@@ -7733,15 +7906,21 @@ function renderDashboard(){
       // Las dos situaciones son muy distintas y no se pueden ver iguales: en una hay
       // algo para ofrecer YA, en la otra todavía hay que conseguirlo.
       const sePuede = solicitudSePuedeCubrir(s);
-      const etiqueta = sePuede ? 'Llamar' : 'Conseguirle equipo';
-      const colorEt  = avisoVieja ? 'var(--rojo)' : (sePuede ? '#00838f' : '#b3791f');
+      // Si todavía no hay equipo libre pero se sabe cuándo vuelve uno, eso ya es algo
+      // para contestarle al cliente: la etiqueta pasa a "Avisarle la fecha" y el color
+      // deja de ser el de "hay que conseguirlo de alguna parte".
+      const lib = sePuede ? null : proximaLiberacionSolicitud(s);
+      const libTxt = textoLiberacionSolicitud(s);
+      const etiqueta = sePuede ? 'Llamar' : (lib && !lib.vencida ? 'Avisarle la fecha' : 'Conseguirle equipo');
+      const colorEt  = avisoVieja ? 'var(--rojo)' : (sePuede ? '#00838f' : (lib && !lib.vencida ? '#0277bd' : '#b3791f'));
       return `<div class="pago-item" style="border-color:${colorEt}33;background:${colorEt}08;cursor:pointer;margin-bottom:.5rem" onclick="cargarAlquilerDesdeSolicitudEspera(${s.id})">
         <div style="width:11px;height:11px;border-radius:50%;background:${colorEt};flex-shrink:0"></div>
         <div class="pago-info">
           <div class="pago-concepto" style="font-size:1rem">${tiposTxt}</div>
           <div class="pago-meta" style="font-size:.85rem;margin-top:3px">${s.cliente}${s.telefono?' · '+s.telefono:''}</div>
           ${detalleS?`<div class="pago-meta" style="font-size:.78rem;margin-top:2px;color:var(--txt3)">${detalleS}</div>`:''}
-          ${!sePuede&&!avisoVieja?`<div style="font-size:.78rem;margin-top:3px;color:#b3791f;font-weight:700">Todavía no hay equipo libre de lo que pidió</div>`:''}
+          ${!sePuede&&!avisoVieja&&libTxt?`<div style="font-size:.78rem;margin-top:3px;color:${lib&&!lib.vencida?'#0277bd':'#b3791f'};font-weight:700">${libTxt}</div>`:''}
+          ${!sePuede&&!avisoVieja&&lib&&lib.llegaATiempo&&!lib.vencida?`<div style="font-size:.78rem;margin-top:2px;color:var(--verde);font-weight:700">Llega para el ${fDS(s.fechaDeseada)} que pidió — se le puede confirmar</div>`:''}
           ${avisoVieja?`<div style="font-size:.78rem;margin-top:3px;color:var(--rojo);font-weight:700">⚠️ ${avisoVieja} — confirmá antes de ofrecerlo</div>`:''}
         </div>
         <span style="font-size:.75rem;font-weight:700;background:${colorEt}22;color:${colorEt};padding:2px 7px;border-radius:10px;white-space:nowrap">${etiqueta}</span>
@@ -15254,6 +15433,8 @@ function toggleSalidaAntesAlq(){
 
 // Dice en castellano qué va a pasar, para no tener que deducirlo de dos fechas sueltas.
 function avisoSalidaAntes(){
+  // Cambiar el día/hora de carga cambia el momento en que sale del depósito.
+  if(typeof avisoPisaSalida==='function') avisoPisaSalida();
   const el = document.getElementById('alq-salida-aviso');
   if(!el) return;
   if(!document.getElementById('alq-salida-antes-check').checked){ el.textContent=''; return; }
@@ -15268,6 +15449,41 @@ function avisoSalidaAntes(){
   }
   el.innerHTML = `Taller lo va a ver en <b>Para entregar</b> el ${fechaCortaSalida(f)} a las ${h}. `
     + `El alquiler igual arranca el ${fechaCortaSalida(desde)} y se factura desde esa fecha.`;
+}
+
+/* Cuándo y a qué hora sale REALMENTE del depósito el alquiler que se está cargando.
+   Es la misma cuenta que fechaAvisoEntrega/horaAvisoEntrega hacen sobre un alquiler ya
+   guardado, pero leída del formulario. Una sola función para que el aviso de pantalla y
+   el chequeo del guardado no puedan discrepar. */
+function salidaDelFormularioAlq(){
+  const desde = document.getElementById('alq-desde')?.value || '';
+  const chk = document.getElementById('alq-salida-antes-check');
+  if(chk && chk.checked){
+    const f = document.getElementById('alq-salida-fecha').value;
+    if(f && desde && f < desde){
+      return {fecha:f, hora:document.getElementById('alq-salida-hora').value || '17:00'};
+    }
+  }
+  return {fecha:desde, hora:document.getElementById('alq-hora-entrega')?.value || '08:00'};
+}
+// El cartelito que aparece debajo de la hora mientras se carga el alquiler.
+function avisoPisaSalida(){
+  const el = document.getElementById('alq-pisa-salida-aviso');
+  if(!el) return;
+  // En "por horas" (Expreso Rivadavia) el equipo va y vuelve al toque: no ocupa camión.
+  if(typeof alqPerModo!=='undefined' && alqPerModo==='horas'){ el.style.display='none'; return; }
+  const {fecha, hora} = salidaDelFormularioAlq();
+  const lista = salidasQueSePisan(fecha, hora, alqEditandoIds);
+  if(!lista.length){ el.style.display='none'; el.innerHTML=''; return; }
+  const localidad = document.getElementById('alq-localidad')?.value.trim() || '';
+  const juntos = mismoDestinoQueSalidas(localidad, lista);
+  // Mismo destino es un dato útil, no un problema: va en azul, no en naranja.
+  const color = juntos ? '#0277bd' : '#b3791f';
+  el.style.display='block';
+  el.style.background = color+'14';
+  el.style.border = '1px solid '+color+'55';
+  el.style.color = color;
+  el.innerHTML = (juntos?'':'⚠️ ') + textoSalidasQuePisan(fecha, hora, lista, localidad, 'corto');
 }
 
 function abrirModalAlq(){
@@ -15289,6 +15505,9 @@ function abrirModalAlq(){
   document.getElementById('alq-otro-valor').value='';
   document.getElementById('alq-localidad').value='';
   document.getElementById('alq-localidad-box').style.display='none';
+  // Que el aviso de salidas pisadas no quede colgado del alquiler anterior.
+  const avPisa=document.getElementById('alq-pisa-salida-aviso');
+  if(avPisa){ avPisa.style.display='none'; avPisa.innerHTML=''; }
   alqFlete2Activo = false;
   alqFleteMode2 = null;
   ['sin','alej','rosso','otro'].forEach(x=>{ const b=document.getElementById('alq2-rb-'+x); if(b) b.classList.remove('sel'); });
@@ -15988,6 +16207,8 @@ function finFacturableAlq(a){
 }
 
 function calcDiasAlq(){
+  // Cualquier cambio de fecha u hora puede hacer que la salida se pise con otra.
+  if(typeof avisoPisaSalida==='function') avisoPisaSalida();
   const desde=document.getElementById('alq-desde').value;
   let hasta=document.getElementById('alq-hasta').value;
   const res=document.getElementById('alq-dias-resumen');
@@ -16198,6 +16419,25 @@ async function guardarAlq(){
       const eq=EQUIPOS.find(e=>e.id===row.eqId);
       alert(`No se puede guardar: ${eq?eq.nombre:'un equipo'} ya está alquilado a ${conflicto.cliente} del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}. Elegí otro equipo u otras fechas.`);
       return;
+    }
+  }
+
+  /* ── ¿SE PISA CON OTRA SALIDA? ──────────────────────────────────────────────
+     Último filtro antes de guardar, por si el cartel del formulario pasó
+     desapercibido o la hora se cambió al final. NO bloquea: dos máquinas al mismo
+     destino pueden salir en el mismo viaje. Solo obliga a mirarlo y decidir.
+     Ver salidasQueSePisan(). */
+  if(alqPerModo!=='horas'){
+    const salida = salidaDelFormularioAlq();
+    const pisan = salidasQueSePisan(salida.fecha, salida.hora, alqEditandoIds);
+    if(pisan.length){
+      const juntos = mismoDestinoQueSalidas(localidad, pisan);
+      const txt = textoSalidasQuePisan(salida.fecha, salida.hora, pisan, localidad, 'largo');
+      const ok = await confirmSiNo(
+        `${txt}\n\n¿Lo guardás con esta hora igual?`,
+        {si: juntos ? 'Salen juntos, guardar' : 'Guardar igual', no:'Volver y cambiar la hora'}
+      );
+      if(!ok){ document.getElementById('alq-hora-entrega').focus(); return; }
     }
   }
 
@@ -16709,6 +16949,9 @@ function editarAlq(id){
   document.getElementById('alq-solicitante').value = primero.solicitante||'';
   calcTotalAlq();
   actualizarDisponibilidadAlq();
+  // Recién acá está cargada la localidad: sin esto, el aviso de salidas pisadas se
+  // armaría sin destino y diría "son destinos distintos" aunque vayan al mismo lugar.
+  avisoPisaSalida();
 }
 
 function mesLabel(ym){
@@ -18161,17 +18404,40 @@ function sumarMinHHMM(hhmm, mins){
    hora de más a la factura del mes. Esto las encuentra para poder revisarlas.
    Se agrupan por fecha + hora de salida: dos salidas reales no pueden arrancar el
    mismo día en el mismo minuto. (Mateo, 11/11/26.) */
+/* Antes esto solo juntaba las que caían en el MISMO minuto exacto. Las dos del
+   18/11/26 salieron 13:47 y 13:48 y no las vio ninguna: un minuto de diferencia
+   alcanzaba para esquivar el control. Ahora agrupa las que están a menos de
+   MIN_SALIDAS_GEMELAS minutos — el mínimo que se cobra son 15, así que dos salidas
+   de verdad no pueden estar pegadas. (Mateo, 19/11/26.) */
 function salidasDuplicadasRiv(){
-  const porClave = {};
+  const porFecha = {};
   (PLANILLA_RIV||[]).forEach(r=>{
-    if(!r.fecha || !r.horaSalida) return;
-    const k = r.fecha + ' ' + r.horaSalida;
-    (porClave[k] = porClave[k] || []).push(r);
+    if(!r.fecha || !r.horaSalida || minutosDeHora(r.horaSalida)==null) return;
+    (porFecha[r.fecha] = porFecha[r.fecha] || []).push(r);
   });
-  return Object.keys(porClave)
-    .filter(k => porClave[k].length > 1)
-    .sort().reverse()
-    .map(k => ({clave:k, regs:porClave[k]}));
+  const grupos = [];
+  Object.keys(porFecha).sort().reverse().forEach(f=>{
+    const regs = porFecha[f].slice().sort((a,b)=>minutosDeHora(a.horaSalida)-minutosDeHora(b.horaSalida));
+    let racha = [regs[0]];
+    for(let i=1;i<regs.length;i++){
+      // Se compara contra la anterior, no contra la primera: así tres salidas
+      // encadenadas de a pocos minutos quedan en un solo grupo.
+      if(minutosDeHora(regs[i].horaSalida) - minutosDeHora(regs[i-1].horaSalida) <= MIN_SALIDAS_GEMELAS){
+        racha.push(regs[i]);
+      } else {
+        if(racha.length>1) grupos.push(racha);
+        racha = [regs[i]];
+      }
+    }
+    if(racha.length>1) grupos.push(racha);
+  });
+  return grupos.map(g=>({
+    clave: g[0].fecha + ' ' + g[0].horaSalida,
+    fecha: g[0].fecha,
+    desde: g[0].horaSalida,
+    hasta: g[g.length-1].horaSalida,
+    regs: g
+  }));
 }
 function bloqueDuplicadosRiv(){
   if(esTallerVista()) return '';
@@ -18179,7 +18445,9 @@ function bloqueDuplicadosRiv(){
   if(!grupos.length) return '';
   const fmtD = s => String(s).split('-').reverse().join('/');
   const filas = grupos.map(g=>{
-    const [f, h] = g.clave.split(' ');
+    const f = g.fecha;
+    // Si cayeron en el mismo minuto se dice así; si están a pocos minutos, el rango.
+    const h = g.desde===g.hasta ? `a las ${g.desde}` : `entre las ${g.desde} y las ${g.hasta}`;
     const facturado = g.regs.some(r=>r.mesFacturado);
     const detalle = g.regs.map(r=>{
       const datos = [r.lugar||'sin lugar', r.responsable||'sin responsable',
@@ -18193,7 +18461,7 @@ function bloqueDuplicadosRiv(){
         </div>`;
     }).join('');
     return `<div style="margin-bottom:.6rem">
-      <div style="font-size:.82rem;font-weight:700;color:var(--txt)">${fmtD(f)} a las ${h} — ${g.regs.length} salidas iguales</div>
+      <div style="font-size:.82rem;font-weight:700;color:var(--txt)">${fmtD(f)} ${h} — ${g.regs.length} salidas pegadas</div>
       ${detalle}
       ${facturado?`<div style="font-size:.74rem;color:var(--rojo);margin-top:3px">Este mes ya está facturado. Si hay que sacar una, primero desmarcá el mes más abajo, borrala y volvé a facturarlo.</div>`:''}
     </div>`;
@@ -18203,15 +18471,82 @@ function bloqueDuplicadosRiv(){
         ${grupos.length} posible${grupos.length!==1?'s':''} salida${grupos.length!==1?'s':''} duplicada${grupos.length!==1?'s':''}
       </div>
       <div style="font-size:.78rem;color:var(--txt2);line-height:1.5;margin-bottom:8px">
-        Dos salidas cargadas el mismo día a la misma hora. Suele ser el botón tocado dos veces — y cada una se cobra aparte.
-        Revisalas: si una sobra, borrala.
+        Dos salidas cargadas el mismo día con pocos minutos de diferencia. El mínimo que se cobra son 15 minutos,
+        así que no pueden ser dos salidas de verdad: suele ser el botón tocado dos veces, o la hora que quedó vieja
+        en pantalla. Cada una se cobra aparte. Revisalas: si una sobra, borrala; si la hora está mal, corregila con el lápiz.
       </div>
       ${filas}
     </div>`;
 }
+/* ══ LA HORA DE SALIDA SE QUEDABA CONGELADA ═══════════════════════════════════
+   El campo "hora salida" se autocompletaba UNA sola vez, cuando se dibujaba la
+   pantalla, y de ahí en más no se tocaba nunca. Taller deja la Planilla Rivadavia
+   abierta todo el día en la PC del galpón: registraban una salida a las 13:47, el
+   campo se volvía a llenar con 13:47 — y la salida siguiente, dos horas después, se
+   guardaba con esa misma hora vieja. Así quedaron las dos del 18/11/26, 13:47 y
+   13:48, cuando entre una y otra pasaron horas.
+
+   El mes cerraba bien (cada salida cobra su media hora igual), pero los horarios de
+   la planilla quedaban escritos mal, que es el papel que mira el cliente.
+
+   No era la demora de la sincronización: el dato salía mal de la PC de taller antes
+   de viajar a ningún lado. Ahora la hora puesta por la app se vuelve a sellar cada
+   vez que se mira la pantalla. Si alguien la escribió a mano, no se toca más — eso
+   es un dato cargado a propósito. (Mateo, 19/11/26.) */
+function sellarHoraSalidaRiv(){
+  const inp=document.getElementById('riv-hsalida');
+  if(!inp) return;
+  if(inp.value && inp.dataset.autoRiv!=='1') return;   // escrita a mano: intocable
+  inp.value = horaActualHHMM();
+  inp.dataset.autoRiv = '1';
+}
+// Lo mismo con la fecha: la pantalla abierta desde ayer seguía ofreciendo ayer.
+function sellarFechaRiv(){
+  const inp=document.getElementById('riv-fecha');
+  if(!inp) return;
+  if(inp.value && inp.dataset.autoRiv!=='1') return;
+  inp.value = hoyISO();
+  inp.dataset.autoRiv = '1';
+}
+// Alguien tocó el campo: a partir de acá manda lo que escribió, no el reloj.
+function marcarRivEscritoAMano(id){
+  const inp=document.getElementById(id);
+  if(inp) inp.dataset.autoRiv='0';
+}
+// Mientras la Planilla Rivadavia esté a la vista, el reloj del formulario corre.
+// Sin esto, volver a sellar solo al dibujar la pantalla no alcanza: la pantalla se
+// dibuja una vez y se queda ahí toda la tarde.
+function latidoRelojRiv(){
+  const c=document.getElementById('riv-cont');
+  if(!c || c.offsetParent===null) return;   // no está a la vista: no hay nada que sellar
+  sellarFechaRiv();
+  sellarHoraSalidaRiv();
+}
+setInterval(latidoRelojRiv, 20000);
+document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') latidoRelojRiv(); });
+window.addEventListener('focus', latidoRelojRiv);
+
+// Cuántos minutos quedó atrasada la hora cargada respecto del reloj. Solo tiene
+// sentido para HOY: una salida de ayer se carga a mano y no hay nada que comparar.
+const MIN_DESFASE_RIV = 20;
+function atrasoHoraSalidaRiv(fecha, hs){
+  if(fecha!==hoyISO()) return 0;
+  const m=minutosDeHora(hs), ahora=minutosDeHora(horaActualHHMM());
+  if(m==null || ahora==null) return 0;
+  return ahora - m;
+}
+// Dos salidas pegadas no son dos salidas: el mínimo que se cobra son 15 minutos, así
+// que el autoelevador no puede salir dos veces de verdad con 5 minutos de diferencia.
+const MIN_SALIDAS_GEMELAS = 5;
+function esGemelaRiv(r, fecha, hs){
+  if(!r || r.fecha!==fecha || !r.horaSalida) return false;
+  const a=minutosDeHora(r.horaSalida), b=minutosDeHora(hs);
+  return a!=null && b!=null && Math.abs(a-b) <= MIN_SALIDAS_GEMELAS;
+}
+
 async function registrarSalidaRiv(){
   const fecha=document.getElementById('riv-fecha').value;
-  const hs=document.getElementById('riv-hsalida').value;
+  let hs=document.getElementById('riv-hsalida').value;
   const lugar=document.getElementById('riv-lugar').value.trim();
   const resp=document.getElementById('riv-resp').value.trim();
   if(!fecha){ alert('Poné la fecha'); return; }
@@ -18226,11 +18561,29 @@ async function registrarSalidaRiv(){
      Es exactamente lo que pasó el 10/11/26 a las 15:11 (y ya había pasado en octubre).
      Acá se corta: si ya hay una salida ese día a esa hora, se pregunta.
      (Mateo, 11/11/26.) */
-  const gemelo = (PLANILLA_RIV||[]).find(r=>r.fecha===fecha && r.horaSalida===hs);
+  /* ── Y SI ADEMÁS LA HORA QUEDÓ VIEJA ──────────────────────────────────────
+     Última red antes de guardar, por si el campo quedó atrasado igual (una PC con
+     la app vieja cargada, la pantalla congelada, lo que sea). Si son las 16:05 y se
+     está cargando una salida de HOY a las 13:47, eso hay que preguntarlo. */
+  const atraso = atrasoHoraSalidaRiv(fecha, hs);
+  if(atraso >= MIN_DESFASE_RIV){
+    const ahora = horaActualHHMM();
+    const ponerAhora = await confirmSiNo(
+      `Son las ${ahora} y la salida se está cargando a las ${hs} — ${atraso} minutos antes.\n\n`+
+      `Si el equipo sale recién ahora, esa hora quedó vieja (pasa cuando la pantalla estuvo abierta un rato).`,
+      {si:`Sale ahora — poner ${ahora}`, no:`No, salió a las ${hs}`});
+    if(ponerAhora){
+      hs = ahora;
+      const inp=document.getElementById('riv-hsalida');
+      if(inp){ inp.value=ahora; inp.dataset.autoRiv='1'; }
+    }
+  }
+
+  const gemelo = (PLANILLA_RIV||[]).find(r=>esGemelaRiv(r, fecha, hs));
   if(gemelo){
     const abierto = !gemelo.horaEntrada;
     const ok = await confirmSiNo(
-      `Ya hay una salida cargada el ${String(fecha).split('-').reverse().join('/')} a las ${hs}`+
+      `Ya hay una salida cargada el ${String(fecha).split('-').reverse().join('/')} a las ${gemelo.horaSalida}`+
       (gemelo.lugar?` (${gemelo.lugar}`:'')+(gemelo.responsable?`, ${gemelo.responsable}`:'')+(gemelo.lugar?')':'')+
       `${abierto?' y todavía está en la calle':''}.\n\n`+
       `¿Es OTRA salida distinta, o se tocó el botón dos veces?`,
@@ -18251,7 +18604,13 @@ async function registrarSalidaRiv(){
   // en renderRivadavia (fecha=hoy, salida=hora actual del próximo equipo que salga).
   document.getElementById('riv-lugar').value='';
   document.getElementById('riv-resp').value='';
-  document.getElementById('riv-hsalida').value='';
+  // Vuelven a quedar "a cargo del reloj": la hora escrita a mano valía para ESA salida,
+  // no para la próxima. Si no se devolviera el campo a automático, la hora corregida a
+  // mano se quedaría pegada y la siguiente salida saldría otra vez con la hora vieja.
+  ['riv-hsalida','riv-fecha'].forEach(id=>{
+    const inp=document.getElementById(id);
+    if(inp){ inp.value=''; inp.dataset.autoRiv='1'; }
+  });
   renderRivadavia();
 }
 
@@ -18267,6 +18626,43 @@ function editarSalidaRiv(id){
   reg.editadoEn = Date.now();
   guardarPlanillaRiv();
   renderRivadavia();
+}
+
+/* Corregir los horarios de un registro YA CERRADO. Hasta acá, una fila con la hora mal
+   escrita solo se podía arreglar borrándola entera y cargándola de nuevo — y si el mes
+   estaba facturado, ni eso. Ver sellarHoraSalidaRiv para por qué hacía falta.
+   El mes facturado sigue sin tocarse: primero hay que desmarcarlo. */
+function editarHorariosRiv(id){
+  const reg=PLANILLA_RIV.find(r=>r.id===id);
+  if(!reg) return;
+  if(reg.mesFacturado){
+    alert('Ese mes ya está facturado. Si hay que corregir un horario, primero desmarcá el mes como facturado más abajo.');
+    return;
+  }
+  const valida = v => /^\d{1,2}:\d{2}$/.test(v) && minutosDeHora(v)!=null;
+  const hs=prompt('Hora de SALIDA (HH:MM):', reg.horaSalida||'');
+  if(hs===null) return;
+  if(!valida(hs.trim())){ alert('Hora inválida. Usá HH:MM, ej: 13:05'); return; }
+  const he=prompt('Hora de ENTRADA (HH:MM). Dejala vacía si todavía está en la calle:', reg.horaEntrada||'');
+  if(he===null) return;
+  const heLimpia=he.trim();
+  if(heLimpia && !valida(heLimpia)){ alert('Hora inválida. Usá HH:MM, ej: 14:15'); return; }
+  if(heLimpia && minutosDeHora(heLimpia) <= minutosDeHora(hs.trim())){
+    alert(`La entrada (${heLimpia}) tiene que ser posterior a la salida (${hs.trim()}).`);
+    return;
+  }
+  reg.horaSalida=hs.trim();
+  reg.horaEntrada=heLimpia || null;
+  reg.editadoPor = nombreUsuarioActual() || '';
+  reg.editadoEn = Date.now();
+  guardarPlanillaRiv();
+  renderRivadavia();
+  // Lo que se cobra sale de los horarios (salvo que haya un tiempo cargado a mano),
+  // así que conviene decir cómo quedó y no dejarlo para que lo descubra en la factura.
+  const mh=rivBloques(reg);
+  alert(`Quedó: salió ${reg.horaSalida}${reg.horaEntrada?' y volvió '+reg.horaEntrada:' (todavía en la calle)'}.\n\n`+
+        `Se cobra: ${mh} media${mh!==1?'s':''} hora${mh!==1?'s':''} = ${fmt(rivMontoReg(reg))}`+
+        (reg.bloquesManual?'\n\n(Este registro tiene el tiempo cargado a mano, así que el monto no cambia con los horarios.)':''));
 }
 
 // ── PASO 2: vuelve el equipo (cerrar el registro con la hora de entrada) ──
@@ -18417,11 +18813,10 @@ function quienRiv(r){
 function renderRivadavia(){
   const cont=document.getElementById('riv-cont');
   if(!cont) return;
-  // Fecha y hora de salida del formulario (paso 1) por defecto = ahora, si están vacíos.
-  const fechaInput=document.getElementById('riv-fecha');
-  if(fechaInput && !fechaInput.value) fechaInput.value=hoyISO();
-  const hsInput=document.getElementById('riv-hsalida');
-  if(hsInput && !hsInput.value) hsInput.value=horaActualHHMM();
+  // Fecha y hora de salida del formulario (paso 1): se vuelven a sellar con el reloj
+  // de ahora, salvo que las haya escrito alguien a mano. Ver sellarHoraSalidaRiv.
+  sellarFechaRiv();
+  sellarHoraSalidaRiv();
 
   const precioHora=rivPrecioHora();
   const fmtD=str=>{ if(!str) return '—'; const [y,m,d]=str.split('-'); return `${d}/${m}/${y.slice(2)}`; };
@@ -18512,8 +18907,17 @@ function renderRivadavia(){
       h+=`<tr style="border-top:1px solid var(--border2)${r.mesFacturado?';opacity:.7':''}">
         <td style="padding:5px 6px;white-space:nowrap">${fmtD(r.fecha)}</td>
         <td style="padding:5px 6px">${r.lugar||'—'}</td>
-        <td style="padding:5px 6px;white-space:nowrap">${r.horaSalida||'—'}</td>
-        <td style="padding:5px 6px;white-space:nowrap">${r.horaEntrada||'—'}</td>
+        ${/* Los horarios de un registro ya cerrado solo se podían arreglar borrándolo
+             entero y cargándolo de nuevo. Con la hora de salida quedando vieja en
+             pantalla (ver sellarHoraSalidaRiv) eso dejaba filas mal escritas sin forma
+             de corregirlas — y la planilla es el papel que ve el cliente. Ahora se
+             tocan y se editan, salvo que el mes ya esté facturado. */''}
+        <td style="padding:5px 6px;white-space:nowrap">${(r.mesFacturado||esTallerVista())
+          ? (r.horaSalida||'—')
+          : `<span onclick="editarHorariosRiv(${r.id})" title="Corregir los horarios" style="cursor:pointer;border-bottom:1px dotted var(--txt3)">${r.horaSalida||'—'}</span>`}</td>
+        <td style="padding:5px 6px;white-space:nowrap">${(r.mesFacturado||esTallerVista())
+          ? (r.horaEntrada||'—')
+          : `<span onclick="editarHorariosRiv(${r.id})" title="Corregir los horarios" style="cursor:pointer;border-bottom:1px dotted var(--txt3)">${r.horaEntrada||'—'}</span>`}</td>
         <td style="padding:5px 6px">${r.responsable||'—'}</td>
         ${esTallerVista()?'':`<td style="padding:5px 6px;color:var(--txt3);white-space:nowrap">${quienRivCorto(r)}</td>`}
         <td style="padding:5px 6px;text-align:right;white-space:nowrap;color:var(--txt2)">${mh}${r.bloquesManual?'<span title="Tiempo cargado a mano, no sale de los horarios" style="color:#b3791f"> ✎</span>':''}</td>
@@ -20791,9 +21195,15 @@ function renderSolicitudesEspera(){
     const tiposS=tiposDeSolicitud(s);
     const hayLibre = s.estado==='pendiente' && solicitudSePuedeCubrir(s);
     let badgeStyle,badgeTxt;
+    // Cuándo vuelve la primera máquina de lo que pidió — lo que hace falta para
+    // contestarle al cliente sin tener que ir a mirar el calendario. Ver
+    // proximaLiberacionSolicitud.
+    const libS = (s.estado==='pendiente' && !hayLibre) ? proximaLiberacionSolicitud(s) : null;
+    const libTxtS = s.estado==='pendiente' ? textoLiberacionSolicitud(s) : '';
     if(s.estado==='atendida'){ badgeStyle='background:var(--bg3);color:var(--txt3)'; badgeTxt='Atendida'; }
     else if(s.estado==='perdida'){ badgeStyle='background:var(--rojo)22;color:var(--rojo)'; badgeTxt='Perdida (otro medio)'; }
     else if(hayLibre){ badgeStyle='background:#00838f22;color:#00838f'; badgeTxt='Se puede cubrir ahora'; }
+    else if(libS && !libS.vencida){ badgeStyle='background:#0277bd22;color:#0277bd'; badgeTxt=`Se libera el ${fmtD(libS.fecha).slice(0,5)}`; }
     else{ badgeStyle='background:#8e24aa22;color:#8e24aa'; badgeTxt='Pendiente'; }
     // Badge de días: cuanto más larga la solicitud, más "peso" visual — para que salte a la
     // vista al priorizar a quién ofrecerle el próximo equipo libre.
@@ -20832,6 +21242,7 @@ function renderSolicitudesEspera(){
         ${s.cargadoPor?' · cargó '+s.cargadoPor:''}
         ${s.estado==='perdida'&&s.motivoPerdida?' · '+s.motivoPerdida:''}
       </div>
+      ${libTxtS?`<div style="font-size:.75rem;font-weight:700;color:${libS&&!libS.vencida?'#0277bd':'#b3791f'}">${libTxtS}${libS&&libS.llegaATiempo&&!libS.vencida?` — llega para el ${fmtD(s.fechaDeseada).slice(0,5)} que pidió`:''}</div>`:''}
       ${(()=>{const av=avisoSolicitudVieja(s); return av?`<div style="font-size:.75rem;color:var(--rojo);font-weight:700">⚠️ ${av} — si ya no sirve, cerrala con "Marcar atendida" o "Se cubrió por otro medio"</div>`:'';})()}
       ${/* OJO con .btn-lim: la clase trae width:100% fijo. Con "flex:0 0 auto" cada botón
             pedía el 100% del ancho de la fila y no podía achicarse, así que los tres juntos
