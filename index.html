@@ -824,6 +824,18 @@ if ('serviceWorker' in navigator) {
       <span style="font-size:.8rem;opacity:.9">Cargar &rarr;</span>
     </div>
 
+    <!-- EQUIPOS PARA RETIRAR (pickupPendiente). Mismo criterio que franja-taller: es un
+         ESTADO fijo, no un aviso que aparece una vez y se pierde si nadie estaba mirando
+         en ese momento — antes esto solo vivía en el beep/banner transitorio
+         (avisarRetirosPendientesNuevos) y en el acordeón "Para retirar" del Dashboard, así
+         que si taller no estaba con la pantalla abierta cuando oficina lo marcaba, se le
+         pasaba por alto (pasó con la Zoomlion de Bulacio, 20/11/26). Solo taller. -->
+    <div id="franja-retirar" onclick="irAParaRetirar()" style="display:none;align-items:center;gap:10px;padding:.65rem 1.5rem;cursor:pointer;font-size:.88rem;font-weight:700;color:#fff;background:var(--rojo)">
+      <span id="franja-retirar-txt"></span>
+      <span style="flex:1"></span>
+      <span style="font-size:.8rem;opacity:.9">Ver &rarr;</span>
+    </div>
+
     <!-- HOME / DASHBOARD -->
     <div class="screen active" id="screen-home">
       <div class="sec-title" style="margin-top:0;padding-top:0;">Buen día </div>
@@ -3720,6 +3732,8 @@ function avisarRetirosPendientesNuevos(previos, actuales){
     ? `Retiro pendiente: ${nuevos[0].equipoNombre} — ${nuevos[0].cliente}`
     : `${nuevos.length} retiros pendientes nuevos — ver "Para retirar"`;
   mostrarBannerAvisoRetiro(txt);
+  actualizarFranjaRetirar();
+  parpadearFranjaRetirar();
   if('Notification' in window && Notification.permission==='granted'){
     nuevos.forEach(a=>{
       try{ new Notification('Retiro pendiente', { body: `${a.equipoNombre} · ${a.cliente}` }); }catch(e){}
@@ -7458,6 +7472,10 @@ function pendientesDeEntrega(){
     a.activo!==false && a.entregaPendiente && !a.pausado && a.inicio && fechaAvisoEntrega(a)<=hoy);
 }
 
+function pendientesDeRetiro(){
+  return (ALQUILERES||[]).filter(a => a.activo!==false && a.pickupPendiente && !a.pausado);
+}
+
 function actualizarFranjaTaller(){
   const fr = document.getElementById('franja-taller');
   if(!fr) return;
@@ -7465,6 +7483,7 @@ function actualizarFranjaTaller(){
   // La de horómetros va siempre, sea cual sea el rol — se actualiza acá porque esta
   // función ya se llama desde goTo() y desde el dashboard.
   actualizarFranjaHorometro();
+  actualizarFranjaRetirar();
   if(!esTallerVista()){
     fr.style.display='none';
     document.title = 'Rentaz S.A.';
@@ -7527,6 +7546,57 @@ function irAHorometrosPendientes(){
   if(!dashCollapseOpen.horaspend) toggleDashCollapse('horaspend');
   const caja = document.getElementById('dc-horaspend');
   if(caja) setTimeout(()=>caja.scrollIntoView({block:'center', behavior:'smooth'}), 60);
+}
+
+/* EQUIPOS PARA RETIRAR (pickupPendiente) — franja fija, solo taller.
+   Mismo motivo que franja-taller: esto antes solo se avisaba con un beep/banner
+   transitorio (avisarRetirosPendientesNuevos) en el momento justo en que oficina lo
+   marcaba. Si taller no tenía la pantalla abierta en ese momento, no quedaba rastro
+   salvo el acordeón "Para retirar", colapsado por defecto — se podía pasar por alto
+   un equipo que hay que ir a buscar (pasó con la Zoomlion de Bulacio, 20/11/26). */
+function actualizarFranjaRetirar(){
+  const fr = document.getElementById('franja-retirar');
+  if(!fr) return;
+  if(!esTallerVista()){
+    fr.style.display='none';
+    return;
+  }
+  const pend = pendientesDeRetiro();
+  const n = pend.length;
+  if(!n){
+    fr.style.display='none';
+    fr.classList.remove('banner-blink');
+    return;
+  }
+  fr.style.display='flex';
+  const hoyD = new Date(hoyISO()+'T00:00:00');
+  const dias = pend.map(a=>{
+    if(!a.pickupPendienteDesde || !fechaValidaApp(a.pickupPendienteDesde)) return 0;
+    return Math.round((hoyD - new Date(a.pickupPendienteDesde+'T00:00:00'))/86400000);
+  });
+  const diasMax = Math.max(0, ...dias);
+  const equipos = n===1 ? '1 equipo' : `${n} equipos`;
+  document.getElementById('franja-retirar-txt').innerHTML = diasMax>0
+    ? `&#9888; ${equipos} para retirar &mdash; el m&aacute;s viejo hace ${diasMax} d&iacute;a${diasMax!==1?'s':''}`
+    : `&#9888; ${equipos} para retirar`;
+}
+function irAParaRetirar(){
+  goTo('home');
+  dashCollapseOpen.paraRetirar = true;
+  renderDashboard();
+  setTimeout(()=>{
+    const el = document.getElementById('dc-para-retirar');
+    if(el) el.scrollIntoView({block:'center', behavior:'smooth'});
+  }, 80);
+}
+// Parpadea un momento cuando se marca un retiro nuevo, igual que parpadearFranjaTaller.
+function parpadearFranjaRetirar(){
+  const fr = document.getElementById('franja-retirar');
+  if(!fr || fr.style.display==='none') return;
+  fr.classList.remove('banner-blink');
+  void fr.offsetWidth;
+  fr.classList.add('banner-blink');
+  setTimeout(()=>fr.classList.remove('banner-blink'), 6000);
 }
 
 // Parpadea un momento cuando entra uno nuevo, y despues queda fija.
@@ -11449,12 +11519,22 @@ function autoMarcarPendientesDeRetiro(){
     // Nunca salió del depósito: no hay nada que ir a buscar (ver nota de arriba).
     if(a.entregaPendiente) return;
     const fechaVenc = a.fechaRetiro || a.fin;
-    if(fechaVenc && fechaVenc>=AUTO_PENDIENTE_DESDE && fechaVenc<=hoyStr){
-      a.pickupPendiente=true;
-      a.pickupPendienteDesde=fechaVenc;
-      a.pickupPendientePor=null;   // quien aviso: solo lo pone avisarTallerRetiro
-      cambio=true;
+    if(!fechaVenc || fechaVenc<AUTO_PENDIENTE_DESDE || fechaVenc>hoyStr) return;
+    // Si el retiro es HOY, todavía no está vencido si no pasó la hora pactada — antes
+    // se marcaba apenas cambiaba la fecha, sin mirar la hora, así que un retiro de las
+    // 14:00 ya aparecía "para retirar" a las 9 de la mañana del mismo día (le pasó al
+    // Zoomlion de la Anónima el 20/11/26: taller confirmó que lo retiraba a las 14 y a
+    // las 12 ya le aparecía vencido, bloqueando el equipo para cualquier alquiler
+    // futuro — ver nota de pickupPendiente en finBloqueoAlq).
+    if(fechaVenc===hoyStr){
+      const horaVenc = minutosDeHora(a.horaRetiro || a.horaEntrega || '08:00');
+      const ahoraMin = minutosDeHora(horaActualHHMM());
+      if(horaVenc!=null && ahoraMin!=null && ahoraMin<horaVenc) return;
     }
+    a.pickupPendiente=true;
+    a.pickupPendienteDesde=fechaVenc;
+    a.pickupPendientePor=null;   // quien aviso: solo lo pone avisarTallerRetiro
+    cambio=true;
   });
   // Guardamos (lo que sincroniza a Firebase) solo si ya tenemos los datos reales de la
   // nube — esta función se llama en CADA render del Dashboard, y si corriera antes de
