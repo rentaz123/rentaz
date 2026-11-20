@@ -15004,14 +15004,19 @@ function quitarEquipoAlq(idx){
 // Hasta qué fecha, INCLUSIVE, este alquiler mantiene el equipo ocupado.
 //
 // El equipo bloquea disponibilidad hasta la fecha en que REALMENTE queda libre:
+// - si está ABIERTO (sin fecha de retiro pactada) y ya arrancó, no hay fecha real que
+//   prometer: bloquea sin límite hasta que taller marque la vuelta (ver más abajo);
 // - si el retiro (normal o anticipado) ya quedó marcado pero taller todavía no lo
-//   confirmó físicamente (pickupPendiente), bloqueamos hasta la fecha en que se
-//   supone que se retira (pickupPendienteDesde, o fechaRetiro/fin si por algún motivo
-//   no está cargada) — NO indefinidamente: bloquear para siempre le impedía a Mateo
-//   agendar el equipo para fechas futuras sin conflicto real, solo porque taller
-//   todavía no tildó "retirado" en el sistema (ver charla del 28/08/26 — Brazo
-//   Snorkel #2). Esto prima sobre retiradoAnticipado porque pickupPendienteDesde ya
-//   es la fecha real reportada;
+//   confirmó físicamente (pickupPendiente) y el alquiler SÍ tiene fecha de retiro
+//   pactada, bloquea hasta esa fecha — no indefinidamente. Mateo lo pidió así el
+//   20/11/26 (caso Zoomlion de "la Anónima" y Papel Técnica): quiere poder cargar un
+//   alquiler nuevo para una fecha posterior sin esperar a que taller confirme el
+//   retiro de este, asumiendo el riesgo de que se atrase. Si taller se atrasa y el
+//   nuevo alquiler ya arrancó, ahí sí hay un choque real que hay que resolver a mano.
+//   (Antes esto bloqueaba sin límite incluso con fecha pactada — eso era por lo del
+//   28/08/26, Brazo Snorkel #2, pero esa vuelta de tuerca terminó siendo más molesta
+//   que el problema que evitaba. Si vuelve a pasar un choque por esto, ver esa charla
+//   antes de revertir.);
 // - si hubo retiro anticipado ya confirmado por taller, libre desde esa fecha real
 //   (aunque el contrato facturado siga vigente en el papel hasta a.fin);
 // - si es abierto, hasta a.fin (que ahí no es una fecha de retiro sino hasta dónde está
@@ -15023,14 +15028,10 @@ function quitarEquipoAlq(idx){
 // las dos podían no coincidir.
 function finBloqueoAlq(a){
   if(!a) return null;
-  /* PENDIENTE DE RETIRAR = la máquina sigue en lo del cliente y taller todavía no fue
-     a buscarla. Antes esto devolvía la fecha pactada, así que la app la daba por libre
-     desde ese día aunque nadie la hubiera traído: si taller la retiraba una semana
-     tarde, ese hueco se le podía prometer a otro cliente. Es el mismo agujero que
-     tenían los alquileres abiertos.
-     No hay fecha de liberación hasta que vuelva: null = bloquea hasta que se marque la
-     vuelta. Así coincide con alqFinEfectivo, que para estos ya devolvía null. */
-  if(a.pickupPendiente) return null;
+  // ABIERTO sin fecha de retiro: ahí sí no hay nada que prometer (ver bloque de abajo,
+  // que ya devuelve null para este caso). Para pickupPendiente CON fecha pactada se
+  // sigue de largo y cae en "cierre normal", más abajo.
+  if(a.pickupPendiente && a.abierto) return null;
   // OJO: con una fecha imposible guardada (el caso del año de 5 cifras), toISOString()
   // no devuelve "algo raro": LANZA un error y corta la ejecución de todo lo que venía
   // llamando. Eso es lo que rompía el desplegable de equipos al abrir un alquiler —
