@@ -7886,7 +7886,11 @@ function renderDashboard(){
   // ya cerrado, no abierto, y todavía no se marcó retiro anticipado). Se ordenan por hora de
   // vencimiento del contrato (horaRetiro), de más próximo a vencer a más tarde, para saber
   // en qué orden van reingresando los equipos durante el día.
-  const vuelvenHoyList=ALQUILERES.filter(a=>!a.abierto && !a.retiradoAnticipado && !a.retiroFisicoFecha && a.fechaRetiro===hoyStr2)
+  // Mismo descarte que el resto de las listas de Inicio (alqHoyList, arrancaDeVerdad, etc.):
+  // un alquiler pausado (clima, etc.) o dado de baja no ocupa el equipo y no tiene nada que
+  // "vencer" hoy. Faltaba acá — a Mateo le seguía apareciendo BERTOLACCINI en "Terminan hoy"
+  // después de pausarlo. (Mateo, 24/11/26.)
+  const vuelvenHoyList=ALQUILERES.filter(a=>a.activo!==false && !a.pausado && !a.abierto && !a.retiradoAnticipado && !a.retiroFisicoFecha && a.fechaRetiro===hoyStr2)
     .sort((a,b)=>(a.horaRetiro||'23:59').localeCompare(b.horaRetiro||'23:59'));
   badgeDash('dc-badge-vuelven-hoy', vuelvenHoyList.length);
   document.getElementById('dash-vuelven-hoy-container').innerHTML = vuelvenHoyList.length
@@ -14880,6 +14884,8 @@ function poblarOpcionesEquipoAlq(excludeAlqId, excludeEqIds){
   // el aviso. Ver charla del 11/9/26 — los tres Genie GS-3246 y PAPEL TECNICA.
   const desdeF=(document.getElementById('alq-desde')||{}).value||'';
   const hastaF=(document.getElementById('alq-hasta')||{}).value||'';
+  const horaRetiroF=(document.getElementById('alq-hora-retiro')||{}).value||'';
+  const horaEntregaF=(document.getElementById('alq-hora-entrega')||{}).value||'';
   const porFechas = desdeF && hastaF && hastaF>=desdeF;
   const exclAlq = excludeAlqId!=null ? excludeAlqId : alqEditandoIds;
   const fmtDia=s=>{const[y,m,d]=String(s).split('-');return `${d}/${m}`;};
@@ -14895,7 +14901,7 @@ function poblarOpcionesEquipoAlq(excludeAlqId, excludeEqIds){
       else if(tallerHoy) etiqueta=' — FUERA DE SERVICIO';
       else if(porFechas){
         // Con fechas cargadas: ocupada o libre EN ESE PERÍODO.
-        const choque=alquilerSuperpuesto(e.id, desdeF, hastaF, exclAlq);
+        const choque=alquilerSuperpuesto(e.id, desdeF, hastaF, exclAlq, horaRetiroF, horaEntregaF);
         if(choque) etiqueta=` — OCUPADA esas fechas (${choque.cliente})`;
         else {
           // Un alquiler ABIERTO tiene un "fin" que es solo el último período facturado,
@@ -15100,6 +15106,20 @@ function finBloqueoAlq(a){
   if(finReal === a.inicio) return finReal;
   return (a.horaRetiro||'00:00') > '12:00' ? finReal : menosUnDia(finReal);
 }
+// La hora REAL (sin el redondeo de la regla del mediodía) a la que este alquiler libera
+// el equipo — mismas prioridades que finBloqueoAlq (vuelta confirmada > retiro anticipado
+// > cierre normal), pero sin tocar la fecha. Sirve solo para el chequeo fino de
+// alquilerSuperpuesto en el día límite exacto (ver ahí el porqué); para todo lo demás
+// (carteles, calendario) se sigue usando finBloqueoAlq tal cual.
+function horaRealDeLiberacion(a){
+  const volvioDeVerdad = a.retiroFisicoFecha && (!a.inicio || a.retiroFisicoFecha >= a.inicio);
+  if(volvioDeVerdad) return a.retiroFisicoHora || '00:00';
+  if(a.retiradoAnticipado) return a.retiroFisicoHora || a.horaRetiro || '00:00';
+  // Abierto: finBloqueoAlq ya devuelve a.fin como pura estimación (no una hora real de
+  // retiro), así que acá no hay nada preciso que comparar.
+  if(a.abierto) return null;
+  return a.horaRetiro || '00:00';
+}
 /* Devuelve el alquiler existente que se superpone con el rango dado para ese equipo,
    o null si está libre.
 
@@ -15112,8 +15132,17 @@ function finBloqueoAlq(a){
 
    No se pisan, pero como el rango nuevo se comparaba con el 06 crudo, saltaba
    "ya está alquilado" y no dejaba guardar. Si no se pasa la hora se mantiene el
-   criterio viejo, que bloquea el día entero — conservador y seguro. */
-function alquilerSuperpuesto(eqId, desde, hasta, excludeAlqId, horaRetiroNuevo){
+   criterio viejo, que bloquea el día entero — conservador y seguro.
+
+   horaEntregaNuevo: la hora de SALIDA del alquiler que se está cargando. Pedido de
+   Mateo (20/11/26, caso Papel Técnica): si el que ya está cargado devuelve el equipo a
+   las 16 y el nuevo arranca a las 17 — EL MISMO DÍA — no hay que esperar al día
+   siguiente. La regla del mediodía decide si ese día cuenta como libre o no para el
+   calendario y los carteles (finBloqueoAlq), pero acá, en el día límite exacto, si se
+   conoce la hora real de los dos lados, se compara de verdad en vez de bloquear el día
+   entero. Si no se pasa la hora, se mantiene el criterio viejo (conservador: ese día
+   sigue bloqueado) — no puede volverse MÁS estricto de lo que ya era, solo menos. */
+function alquilerSuperpuesto(eqId, desde, hasta, excludeAlqId, horaRetiroNuevo, horaEntregaNuevo){
   const excl = Array.isArray(excludeAlqId) ? excludeAlqId : (excludeAlqId!=null ? [excludeAlqId] : []);
   // Mismo criterio que finBloqueoAlq, aplicado al rango que se está por guardar.
   let finNuevo = hasta;
@@ -15130,6 +15159,13 @@ function alquilerSuperpuesto(eqId, desde, hasta, excludeAlqId, horaRetiroNuevo){
     // inicio hacia adelante sin límite. Antes esto se comparaba igual que una fecha
     // y JavaScript lo resolvía a su manera, en silencio y mal.
     if(finBloqueo === null || finBloqueo === undefined) return !(finNuevo < a.inicio);
+    // Día límite exacto: el nuevo arranca el mismo día en que el otro queda libre según
+    // la regla del mediodía. Si se conocen las dos horas reales, se decide por hora en
+    // vez de bloquear el día entero (ver comentario de horaEntregaNuevo más arriba).
+    if(desde === finBloqueo && horaEntregaNuevo){
+      const horaLibre = horaRealDeLiberacion(a);
+      if(horaLibre!=null && horaEntregaNuevo >= horaLibre) return false;
+    }
     return !(finNuevo < a.inicio || desde > finBloqueo);
   }) || null;
 }
@@ -15213,7 +15249,7 @@ function refrescarEtiquetasEquiposAlq(){
 // Máquinas equivalentes (misma categoría y altura) que SÍ están libres en el rango
 // pedido. Cuando el aviso decía solo "está ocupado", había que ir probando una por una
 // para encontrar cuál servía; en una flota con tres Genie iguales eso es puro tanteo.
-function equiposLibresEquivalentes(eqId, desde, hasta, excl){
+function equiposLibresEquivalentes(eqId, desde, hasta, excl, horaRetiroNuevo, horaEntregaNuevo){
   const eq=EQUIPOS.find(e=>e.id===eqId);
   if(!eq) return [];
   const meta=equipoMeta(eq);
@@ -15222,7 +15258,7 @@ function equiposLibresEquivalentes(eqId, desde, hasta, excl){
     if(otro.estado==='taller') return false;
     const m=equipoMeta(otro);
     if(m.categoria!==meta.categoria || m.altura!==meta.altura) return false;
-    return !alquilerSuperpuesto(otro.id, desde, hasta, excl);
+    return !alquilerSuperpuesto(otro.id, desde, hasta, excl, horaRetiroNuevo, horaEntregaNuevo);
   }).map(e=>e.nombre);
 }
 
@@ -15241,8 +15277,13 @@ function actualizarDisponibilidadAlq(excludeAlqId){
   // ya no ocupa el equipo y no choca con uno que arranque ese mismo día.
   const horaRetiroAquiEl=document.getElementById('alq-hora-retiro');
   const horaRetiroAqui=horaRetiroAquiEl?horaRetiroAquiEl.value:'';
+  // La hora de SALIDA de este alquiler: si el equipo que ya está cargado se libera
+  // antes de esa hora (mismo día), no hay choque — ver horaEntregaNuevo en
+  // alquilerSuperpuesto.
+  const horaEntregaAquiEl=document.getElementById('alq-hora-entrega');
+  const horaEntregaAqui=horaEntregaAquiEl?horaEntregaAquiEl.value:'';
   for(const row of filas){
-    const conflicto=alquilerSuperpuesto(row.eqId, desde, hasta, excl, horaRetiroAqui);
+    const conflicto=alquilerSuperpuesto(row.eqId, desde, hasta, excl, horaRetiroAqui, horaEntregaAqui);
     if(conflicto){
       const eq=EQUIPOS.find(e=>e.id===row.eqId);
       const nombreElegido = eq ? eq.nombre : 'Este equipo';
@@ -15279,7 +15320,7 @@ function actualizarDisponibilidadAlq(excludeAlqId){
               // pero que lo puedo cargar el 24").
               if(fb < conflicto.fin) notaMediodia = ` — se retira a las ${conflicto.horaRetiro||'08:00'}, antes del mediodía, así que ese día el equipo ya vuelve a estar disponible`;
             }
-            const libres=equiposLibresEquivalentes(row.eqId, desde, hasta, excl);
+            const libres=equiposLibresEquivalentes(row.eqId, desde, hasta, excl, horaRetiroAqui, horaEntregaAqui);
             // Para un abierto, "al ${fin}" es mentira: ese fin es hasta dónde se
             // facturó, no hasta cuándo está ocupada. Decirlo así hacía parecer que
             // la máquina se liberaba esa fecha.
@@ -16491,11 +16532,13 @@ async function guardarAlq(){
   }
 
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
-  // Misma hora de retiro que usa el aviso en pantalla: si no se pasa, el chequeo del
-  // guardado sería más estricto que el aviso y bloquearía algo que se veía en verde.
+  // Misma hora de retiro (y de salida) que usa el aviso en pantalla: si no se pasan, el
+  // chequeo del guardado sería más estricto que el aviso y bloquearía algo que se veía
+  // en verde.
   const horaRetiroChequeo=document.getElementById('alq-hora-retiro').value||'';
+  const horaEntregaChequeo=document.getElementById('alq-hora-entrega').value||'';
   for(const row of filas){
-    const conflicto=alquilerSuperpuesto(row.eqId, desde, hasta, alqEditandoIds, horaRetiroChequeo);
+    const conflicto=alquilerSuperpuesto(row.eqId, desde, hasta, alqEditandoIds, horaRetiroChequeo, horaEntregaChequeo);
     if(conflicto){
       const eq=EQUIPOS.find(e=>e.id===row.eqId);
       alert(`No se puede guardar: ${eq?eq.nombre:'un equipo'} ya está alquilado a ${conflicto.cliente} del ${fmtD(conflicto.inicio)} al ${fmtD(conflicto.fin)}. Elegí otro equipo u otras fechas.`);
