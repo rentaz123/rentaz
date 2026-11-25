@@ -2814,6 +2814,24 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
     </div>
   </div>
 
+  <!-- DETALLE DE UN DÍA DEL CALENDARIO (24/11/26). Pedido de Mateo: poder entrar a un día
+       puntual y ver, ordenado por hora, qué entrega, qué retiro y qué carga hay — sin tener
+       que abrir alquiler por alquiler. Reutiliza los mismos datos que ya pinta el mes
+       (getAlqDia/getRetirosDia/getSalidasDepositoDia): no es un cálculo nuevo, es la misma
+       info en otro orden. Ver abrirDetalleDiaCal(). -->
+  <div id="modal-dia-cal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:410;align-items:center;justify-content:center;">
+    <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:1.4rem;width:560px;max-width:94vw;max-height:90vh;display:flex;flex-direction:column;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:.9rem;">
+        <div>
+          <div id="dia-cal-titulo" style="font-size:1.05rem;font-weight:700;color:var(--txt);text-transform:capitalize"></div>
+          <div style="font-size:.8rem;color:var(--txt2);margin-top:2px">Entregas, retiros y cargas de ese día, por hora</div>
+        </div>
+        <button onclick="document.getElementById('modal-dia-cal').style.display='none'" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:1.1rem">✕</button>
+      </div>
+      <div id="dia-cal-cont" style="overflow-y:auto;flex:1;margin:0 -.3rem;padding:0 .3rem"></div>
+    </div>
+  </div>
+
   <!-- PUESTA AL DÍA DE LA FLOTA (9/9/2026)
        Repaso de una sola pasada: máquina por máquina, se confirma dónde está de verdad.
        Es una LISTA DE TAREAS, no un formulario que escribe por su cuenta: cada acción
@@ -12080,37 +12098,50 @@ function renderAlm(){
     const alqs=getAlqDia(f);
     const retiros=getRetirosDia(f);
     const retiroIds=new Set(retiros.map(a=>a.id));
-    h+=`<div class="alm-cell${esH?' hoy':''}"><div class="alm-num">${d}</div>`;
+    const fStrCelda=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    h+=`<div class="alm-cell${esH?' hoy':''}"><div class="alm-num" onclick="abrirDetalleDiaCal('${fStrCelda}')" style="cursor:pointer" title="Ver el detalle de este día">${d}</div>`;
     alqs.forEach(a=>{
-      const color=getEquipoColor(a.equipoId);
       const inicioDate=new Date(a.inicio+'T00:00:00');
       const finPintado=alqFinPintado(a,hoy);
       const esInicio = f.getTime()===inicioDate.getTime();
       const esRetiroHoy=retiroIds.has(a.id);
       const esFinPintado = f.getTime()===finPintado.getTime();
       const esUltimoDiaAbierto = (a.abierto||a.pickupPendiente) && !a.retiradoAnticipado && esFinPintado;
-      // Solo el día de inicio y el día de fin/retiro se pintan a color (para poder
-      // identificar el equipo de un vistazo). Los días del medio, que antes repetían el
-      // mismo bloque sólido todos los días generando mucho "ruido" visual, ahora quedan
-      // en un estilo neutro y punteado, igual para todos los equipos — solo importa que
-      // se vea que el alquiler sigue en curso ese día.
-      const esPunta = esInicio || esFinPintado || esRetiroHoy;
-      let etiqueta=a.equipoNombre.split(' ')[0];
-      let tituloExtra='';
-      if(esRetiroHoy){ etiqueta=`${etiqueta}`; tituloExtra=` — Retiro ${a.horaRetiro||'08:00'}`; }
-      else if(a.pickupPendiente && esH){ etiqueta=`${etiqueta}`; tituloExtra=' — Hay que ir a buscarlo, taller todavía no lo retiró'; }
-      else if(esUltimoDiaAbierto){ etiqueta=`${etiqueta}`; tituloExtra=' — Abierto, sin fecha de retiro confirmada todavía'; }
-      if(esPunta){
-        const estiloExtra = esUltimoDiaAbierto ? 'outline:2px dashed #fff;outline-offset:-2px;' : '';
-        h+=`<div class="alm-bloque" style="background:${color};color:#fff;${estiloExtra}" onclick="verDetalleAlq(${a.id})" title="${a.equipoNombre} · ${a.cliente}${tituloExtra}">${etiqueta} <span style="opacity:.85;font-weight:500">· ${a.cliente.split(' ')[0]}</span></div>`;
-      } else {
-        h+=`<div class="alm-bloque alm-bloque-medio" onclick="verDetalleAlq(${a.id})" title="${a.equipoNombre} · ${a.cliente} — en curso">${etiqueta} <span style="opacity:.8">· ${a.cliente.split(' ')[0]}</span></div>`;
+      // Colores por SIGNIFICADO, no por equipo (Mateo, 25/11/26): verde = genera ingreso
+      // (entrega y abierto, con línea punteada para distinguirlo de una entrega común),
+      // rojo apagado = retiro, gris/punteado = en curso (sin cambios, ver alm-bloque-medio),
+      // ámbar = carga en depósito el día antes (sin cambios, más abajo). Antes el color
+      // identificaba el EQUIPO (getEquipoColor); eso se sacó a propósito — ahora el nombre
+      // del equipo va en el texto del bloque, no en el color.
+      const etiqueta=a.equipoNombre.split(' ')[0];
+      const clienteCorto=a.cliente.split(' ')[0];
+      let huboBloque=false;
+      // Un alquiler de un solo día es entrega Y retiro el mismo día: van los dos bloques,
+      // no se elige uno — si no, se pierde la mitad de la información de ese día.
+      if(esInicio){
+        huboBloque=true;
+        h+=`<div class="alm-bloque" style="background:#2e9e52;color:#fff" onclick="verDetalleAlq(${a.id})" title="${a.equipoNombre} · ${a.cliente} — Entrega ${a.horaEntrega||'08:00'}">${etiqueta} <span style="opacity:.85;font-weight:500">· ${clienteCorto}</span></div>`;
+      }
+      if(esRetiroHoy){
+        huboBloque=true;
+        h+=`<div class="alm-bloque" style="background:var(--rojo);color:#fff" onclick="verDetalleAlq(${a.id})" title="${a.equipoNombre} · ${a.cliente} — Retiro ${a.horaRetiro||'08:00'}">${etiqueta} <span style="opacity:.85;font-weight:500">· ${clienteCorto}</span></div>`;
+      }
+      if(esUltimoDiaAbierto && !esRetiroHoy){
+        huboBloque=true;
+        const tituloExtra = a.pickupPendiente ? ' — Hay que ir a buscarlo, taller todavía no lo retiró' : ' — Abierto, sin fecha de retiro confirmada todavía';
+        h+=`<div class="alm-bloque" style="background:#2e9e52;color:#fff;outline:2px dashed #fff;outline-offset:-2px" onclick="verDetalleAlq(${a.id})" title="${a.equipoNombre} · ${a.cliente}${tituloExtra}">${etiqueta} <span style="opacity:.85;font-weight:500">· ${clienteCorto}</span></div>`;
+      }
+      // Los días del medio (ni entrega, ni retiro, ni el día que vence el abierto) quedan
+      // en el estilo neutro de siempre — no son un movimiento de ESE día, el equipo solo
+      // "sigue en obra".
+      if(!huboBloque){
+        h+=`<div class="alm-bloque alm-bloque-medio" onclick="verDetalleAlq(${a.id})" title="${a.equipoNombre} · ${a.cliente} — en curso">${etiqueta} <span style="opacity:.8">· ${clienteCorto}</span></div>`;
       }
     });
     // Solo se muestra como caja aparte (punteada) si el retiro NO coincide con un día
     // ya coloreado de ese mismo alquiler (caso de alquileres viejos con retiro = fin + 1 día).
     retiros.filter(a=>!alqs.some(x=>x.id===a.id)).forEach(a=>{
-      h+=`<div class="alm-bloque" style="background:var(--bg3);color:var(--azul);border:1px dashed var(--azul)" onclick="verDetalleAlq(${a.id})" title="Retiro: ${a.equipoNombre} · ${a.cliente} (${a.horaRetiro||'08:00'})">${a.equipoNombre.split(' ')[0]}</div>`;
+      h+=`<div class="alm-bloque" style="background:var(--bg3);color:var(--rojo);border:1px dashed var(--rojo)" onclick="verDetalleAlq(${a.id})" title="Retiro: ${a.equipoNombre} · ${a.cliente} (${a.horaRetiro||'08:00'})">${a.equipoNombre.split(' ')[0]}</div>`;
     });
     // El camión carga ese día aunque el alquiler arranque después (ver getSalidasDepositoDia).
     getSalidasDepositoDia(f).forEach(a=>{
@@ -12123,6 +12154,70 @@ function renderAlm(){
   for(let i=0;i<rest;i++)h+=`<div class="alm-cell otro-mes"></div>`;
   h+='</div>';
   document.getElementById('cal-cont').innerHTML=h;
+}
+
+// Detalle de un día puntual del calendario, ordenado por hora. Pedido de Mateo
+// (24/11/26): poder entrar a un día y ver de una sola vez a qué hora hay una entrega, un
+// retiro o una carga, en vez de tener que abrir alquiler por alquiler. Usa exactamente
+// los mismos datos que ya pinta renderAlm (getAlqDia/getRetirosDia/getSalidasDepositoDia)
+// y la misma clasificación por día (esInicio/esRetiroHoy/esUltimoDiaAbierto) — así el
+// detalle nunca puede decir algo distinto de lo que ya se ve pintado en el mes.
+function abrirDetalleDiaCal(fechaStr){
+  if(!fechaValidaApp(fechaStr)) return;
+  const f=new Date(fechaStr+'T00:00:00');
+  const hoy=new Date(); hoy.setHours(0,0,0,0);
+  const DIAS=['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const fmtD=s=>{const[y,mm,dd]=String(s).split('-');return`${dd}/${mm}/${y}`;};
+  document.getElementById('dia-cal-titulo').textContent=`${DIAS[f.getDay()]} ${fmtD(fechaStr)}`;
+
+  const alqs=getAlqDia(f);
+  const retiros=getRetirosDia(f);
+  const retiroIds=new Set(retiros.map(a=>a.id));
+  const items=[];
+  alqs.forEach(a=>{
+    const inicioDate=new Date(a.inicio+'T00:00:00');
+    const finPintado=alqFinPintado(a,hoy);
+    const esInicio=f.getTime()===inicioDate.getTime();
+    const esRetiroHoy=retiroIds.has(a.id);
+    const esFinPintado=f.getTime()===finPintado.getTime();
+    const esUltimoDiaAbierto=(a.abierto||a.pickupPendiente) && !a.retiradoAnticipado && esFinPintado;
+    // Mismos colores por significado que el mes (ver renderAlm, Mateo 25/11/26): verde =
+    // genera ingreso (entrega y abierto), rojo apagado = retiro, gris = en curso.
+    if(esInicio) items.push({hora:a.horaEntrega||'08:00', color:'#2e9e52', etiqueta:'Entrega', texto:`${a.equipoNombre} → ${a.cliente}${a.localidad?' ('+a.localidad+')':''}`, id:a.id});
+    if(esRetiroHoy) items.push({hora:a.horaRetiro||'08:00', color:'var(--rojo)', etiqueta:'Retiro', texto:`${a.equipoNombre} ← ${a.cliente}`, id:a.id});
+    if(esUltimoDiaAbierto && !esRetiroHoy) items.push({hora:null, color:'#2e9e52', punteado:true, etiqueta:'Abierto', texto:`${a.equipoNombre} — ${a.cliente} (sin fecha de retiro confirmada)`, id:a.id});
+    if(!esInicio && !esRetiroHoy && !esUltimoDiaAbierto) items.push({hora:null, color:'var(--txt3)', etiqueta:'En curso', texto:`${a.equipoNombre} — ${a.cliente}`, id:a.id});
+  });
+  // Mismo caso especial que en el mes: un retiro que no coincide con ningún día pintado
+  // de ESE alquiler (alquileres viejos con retiro = fin + 1 día).
+  retiros.filter(a=>!alqs.some(x=>x.id===a.id)).forEach(a=>{
+    items.push({hora:a.horaRetiro||'08:00', color:'var(--rojo)', etiqueta:'Retiro', texto:`${a.equipoNombre} ← ${a.cliente}`, id:a.id});
+  });
+  getSalidasDepositoDia(f).forEach(a=>{
+    const fD=s=>{const p=String(s||'').split('-');return p.length===3?`${p[2]}/${p[1]}`:'';};
+    items.push({hora:a.horaSalidaDeposito||null, color:'#b3791f', etiqueta:'Carga en el depósito', texto:`${a.equipoNombre} — sale para ${a.cliente} (el alquiler arranca el ${fD(a.inicio)})`, id:a.id});
+  });
+
+  // Por hora, de más temprano a más tarde. Lo que no tiene hora puntual ("en curso",
+  // "abierto") va al final — no es un movimiento del día, es un estado que sigue.
+  items.sort((x,y)=>{
+    if(!x.hora && !y.hora) return 0;
+    if(!x.hora) return 1;
+    if(!y.hora) return -1;
+    return x.hora.localeCompare(y.hora);
+  });
+
+  document.getElementById('dia-cal-cont').innerHTML=items.length
+    ? items.map(it=>`<div class="pago-item" style="border-color:${it.color}33;background:${it.color}08;cursor:pointer;margin-bottom:.5rem" onclick="document.getElementById('modal-dia-cal').style.display='none';verDetalleAlq(${it.id})">
+        <div style="width:11px;height:11px;border-radius:50%;flex-shrink:0;${it.punteado?'border:2px dashed '+it.color+';background:transparent':'background:'+it.color}"></div>
+        <div class="pago-info">
+          <div class="pago-concepto" style="font-size:.95rem">${it.etiqueta}: ${it.texto}</div>
+        </div>
+        ${it.hora?`<span style="font-size:.75rem;font-weight:700;background:${it.color}22;color:${it.color};padding:2px 7px;border-radius:10px;white-space:nowrap;flex-shrink:0">${it.hora}</span>`:''}
+      </div>`).join('')
+    : '<p style="color:var(--txt3);font-size:.9rem;padding:1rem 0;text-align:center">No hay movimientos cargados este día.</p>';
+
+  document.getElementById('modal-dia-cal').style.display='flex';
 }
 let filtroEq='todos';
 // Entrar a Equipos ya filtrado, desde las tarjetas del Inicio. Sin esto habia que
@@ -19936,9 +20031,22 @@ async function continuarCerrarAlquilerAbierto(){
 // Para alquileres NO abiertos que ya tienen fecha de retiro definida (por ejemplo, llega
 // el día pautado desde el vamos): permite avisarle a taller manualmente que hay que ir a
 // buscar el equipo, sin esperar a que el sistema lo dé de baja solo por vencer la fecha.
-function avisarTallerRetiro(id){
+//
+// Confirmación obligatoria del cliente (Mateo, 24/11/26): este botón es el único punto
+// donde Mateo decide avisarle a taller "por las dudas", sin que el cliente haya llamado
+// todavía a pedir el retiro — y eso manda a taller a buscar un equipo que el cliente
+// puede seguir usando. El auto-marcado por fecha vencida (autoMarcarPendientesDeRetiro)
+// y el cierre de un abierto (continuarCerrarAlquilerAbierto) NO pasan por acá: en esos
+// dos casos ya hay una fecha real de por medio (la pactada, o la que el cliente avisó al
+// cerrar el abierto), así que no hace falta este chequeo extra.
+async function avisarTallerRetiro(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
   if(a.pickupPendiente){ alert('Ya está avisado — taller lo tiene pendiente en "Para retirar".'); return; }
+  const clienteConfirmo = await confirmSiNo(
+    `¿El cliente YA llamó o avisó que hay que retirar "${a.equipoNombre}" (${a.cliente})?\n\n`+
+    `Esto le avisa a taller que vaya a buscarlo ahora. Confirmá solo si el cliente ya lo pidió — no "por las dudas", porque taller puede terminar yendo a buscar un equipo que el cliente todavía está usando.`,
+    {si:'Sí, el cliente ya lo confirmó', no:'Todavía no'});
+  if(!clienteConfirmo) return;
   a.pickupPendiente=true;
   a.pickupPendienteDesde=hoyISO();
   // Quién avisó. Sin esto, el cartel rojo del detalle aparecía sin dueño y no había
