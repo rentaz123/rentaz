@@ -14062,27 +14062,45 @@ function generarPDFCompletoContrato(){
     const v=(data.items||{})[it.key]||{ok:true,nota:''};
     return `<tr><td>${it.label}</td><td style="text-align:center;color:${v.ok?'#2e8018':'#c62828'};font-weight:700">${v.ok?'OK':'OBSERVACIÓN'}</td><td style="white-space:pre-line">${v.nota||''}</td></tr>`;
   }).join('') : '';
-  const fotosGrales = data ? FOTO_SLOTS.filter(s=>(data.fotosGenerales||{})[s.key]).map(s=>`<div style="display:inline-block;margin:4px;text-align:center"><img src="${data.fotosGenerales[s.key]}" style="width:130px;height:130px;object-fit:cover;border-radius:6px;border:1px solid #ccc"><div style="font-size:10px;margin-top:2px">${s.label}</div></div>`).join('') : '';
-  const fotosExtra = data ? (data.fotosExtra||[]).map(f=>`<div style="display:inline-block;margin:4px"><img src="${f.url}" style="width:130px;height:130px;object-fit:cover;border-radius:6px;border:1px solid #ccc"></div>`).join('') : '';
+  // Las fotos NO van acá (Mateo, 25/11/26): entre el checklist y las firmas de salida/
+  // entrada ya no entraba todo en una hoja, y las fotos a tamaño de sello no sirven para
+  // nada en una hoja blanco y negro — el archivo digital con las fotos grandes
+  // (generarPDFChecklist) sigue existiendo aparte para quien las necesite ver.
   const seccionChecklist = data ? `
-  <h1 style="margin-top:26px">CHECKLIST DE SALIDA</h1>
-  <div class="sub" style="font-size:11px;color:#555;margin-bottom:14px">${a.equipoNombre} · ${a.cliente} · ${fmtD(data.fecha)} ${data.hora||''} · Horómetro: ${data.horas||'—'} hs · Responsable: ${data.responsable||'—'}</div>
-  ${(fotosGrales||fotosExtra) ? `<div style="margin-bottom:16px">${fotosGrales}${fotosExtra}</div>` : ''}
-  <table><thead><tr><th>Ítem</th><th>Estado</th><th>Observación</th></tr></thead><tbody>${filasChecklist}</tbody></table>` : '';
+  <h1 style="margin-top:4px;font-size:11px;margin-bottom:3px">CHECKLIST DE SALIDA</h1>
+  <div class="sub" style="font-size:8.5px;color:#555;margin-bottom:2px">${a.equipoNombre} · ${a.cliente} · ${fmtD(data.fecha)} ${data.hora||''} · Horómetro: ${data.horas||'—'} hs · Responsable: ${data.responsable||'—'}</div>
+  <table style="margin-top:2px"><thead><tr><th>Ítem</th><th>Estado</th><th>Observación</th></tr></thead><tbody>${filasChecklist}</tbody></table>` : '';
+  // FIRMAS DE SALIDA Y DE ENTRADA DEL EQUIPO (Mateo, 25/11/26, a partir del contrato en
+  // papel que ya se usaba): va SIEMPRE, tenga o no checklist digital cargado — es lo que
+  // se firma a mano en el momento real de entrega y de devolución, cliente y Rent-AZ cada
+  // uno de su lado, con fecha y hora para completar ahí mismo.
+  const filaFirma = titulo => `
+    <tr><td colspan="2" style="text-align:center;font-weight:700;background:#f2f2f2">${titulo}</td></tr>
+    <tr><td style="width:50%">Fecha: _______________</td><td style="width:50%">Fecha: _______________</td></tr>
+    <tr><td>Hora: _______________</td><td>Hora: _______________</td></tr>
+    <tr><td style="height:26px;vertical-align:bottom">Firma del cliente:</td><td style="height:26px;vertical-align:bottom">Firma de Rent-AZ:</td></tr>
+    <tr><td>Aclaración: _______________</td><td>Aclaración: _______________</td></tr>
+    <tr><td>Cargo: _______________</td><td>Cargo: _______________</td></tr>
+    <tr><td>N° de documento: _______________</td><td>N° de documento: _______________</td></tr>`;
+  const seccionFirmas = `
+  <div style="display:flex;gap:10px;margin-top:8px">
+    <table style="margin-top:0"><tbody>${filaFirma('SALIDA DEL EQUIPO')}</tbody></table>
+    <table style="margin-top:0"><tbody>${filaFirma('ENTRADA DEL EQUIPO')}</tbody></table>
+  </div>`;
   const contratoHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Contrato ${c.numero}</title>
   <style>
-    @page { margin: 6mm 9mm; }
-    /* Apretado a propósito (Mateo, 25/11/26): el contrato en sí (sin el checklist) tiene
-       que entrar en UNA sola hoja, como el contrato original en papel — se imprimen un
-       original y una copia, y 3 hojas por juego era de más. Letra más chica y menos
-       espacio entre cláusulas, nada se sacó. */
-    body{font-family:Arial,sans-serif;font-size:10px;color:#111;padding:14px 20px;line-height:1.3;}
-    h1{font-size:14px;text-align:center;margin-bottom:10px;}
+    @page { margin: 5mm 8mm; }
+    /* Apretado a propósito (Mateo, 25/11/26): contrato + checklist de salida TIENEN que
+       entrar en una sola hoja, como el contrato original en papel — se imprimen un
+       original y una copia, y 3 hojas por juego era de más. Nada del texto se sacó, solo
+       se achicó letra/espaciado al límite de lo legible. */
+    body{font-family:Arial,sans-serif;font-size:10px;color:#111;padding:10px 16px;line-height:1.22;}
+    h1{font-size:13px;text-align:center;margin-bottom:8px;}
     b{font-weight:700;}
-    .clau{margin-bottom:6px;text-align:justify;}
-    table{width:100%;border-collapse:collapse;margin-top:14px;font-size:10px;}
-    td,th{border:1px solid #999;padding:4px 6px;}
-    @media print{body{padding:8px 14px;} h1{page-break-before:always;} h1:first-of-type{page-break-before:auto;}}
+    .clau{margin-bottom:4px;text-align:justify;}
+    table{width:100%;border-collapse:collapse;margin-top:14px;font-size:9px;}
+    td,th{border:1px solid #999;padding:1px 4px;}
+    @media print{body{padding:6px 10px;}}
   </style></head><body>
   <h1>CONTRATO DE LOCACIÓN DE EQUIPOS N° ${c.numero}</h1>
   <p class="clau">Entre Rent-AZ S.A., con domicilio en C. Zurbriggen 785 de la ciudad de Rafaela, provincia de Santa Fe, por una parte, en adelante denominada la LOCADORA, y <b>${cl?cl.nombre:a.cliente}</b>${cl&&cl.dir?`, con domicilio en la calle ${cl.dir}${cl.ciudad?', '+cl.ciudad:''}`:''}${cl&&cl.cuit&&cl.cuit!=='-'?`, CUIT ${cl.cuit}`:''}, en adelante llamada la LOCATARIA, por la otra parte, se conviene en celebrar el presente CONTRATO DE LOCACION DE EQUIPOS, sujeto a los términos y condiciones siguientes:</p>
@@ -14099,6 +14117,7 @@ function generarPDFCompletoContrato(){
   <p class="clau" style="white-space:pre-line"><b>UNDÉCIMA (Adicional):</b> ${a.obs||'—'}</p>
   <p class="clau"><b>DUODÉCIMA:</b> Leídas y ratificadas las cláusulas que anteceden se firman dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad de Rafaela, a los ${new Date().getDate()} días del mes de ${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][new Date().getMonth()]} del año ${new Date().getFullYear()}.</p>
   ${seccionChecklist}
+  ${seccionFirmas}
   </body></html>`;
   const contratoBlob = new Blob([contratoHtml], {type:'text/html'});
   const contratoUrl = URL.createObjectURL(contratoBlob);
