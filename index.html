@@ -1362,8 +1362,31 @@ if ('serviceWorker' in navigator) {
         </div>
       </div>
 
-      <!-- EQUIPO Y PERÍODO -->
+      <!-- FLETE SOLO, SIN MÁQUINA: a veces una empresa pide solo un traslado, sin
+           alquilar ningún equipo (Mateo, 25/11/26: "cargo el número manual, pero para
+           poder mandar un presupuesto con el mismo formato"). Arma el mismo PDF/texto de
+           WhatsApp con un solo renglón cargado a mano, sin pasar por todo el cálculo de
+           equipos/tarifas/flete automático — ver cotizarFleteSolo() y
+           generarPDFFleteSolo(). -->
       <div class="ccard">
+        <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:700;color:var(--txt);cursor:pointer;">
+          <input type="checkbox" id="cot-flete-solo-check" onchange="toggleFleteSoloCot()"> Es un flete solo (sin máquina)
+        </label>
+        <div id="cot-flete-solo-box" style="display:none;margin-top:.7rem">
+          <label class="flabel">Descripción</label>
+          <input type="text" id="cot-fs-desc" value="Traslado ida y vuelta" placeholder="Ej: Traslado ida y vuelta" oninput="cotizar()">
+          <div style="margin-top:.5rem"><label class="flabel">Localidad de destino (opcional)</label>
+            <input type="text" id="cot-fs-localidad" list="localidades-list" placeholder="Ej: Rafaela, Susana, Bella Italia..." oninput="cotizar()"></div>
+          <div style="margin-top:.5rem"><label class="flabel">Monto</label>
+            <input type="number" id="cot-fs-monto" placeholder="Ej: 150000" oninput="cotizar()"></div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:700;color:var(--txt);cursor:pointer;margin-top:.6rem;">
+            <input type="checkbox" id="cot-fs-mostrar-iva" checked onchange="cotizar()"> Mostrar desglose de IVA
+          </label>
+        </div>
+      </div>
+
+      <!-- EQUIPO Y PERÍODO -->
+      <div class="ccard" id="ccard-equipo-periodo">
         <h3>Equipo y período</h3>
         <div style="display:flex;flex-direction:column;gap:.6rem">
           <select id="cot-eq" onchange="onEqChange()">
@@ -1473,7 +1496,7 @@ if ('serviceWorker' in navigator) {
       </div>
 
       <!-- FLETE -->
-      <div class="ccard">
+      <div class="ccard" id="ccard-flete">
         <h3>Flete</h3>
         <div id="warn-flete" class="warn-txt" style="margin-bottom:6px">⚠ Seleccioná una opción de flete</div>
         <div class="rb-group" style="margin-bottom:10px" id="flete-btns">
@@ -1661,7 +1684,7 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
         <div class="iva-box" id="iva-box"></div>
         <button class="btn-cop" onclick="copiar()">Copiar para WhatsApp</button>
         <button id="cot-btn-pdf" class="btn-cop" onclick="generarPDF()" style="background:var(--verde);margin-top:.4rem">Generar PDF</button>
-        <button class="btn-cop" onclick="convertirEnAlquiler()" style="background:var(--azul);margin-top:.4rem">Convertir en alquiler</button>
+        <button id="btn-convertir-alquiler" class="btn-cop" onclick="convertirEnAlquiler()" style="background:var(--azul);margin-top:.4rem">Convertir en alquiler</button>
         <button class="btn-lim" onclick="limpiar()">Limpiar</button>
       </div>
 
@@ -9423,7 +9446,49 @@ function destinoFromFleteLabel(label){
   return '';
 }
 
+// Prende/apaga el modo "flete solo, sin máquina" (Mateo, 25/11/26). Oculta lo que no
+// aplica a un traslado sin equipo (la tarjeta de equipo/período, la de flete automático
+// con Alejandro/Rosso, y "Convertir en alquiler", que no tiene sentido sin equipo) y
+// muestra el mini-formulario de descripción/monto cargado a mano.
+function toggleFleteSoloCot(){
+  const activo=document.getElementById('cot-flete-solo-check').checked;
+  document.getElementById('cot-flete-solo-box').style.display=activo?'block':'none';
+  document.getElementById('ccard-equipo-periodo').style.display=activo?'none':'';
+  document.getElementById('ccard-flete').style.display=activo?'none':'';
+  document.getElementById('btn-convertir-alquiler').style.display=activo?'none':'';
+  cotizar();
+}
+// Arma el presupuesto para el modo "flete solo" — un solo renglón cargado a mano, sin
+// tarifas de equipo ni cálculo automático de flete. Mismo criterio de IVA que el resto
+// del cotizador: el monto cargado es SIN IVA y el total YA lo incluye siempre; el
+// checkbox "Mostrar desglose" solo decide si se ve el desglose o un total final limpio
+// (ver cotizar(), más abajo, para la misma lógica con equipos).
+function cotizarFleteSolo(){
+  const desc=(document.getElementById('cot-fs-desc').value||'').trim()||'Traslado ida y vuelta';
+  const localidad=(document.getElementById('cot-fs-localidad').value||'').trim();
+  const monto=parseFloat(document.getElementById('cot-fs-monto').value)||0;
+  if(!monto){ document.getElementById('res-card').style.display='none'; window._cot=null; return; }
+  const mostrarIva=document.getElementById('cot-fs-mostrar-iva').checked;
+  const sub=monto, iva=sub*0.21, tot=sub+iva;
+  const descCompleta=desc+(localidad?' '+localidad:'');
+  const clienteLin=cotCliente?`<div class="res-lin" style="margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid var(--verde)"><span style="color:var(--txt2);font-size:.76rem">Cliente</span><span style="font-weight:700">${cotCliente.nombre}</span></div>`:'';
+  const itemsLin=`<div class="res-lin"><span>${descCompleta}</span><span>${fmt(sub)}</span></div>`;
+  if(mostrarIva){
+    document.getElementById('res-box').innerHTML=`${clienteLin}${itemsLin}
+      <div class="res-lin"><span>Subtotal</span><span>${fmt(sub)}</span></div>
+      <div class="res-lin tot"><span>TOTAL + IVA (21%)</span><span>${fmt(tot)}</span></div>`;
+    document.getElementById('iva-box').textContent=`⚠ IVA incluido: ${fmt(iva)} — Total final: ${fmt(tot)}`;
+  } else {
+    document.getElementById('res-box').innerHTML=`${clienteLin}${itemsLin}
+      <div class="res-lin tot"><span>TOTAL</span><span>${fmt(tot)}</span></div>`;
+    document.getElementById('iva-box').textContent=`Total final: ${fmt(tot)}`;
+  }
+  document.getElementById('res-card').style.display='block';
+  const obs=(document.getElementById('cot-obs').value||'').trim();
+  window._cot={soloFlete:true, descripcion:desc, localidad, descCompleta, sub, iva, tot, mostrarIva, cliente:cotCliente, obs};
+}
 function cotizar(){
+  if(document.getElementById('cot-flete-solo-check').checked){ cotizarFleteSolo(); return; }
   const tipo=document.getElementById('cot-eq').value;
   let dias=parseInt(document.getElementById('cot-dias').value)||1;
   dias=limitarDiasTaller(dias);
@@ -9724,6 +9789,20 @@ function cotizar(){
 
 function copiar(){
   const c=window._cot;if(!c)return;
+  if(c.soloFlete){
+    let txtFs='*Presupuesto - RENTAZ S.A.*\n\n';
+    if(c.cliente) txtFs+=`Cliente: ${c.cliente.nombre}\n\n`;
+    txtFs+=`${c.descCompleta}: ${fmt(c.sub)}\n`;
+    if(c.mostrarIva){ txtFs+='\n'; txtFs+=`Subtotal: ${fmt(c.sub)}\n`; txtFs+=`IVA (21%): ${fmt(c.iva)}\n\n`; txtFs+=`*TOTAL: ${fmt(c.tot)}*\n`; }
+    else { txtFs+='\n'; txtFs+=`*TOTAL: ${fmt(c.tot)}*\n`; }
+    if(c.obs){ txtFs+='\n'; txtFs+=`Observaciones: ${c.obs}\n`; }
+    navigator.clipboard.writeText(txtFs).then(()=>{
+      alert('¡Copiado! Pegalo en WhatsApp.');
+      guardarPresupuesto(c, 1, '', c.descCompleta);
+      limpiar();
+    });
+    return;
+  }
   const cl=c.cliente;
   const rango=c.fechaDesde&&c.fechaHasta?` (${fmtFechaCot(c.fechaDesde)} al ${fmtFechaCot(c.fechaHasta)})`:'';
   let txt='*Presupuesto - RENTAZ S.A.*\n';
@@ -9827,6 +9906,18 @@ function toggleFleteEspecialCot(){
 function limpiar(){
   window._editandoPresupId = null;
   document.getElementById('cot-editando-banner').style.display='none';
+  // Flete solo (Mateo, 25/11/26): vuelve a mostrar las tarjetas de equipo/flete y el
+  // botón de convertir, y limpia el mini-formulario — así el próximo presupuesto arranca
+  // en modo normal salvo que se vuelva a tildar.
+  document.getElementById('cot-flete-solo-check').checked=false;
+  document.getElementById('cot-flete-solo-box').style.display='none';
+  document.getElementById('ccard-equipo-periodo').style.display='';
+  document.getElementById('ccard-flete').style.display='';
+  document.getElementById('btn-convertir-alquiler').style.display='';
+  document.getElementById('cot-fs-desc').value='Traslado ida y vuelta';
+  document.getElementById('cot-fs-localidad').value='';
+  document.getElementById('cot-fs-monto').value='';
+  document.getElementById('cot-fs-mostrar-iva').checked=true;
   document.getElementById('cot-eq').value='';
   document.getElementById('cot-dias').value=1;
   fleteMode=null; fleteModeLiviano=null; perModo='dias'; fechaDesdeStr=''; fechaHastaStr='';
@@ -12129,7 +12220,10 @@ function renderAlm(){
       if(esUltimoDiaAbierto && !esRetiroHoy){
         huboBloque=true;
         const tituloExtra = a.pickupPendiente ? ' — Hay que ir a buscarlo, taller todavía no lo retiró' : ' — Abierto, sin fecha de retiro confirmada todavía';
-        h+=`<div class="alm-bloque" style="background:#2e9e52;color:#fff;outline:2px dashed #fff;outline-offset:-2px" onclick="verDetalleAlq(${a.id})" title="${a.equipoNombre} · ${a.cliente}${tituloExtra}">${etiqueta} <span style="opacity:.85;font-weight:500">· ${clienteCorto}</span></div>`;
+        // Verde más oscuro que el de "Entrega" (#2e9e52) — Mateo pidió poder diferenciar
+        // de un vistazo el abierto/pendiente del que arranca hoy, sin depender solo del
+        // punteado blanco, que a veces no se nota en la celda chiquita del mes. (25/11/26.)
+        h+=`<div class="alm-bloque" style="background:#1b6b3a;color:#fff;outline:2px dashed #fff;outline-offset:-2px" onclick="verDetalleAlq(${a.id})" title="${a.equipoNombre} · ${a.cliente}${tituloExtra}">${etiqueta} <span style="opacity:.85;font-weight:500">· ${clienteCorto}</span></div>`;
       }
       // Los días del medio (ni entrega, ni retiro, ni el día que vence el abierto) quedan
       // en el estilo neutro de siempre — no son un movimiento de ESE día, el equipo solo
@@ -12185,7 +12279,7 @@ function abrirDetalleDiaCal(fechaStr){
     // genera ingreso (entrega y abierto), rojo apagado = retiro, gris = en curso.
     if(esInicio) items.push({hora:a.horaEntrega||'08:00', color:'#2e9e52', etiqueta:'Entrega', texto:`${a.equipoNombre} → ${a.cliente}${a.localidad?' ('+a.localidad+')':''}`, id:a.id});
     if(esRetiroHoy) items.push({hora:a.horaRetiro||'08:00', color:'var(--rojo)', etiqueta:'Retiro', texto:`${a.equipoNombre} ← ${a.cliente}`, id:a.id});
-    if(esUltimoDiaAbierto && !esRetiroHoy) items.push({hora:null, color:'#2e9e52', punteado:true, etiqueta:'Abierto', texto:`${a.equipoNombre} — ${a.cliente} (sin fecha de retiro confirmada)`, id:a.id});
+    if(esUltimoDiaAbierto && !esRetiroHoy) items.push({hora:null, color:'#1b6b3a', punteado:true, etiqueta:'Abierto', texto:`${a.equipoNombre} — ${a.cliente} (sin fecha de retiro confirmada)`, id:a.id});
     if(!esInicio && !esRetiroHoy && !esUltimoDiaAbierto) items.push({hora:null, color:'var(--txt3)', etiqueta:'En curso', texto:`${a.equipoNombre} — ${a.cliente}`, id:a.id});
   });
   // Mismo caso especial que en el mes: un retiro que no coincide con ningún día pintado
@@ -13977,14 +14071,18 @@ function generarPDFCompletoContrato(){
   <table><thead><tr><th>Ítem</th><th>Estado</th><th>Observación</th></tr></thead><tbody>${filasChecklist}</tbody></table>` : '';
   const contratoHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Contrato ${c.numero}</title>
   <style>
-    @page { margin: 10mm 12mm; }
-    body{font-family:Arial,sans-serif;font-size:12.5px;color:#111;padding:30px 40px;line-height:1.55;}
-    h1{font-size:16px;text-align:center;margin-bottom:18px;}
+    @page { margin: 6mm 9mm; }
+    /* Apretado a propósito (Mateo, 25/11/26): el contrato en sí (sin el checklist) tiene
+       que entrar en UNA sola hoja, como el contrato original en papel — se imprimen un
+       original y una copia, y 3 hojas por juego era de más. Letra más chica y menos
+       espacio entre cláusulas, nada se sacó. */
+    body{font-family:Arial,sans-serif;font-size:10px;color:#111;padding:14px 20px;line-height:1.3;}
+    h1{font-size:14px;text-align:center;margin-bottom:10px;}
     b{font-weight:700;}
-    .clau{margin-bottom:10px;text-align:justify;}
-    table{width:100%;border-collapse:collapse;margin-top:20px;font-size:11px;}
-    td,th{border:1px solid #999;padding:6px 8px;}
-    @media print{body{padding:15px 30px;} h1{page-break-before:always;} h1:first-of-type{page-break-before:auto;}}
+    .clau{margin-bottom:6px;text-align:justify;}
+    table{width:100%;border-collapse:collapse;margin-top:14px;font-size:10px;}
+    td,th{border:1px solid #999;padding:4px 6px;}
+    @media print{body{padding:8px 14px;} h1{page-break-before:always;} h1:first-of-type{page-break-before:auto;}}
   </style></head><body>
   <h1>CONTRATO DE LOCACIÓN DE EQUIPOS N° ${c.numero}</h1>
   <p class="clau">Entre Rent-AZ S.A., con domicilio en C. Zurbriggen 785 de la ciudad de Rafaela, provincia de Santa Fe, por una parte, en adelante denominada la LOCADORA, y <b>${cl?cl.nombre:a.cliente}</b>${cl&&cl.dir?`, con domicilio en la calle ${cl.dir}${cl.ciudad?', '+cl.ciudad:''}`:''}${cl&&cl.cuit&&cl.cuit!=='-'?`, CUIT ${cl.cuit}`:''}, en adelante llamada la LOCATARIA, por la otra parte, se conviene en celebrar el presente CONTRATO DE LOCACION DE EQUIPOS, sujeto a los términos y condiciones siguientes:</p>
@@ -14267,8 +14365,97 @@ async function elimCl(id){
   guardar();renderCl();
 }
 
+// PDF del modo "flete solo" (Mateo, 25/11/26): mismo encabezado/pie que el presupuesto
+// normal (generarPDF), pero con un solo renglón cargado a mano en vez de todo el cálculo
+// de equipos — así se puede mandar al cliente con el mismo formato de siempre y después
+// recibir la orden de compra para facturar. Se mantiene aparte, sin tocar generarPDF(),
+// para no arriesgar el camino de los presupuestos con equipo.
+function generarPDFFleteSolo(c){
+  const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const ahora=new Date();
+  const fechaLarga=`Rafaela, ${ahora.getDate()} de ${MESES[ahora.getMonth()]} de ${ahora.getFullYear()}`;
+  const cl=c.cliente;
+  const clNombre=cl?cl.nombre:'';
+  const clCuit=cl&&cl.cuit&&cl.cuit!=='-'?cl.cuit:'';
+  const clDir=cl&&cl.dir&&cl.dir!=='-'?cl.dir:'';
+  const clCiudad=cl&&cl.ciudad&&cl.ciudad!=='-'?cl.ciudad:'';
+  const logo=LOGO_B64;
+  const pdfHtml=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Presupuesto - Rentaz</title>
+  <style>
+    @page { margin: 8mm 10mm; }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    html,body{height:100%;}
+    body{font-family:Arial,sans-serif;color:#111;font-size:13px;background:#fff;}
+    @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
+    .hdr{width:100%;position:relative;overflow:hidden;background:#3da820;height:96px;}
+    .hdr-logo{position:absolute;left:0;top:0;bottom:0;width:290px;background:#000;display:flex;align-items:center;padding:14px 24px;
+      clip-path:polygon(0 0, 260px 0, 230px 100%, 0 100%);}
+    .hdr-logo img{width:170px;display:block;}
+    .hdr-right{position:absolute;right:0;top:0;bottom:0;left:220px;display:flex;align-items:center;justify-content:flex-end;padding:14px 32px;}
+    .hdr-titulo{font-size:34px;font-weight:700;color:#fff;letter-spacing:2px;line-height:1;}
+    .body{padding:26px 36px 20px;}
+    .fecha{text-align:right;font-size:13px;color:#222;margin-bottom:16px;}
+    .sres{font-size:14px;margin-bottom:6px;}
+    .sres-nombre{font-weight:700;font-size:15px;}
+    .sres-detalle{font-size:11px;color:#555;margin-top:2px;}
+    hr{border:none;border-top:1px solid #bbb;margin:16px 0 10px;}
+    table{width:100%;border-collapse:collapse;margin-bottom:10px;}
+    thead tr{border-bottom:2px solid #3da820;}
+    thead th{padding:7px 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#333;text-align:left;}
+    th.cant,td.cant{text-align:center;width:80px;}
+    th.precio,td.precio{text-align:right;width:130px;}
+    tbody td{padding:9px 8px;font-size:13px;vertical-align:top;}
+    .total-bloque{display:flex;justify-content:space-between;align-items:flex-start;margin-top:14px;}
+    .obs{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#444;}
+    .iva-txt{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#3da820;margin-top:6px;}
+    .total-num{text-align:right;}
+    .total-label{font-size:15px;font-weight:700;}
+    .total-monto{font-size:20px;font-weight:700;margin-left:10px;}
+    .footer{display:flex;justify-content:space-between;align-items:flex-end;border-top:1px solid #ddd;padding:12px 36px 12px;background:#fff;margin-top:auto;}
+    .body{padding:26px 36px 20px;display:flex;flex-direction:column;min-height:calc(100vh - 96px);}
+    .footer-datos{font-size:10px;color:#333;line-height:2;font-weight:700;}
+    .footer-datos span{font-weight:400;color:#666;}
+    .footer-tri{width:88px;height:88px;background:linear-gradient(135deg,#2e3f52,#1a2b3c);clip-path:polygon(100% 0,100% 100%,0 100%);position:relative;flex-shrink:0;}
+    .footer-tri img{width:38px;position:absolute;bottom:7px;right:7px;opacity:.9;}
+  </style></head><body>
+  <div class="hdr">
+    <div class="hdr-logo"><img src="${logo}" alt="Rentaz"></div>
+    <div class="hdr-right"><div class="hdr-titulo">PRESUPUESTO</div></div>
+  </div>
+  <div class="body">
+    <div class="fecha">${fechaLarga}</div>
+    ${clNombre?`<div class="sres">SRES:&nbsp;&nbsp;&nbsp;<span class="sres-nombre">${clNombre}</span>${clCuit||clDir?`<div class="sres-detalle">${[clCuit?'CUIT: '+clCuit:'',clDir?(clCiudad?clDir+', '+clCiudad:clDir):(clCiudad||'')].filter(Boolean).join(' &nbsp;·&nbsp; ')}</div>`:''}
+    </div>`:''}
+    <hr>
+    <table>
+      <thead><tr><th>Descripción</th><th class="cant">Cant.</th><th class="precio">Precio</th></tr></thead>
+      <tbody>
+        <tr><td>${c.descCompleta}</td><td class="cant">1</td><td class="precio">$ ${Math.round(c.sub).toLocaleString('es-AR')},-</td></tr>
+      </tbody>
+    </table>
+    <hr style="border:none;border-top:1px solid #bbb;margin:10px 0 8px;">
+    <div class="total-num" style="text-align:right;margin-bottom:8px;">
+      <span class="total-label">Total:</span><span class="total-monto"> $ ${Math.round(c.mostrarIva?c.sub:c.tot).toLocaleString('es-AR')},-</span>
+    </div>
+    <hr>
+    <div class="total-bloque">
+      <div><div class="obs">Observaciones:</div>${c.obs?`<div style="font-size:11px;color:#333;margin-top:3px;max-width:260px;white-space:pre-line">${c.obs}</div>`:'<br>'}<div class="iva-txt">${c.mostrarIva?'PRECIOS MAS IVA':''}</div></div>
+    </div>
+    <div class="footer">
+      <div class="footer-datos">Rentaz S.A<span>Conscripto Zurbriggen 785, Rafaela, Santa Fe</span><span>Tel: 3492-693524</span><span>www.rentazmaquinarias.com</span></div>
+      <div class="footer-tri"><img src="${logo}" alt=""></div>
+    </div>
+  </div></body></html>`;
+  const presupBlob = new Blob([pdfHtml], {type:'text/html'});
+  const presupUrl = URL.createObjectURL(presupBlob);
+  const w=window.open(presupUrl, '_blank', 'width=820,height=1050');
+  setTimeout(()=>{ w.print(); URL.revokeObjectURL(presupUrl); }, 700);
+  guardarPresupuesto(c, 1, '', c.descCompleta);
+  limpiar();
+}
 function generarPDF(){
   const c=window._cot; if(!c)return;
+  if(c.soloFlete){ generarPDFFleteSolo(c); return; }
   const MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
   const ahora=new Date();
   const fechaLarga=`Rafaela, ${ahora.getDate()} de ${MESES[ahora.getMonth()]} de ${ahora.getFullYear()}`;
@@ -14406,7 +14593,21 @@ function guardarPresupuesto(c, dias, rangoFecha, fleteDescripcion){
   // que es el que acompaña al importe mayor (ver subGuardado en cotizar()).
   const paqsGuardar = c.paquetes || [];
   if(paqsGuardar.length) dias = Math.max(...paqsGuardar);
-  const datos = {
+  // Flete solo, sin equipo (Mateo, 25/11/26): no hay tipo/base/paquetes que resumir acá,
+  // así que el historial muestra directamente la descripción cargada a mano.
+  const datos = c.soloFlete ? {
+    clienteNombre: cl ? cl.nombre : '(sin cliente)',
+    clienteCuit: cl && cl.cuit && cl.cuit!=='-' ? cl.cuit : '',
+    clienteTelefono: cl && cl.tel && cl.tel!=='-' ? cl.tel : '',
+    equipo: `Flete solo — ${c.descCompleta}`,
+    dias: 1,
+    rangoFecha: '',
+    fleteDescripcion: c.descCompleta,
+    base: c.sub,
+    fVal: 0,
+    total: c.sub,
+    cot: c
+  } : {
     clienteNombre: cl ? cl.nombre : '(sin cliente)',
     clienteCuit: cl && cl.cuit && cl.cuit!=='-' ? cl.cuit : '',
     clienteTelefono: cl && cl.tel && cl.tel!=='-' ? cl.tel : '',
@@ -14479,6 +14680,20 @@ function cargarPresupuestoEnCotizador(c, presupId){
     document.getElementById('cot-cl-nombre').textContent=cotCliente.nombre;
     const meta=[cotCliente.ciudad&&cotCliente.ciudad!=='-'?cotCliente.ciudad:'',cotCliente.cuit&&cotCliente.cuit!=='-'?'CUIT: '+cotCliente.cuit:'',cotCliente.tel&&cotCliente.tel!=='-'?'Tel: '+cotCliente.tel:''].filter(Boolean).join(' · ');
     document.getElementById('cot-cl-meta').textContent=meta;
+  }
+
+  // Flete solo, sin equipo (Mateo, 25/11/26): reabre el mini-formulario en vez de los
+  // campos de equipo/período/flete, que acá no existen.
+  if(c.soloFlete){
+    document.getElementById('cot-flete-solo-check').checked=true;
+    toggleFleteSoloCot();
+    document.getElementById('cot-fs-desc').value=c.descripcion||'Traslado ida y vuelta';
+    document.getElementById('cot-fs-localidad').value=c.localidad||'';
+    document.getElementById('cot-fs-monto').value=c.sub||'';
+    document.getElementById('cot-fs-mostrar-iva').checked=c.mostrarIva!==false;
+    document.getElementById('cot-obs').value=c.obs||'';
+    cotizar();
+    return;
   }
 
   // Equipo principal
