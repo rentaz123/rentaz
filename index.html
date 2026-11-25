@@ -14362,7 +14362,7 @@ function generarPDF(){
         ${(idx===0&&rangoFecha&&!(c.paquetes||[]).length)?`<tr><td class="rango" colspan="3">${rangoFecha}</td></tr>`:''}
         ${(eq.flete>0&&!c.fleteAparte)?`<tr class="con-flete"><td>${fleteDescripcion||'Traslado ida y vuelta'}</td><td class="cant">1</td><td class="precio">$ ${Math.round(eq.flete).toLocaleString('es-AR')},-</td></tr>`:''}
         `).join('') + (c.fleteAparte>0?`
-        <tr class="con-flete"><td>${(fleteDescripcion||'Traslado ida y vuelta')} — se cobra aparte, no está sumado arriba</td><td class="cant">1</td><td class="precio">$ ${Math.round(c.fleteAparte).toLocaleString('es-AR')},-</td></tr>
+        <tr class="con-flete"><td>${(fleteDescripcion||'Traslado ida y vuelta')}</td><td class="cant">1</td><td class="precio">$ ${Math.round(c.fleteAparte).toLocaleString('es-AR')},-</td></tr>
         `:'') : `
         <tr>
           <td style="padding-bottom:2px">${descripcionEquipoPDF(c.tipo)}</td>
