@@ -14087,21 +14087,10 @@ function generarPDFCompletoContrato(){
     <table style="margin-top:0"><tbody>${filaFirma('SALIDA DEL EQUIPO')}</tbody></table>
     <table style="margin-top:0"><tbody>${filaFirma('ENTRADA DEL EQUIPO')}</tbody></table>
   </div>`;
-  const contratoHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Contrato ${c.numero}</title>
-  <style>
-    @page { margin: 5mm 8mm; }
-    /* Apretado a propósito (Mateo, 25/11/26): contrato + checklist de salida TIENEN que
-       entrar en una sola hoja, como el contrato original en papel — se imprimen un
-       original y una copia, y 3 hojas por juego era de más. Nada del texto se sacó, solo
-       se achicó letra/espaciado al límite de lo legible. */
-    body{font-family:Arial,sans-serif;font-size:10px;color:#111;padding:10px 16px;line-height:1.22;}
-    h1{font-size:13px;text-align:center;margin-bottom:8px;}
-    b{font-weight:700;}
-    .clau{margin-bottom:4px;text-align:justify;}
-    table{width:100%;border-collapse:collapse;margin-top:14px;font-size:9px;}
-    td,th{border:1px solid #999;padding:1px 4px;}
-    @media print{body{padding:6px 10px;}}
-  </style></head><body>
+  // Cuerpo de UN ejemplar del contrato, con __ETIQUETA__ como marcador — se arma una sola
+  // vez y se estampa dos veces más abajo (ORIGINAL y COPIA), cada una en su propia hoja.
+  const cuerpoUnEjemplar = `
+  <div class="etiqueta-ejemplar"><span>__ETIQUETA__</span></div>
   <h1>CONTRATO DE LOCACIÓN DE EQUIPOS N° ${c.numero}</h1>
   <p class="clau">Entre Rent-AZ S.A., con domicilio en C. Zurbriggen 785 de la ciudad de Rafaela, provincia de Santa Fe, por una parte, en adelante denominada la LOCADORA, y <b>${cl?cl.nombre:a.cliente}</b>${cl&&cl.dir?`, con domicilio en la calle ${cl.dir}${cl.ciudad?', '+cl.ciudad:''}`:''}${cl&&cl.cuit&&cl.cuit!=='-'?`, CUIT ${cl.cuit}`:''}, en adelante llamada la LOCATARIA, por la otra parte, se conviene en celebrar el presente CONTRATO DE LOCACION DE EQUIPOS, sujeto a los términos y condiciones siguientes:</p>
   <p class="clau"><b>PRIMERA:</b> El locador entrega al locatario, y este así lo acepta, en carácter de LOCACIÓN, los equipos que a continuación se detallan: <b>${detalleEquipos}</b>.</p>
@@ -14117,7 +14106,32 @@ function generarPDFCompletoContrato(){
   <p class="clau" style="white-space:pre-line"><b>UNDÉCIMA (Adicional):</b> ${a.obs||'—'}</p>
   <p class="clau"><b>DUODÉCIMA:</b> Leídas y ratificadas las cláusulas que anteceden se firman dos ejemplares de un mismo tenor y a un solo efecto, en la ciudad de Rafaela, a los ${new Date().getDate()} días del mes de ${['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][new Date().getMonth()]} del año ${new Date().getFullYear()}.</p>
   ${seccionChecklist}
-  ${seccionFirmas}
+  ${seccionFirmas}`;
+  // ORIGINAL Y COPIA (Mateo, 25/11/26): "tengo que imprimir un original y una copia" —
+  // antes había que escribir a mano o poner un sello para distinguirlos. Ahora el mismo
+  // trabajo de impresión saca las DOS hojas ya armadas, cada una con su etiqueta — no hay
+  // que generar ni imprimir dos veces.
+  const contratoHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Contrato ${c.numero}</title>
+  <style>
+    @page { margin: 5mm 8mm; }
+    /* Apretado a propósito (Mateo, 25/11/26): contrato + checklist de salida TIENEN que
+       entrar en una sola hoja, como el contrato original en papel — se imprimen un
+       original y una copia, y 3 hojas por juego era de más. Nada del texto se sacó, solo
+       se achicó letra/espaciado al límite de lo legible. */
+    body{font-family:Arial,sans-serif;font-size:10px;color:#111;padding:10px 16px;line-height:1.22;}
+    h1{font-size:13px;text-align:center;margin-bottom:8px;}
+    b{font-weight:700;}
+    .clau{margin-bottom:4px;text-align:justify;}
+    table{width:100%;border-collapse:collapse;margin-top:14px;font-size:9px;}
+    td,th{border:1px solid #999;padding:1px 4px;}
+    @media print{body{padding:6px 10px;}}
+    .etiqueta-ejemplar{text-align:right;margin-bottom:2px}
+    .etiqueta-ejemplar span{font-size:10px;font-weight:700;border:1px solid #111;padding:1px 9px;border-radius:4px;display:inline-block}
+    .salto-ejemplar{page-break-before:always}
+  </style></head><body>
+  ${cuerpoUnEjemplar.replace('__ETIQUETA__','ORIGINAL')}
+  <div class="salto-ejemplar"></div>
+  ${cuerpoUnEjemplar.replace('__ETIQUETA__','COPIA')}
   </body></html>`;
   const contratoBlob = new Blob([contratoHtml], {type:'text/html'});
   const contratoUrl = URL.createObjectURL(contratoBlob);
@@ -17459,7 +17473,10 @@ function resumenAlquilerHTML(a){
   // Taller ve el alquiler pero sin un solo numero (ver el bloque de importes mas abajo).
   const esTallerDet = esTallerVista();
   const fmtD=str=>{const[y,m,d]=str.split('-');return`${d}/${m}/${y.slice(2)}`;};
-  const fila=(lbl,val)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span style="color:var(--txt2)">${lbl}</span><span class="multilinea" style="font-weight:700;color:var(--txt);text-align:right;max-width:60%">${val}</span></div>`;
+  // resaltado: para una aclaración puntual (ej. "Observaciones", dónde se hace la
+  // descarga) que taller tiene que ver de un vistazo — un poco más grande y en verde, sin
+  // tocar el resto de los renglones del detalle. (Mateo, 26/11/26.)
+  const fila=(lbl,val,resaltado)=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:.85rem"><span style="color:var(--txt2)">${lbl}</span><span class="multilinea" style="font-weight:700;${resaltado?'color:var(--verde);font-size:1.05em;':'color:var(--txt);'}text-align:right;max-width:60%">${val}</span></div>`;
 
   // Estado del alquiler (en curso / próximo / finalizado / retirado / abierto)
   const hoy=hoyISO();
@@ -17653,7 +17670,7 @@ ${a.precio?fila('Alquiler', fmt(a.precio)+(detalleSinEquipo?`<div style="font-we
     ${a.tot?`<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:700;color:var(--verde)"><span>TOTAL</span><span>${fmt(a.tot)}</span></div>`:''}
 
       `}
-    ${a.obs?fila('Observaciones', a.obs):''}
+    ${a.obs?fila('Observaciones', a.obs, true):''}
     ${a.solicitante?fila('Solicitado por', a.solicitante):''}
   `;
 }
