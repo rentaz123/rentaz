@@ -17596,6 +17596,7 @@ function resumenAlquilerHTML(a){
         <b>Viaje del cambio:</b> ${fmt(a.fleteCambio.monto)}${a.fleteCambio.fecha?' · '+(()=>{const p=String(a.fleteCambio.fecha).split('-');return p[2]+'/'+p[1]+'/'+p[0].slice(2);})():''}${a.fleteCambio.transportista?' · '+a.fleteCambio.transportista:''}
       </div>`:''}</div>`:''}
     ${fila('Entrega', txtEntrega)}
+    ${a.obs?fila('Observaciones', a.obs, true):''}
     ${fila('Retiro', txtRetiro)}
     ${(a.diasNoCobrados && a.diasNoCobrados.length) ? fila('Días que no se cobran',
         `${a.diasNoCobrados.length} de ${a.diasPeriodo||'?'} — ${a.diasNoCobrados.map(f=>fmtD(f)).join(', ')}<br>`
@@ -17670,7 +17671,6 @@ ${a.precio?fila('Alquiler', fmt(a.precio)+(detalleSinEquipo?`<div style="font-we
     ${a.tot?`<div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1rem;font-weight:700;color:var(--verde)"><span>TOTAL</span><span>${fmt(a.tot)}</span></div>`:''}
 
       `}
-    ${a.obs?fila('Observaciones', a.obs, true):''}
     ${a.solicitante?fila('Solicitado por', a.solicitante):''}
   `;
 }
@@ -17773,6 +17773,15 @@ function verDetalleAlq(id){
       const fD = (()=>{ const [y,m,d]=String(a.retiroFisicoFecha).split("-"); return d+"/"+m+"/"+String(y).slice(2); })();
       botones+=`<button onclick="desmarcarVueltaDeTaller(${a.id})" class="btn-lim" title="Borra la marca de vuelta: el equipo vuelve a figurar en obra" style="flex:1;padding:8px;font-size:.8rem;color:var(--rojo)">↩️ No volvió (corregir)</button>
       <div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Marcado de vuelta el ${fD}${a.retiroFisicoPor?' por '+a.retiroFisicoPor:''}. Si se equivocaron de máquina, corregilo acá.</div>`;
+    }
+    /* Espejo de lo de arriba, del lado de la salida (Mateo, 26/11/26: "¿qué pasa si
+       taller por error marca que el equipo salió?"). Mismo motivo, mismo alcance: solo
+       Mateo, porque deshace algo que marcó otra persona y cambia la disponibilidad del
+       equipo para toda la app. Ver desmarcarSalidaDeTaller. */
+    if(a.entregaFisicaFecha && esMateo()){
+      const fD2 = (()=>{ const [y,m,d]=String(a.entregaFisicaFecha).split("-"); return d+"/"+m+"/"+String(y).slice(2); })();
+      botones+=`<button onclick="desmarcarSalidaDeTaller(${a.id})" class="btn-lim" title="Borra la marca de salida: el equipo vuelve a figurar en el depósito" style="flex:1;padding:8px;font-size:.8rem;color:var(--rojo)">↩️ No salió (corregir)</button>
+      <div style="width:100%;font-size:.72rem;color:var(--txt3);margin:-4px 0 2px">Marcada la salida el ${fD2}${a.entregaFisicaPor?' por '+a.entregaFisicaPor:''}. Si se equivocaron de máquina, corregilo acá.</div>`;
     }
   }
   if(!a.abierto && !a.pickupPendiente && !a.retiradoAnticipado){
@@ -20407,6 +20416,53 @@ async function desmarcarVueltaDeTaller(id){
   renderAlq(); renderDashboard(); renderEq(); renderCal();
   if(typeof renderFacturacion==='function') renderFacturacion();
   alert(`Listo. "${a.equipoNombre}" vuelve a figurar en obra, como si nunca se hubiera marcado la vuelta.`);
+}
+
+/* ── "ESTE EQUIPO NO SALIÓ" — CORREGIR UNA SALIDA MARCADA POR ERROR ────────
+   Espejo de desmarcarVueltaDeTaller, mismo problema del otro lado: taller marca la
+   salida desde el galpón y puede tocar el equipo equivocado, o marcarla antes de
+   tiempo. (Mateo, 26/11/26: "¿qué pasa si taller por error marca que el equipo
+   salió? pero el equipo todavía no salió".) Sin esto no había forma de deshacerlo:
+   el equipo quedaba figurando afuera, bloqueado para cualquier otro alquiler, sin
+   que "Editar" pudiera tocar ese dato (está protegido a propósito, ver nota de
+   editarAlq sobre entregaFisicaFecha/retiroFisicoFecha).
+
+   Deshace exactamente lo que hace marcarSalidaConfirmada:
+     · la fecha, hora y quién marcó la salida,
+     · "entregaPendiente" vuelve a quedar activo (el equipo sigue en el depósito),
+     · el rastro de "salida sin checklist", si lo había generado esta misma marca. */
+async function desmarcarSalidaDeTaller(id){
+  const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
+  if(!a.entregaFisicaFecha){ alert('Este alquiler no tiene marcada ninguna salida.'); return; }
+  const fmtD = s => String(s).split('-').reverse().join('/');
+  const quien = a.entregaFisicaPor ? ` por ${a.entregaFisicaPor}` : '';
+
+  const ok = await confirmSiNo(
+    `${a.equipoNombre} · ${a.cliente}\n\n`+
+    `Está marcado como que salió el ${fmtD(a.entregaFisicaFecha)}${quien}.\n\n`+
+    `Si fue un error, se borra esa marca: el equipo vuelve a figurar EN EL DEPÓSITO y pendiente de entregar.`,
+    {si:'Sí, no salió', no:'Cancelar'});
+  if(!ok) return;
+
+  const fechaQueTenia = a.entregaFisicaFecha;
+  a.entregaFisicaFecha = null;
+  a.entregaFisicaHora = null;
+  a.entregaFisicaPor = null;
+  a.entregaPendiente = true;
+  // El rastro de "se marcó sin checklist" solo corresponde a ESTA salida — si se
+  // generó con esta misma marca, se borra junto con ella.
+  if(a.salidaSinChecklist && a.salidaSinChecklistFecha === fechaQueTenia){
+    a.salidaSinChecklist = false;
+    a.salidaSinChecklistPor = null;
+    a.salidaSinChecklistFecha = null;
+  }
+
+  marcarAccionUndo(`Corregir: "${a.equipoNombre}" NO había salido — ${a.cliente}`, 'alquileres');
+  guardar();
+  refrescarDetalleAlqSiAbierto(id);
+  renderAlq(); renderDashboard(); renderEq(); renderCal();
+  if(typeof renderFacturacion==='function') renderFacturacion();
+  alert(`Listo. "${a.equipoNombre}" vuelve a figurar en el depósito, como si nunca se hubiera marcado la salida.`);
 }
 async function marcarVueltaDeTaller(id){
   const a=ALQUILERES.find(x=>x.id===id); if(!a) return;
