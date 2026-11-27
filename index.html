@@ -18622,28 +18622,28 @@ function renderFacturacion(){
     </div>`;
   }
 
-  /* ── FACTURACIÓN: DOS VISTAS DISTINTAS ────────────────────────────────────
-     Walter (rol facturación) entra acá a hacer UNA cosa: buscar el cliente que está
-     facturando y marcarlo. Todo lo demás —el contador de pendientes, los avisos del
-     arranque limpio, el panel de alquileres sin cerrar— es información de control
-     que no le sirve para su tarea y lo aturde. A él le queda el buscador y nada más
-     hasta que escriba algo.
+  /* ── FACTURACIÓN: SE TERMINÓ EL CORCHO DE PAPELITOS ────────────────────────
+     Hasta el 26/11/26, Walter (rol facturación) entraba acá a buscar un cliente
+     puntual y la pantalla quedaba en blanco hasta que escribía algo — pensado para
+     cuando facturaba mirando los papelitos pinchados en el corcho, cliente por
+     cliente. Esos papeles dejaron de existir: ahora necesita ver de entrada TODO lo
+     que está pendiente de facturar, como una lista de tareas, e ir marcando. El
+     buscador sigue andando igual que antes, pero ahora es para filtrar si quiere
+     ver solo un cliente puntual — ya no hace falta escribir algo para ver algo.
 
-     Para Mateo sigue estando todo, pero el panel de alquileres sin cerrar arranca
-     PLEGADO: es un control que se mira cuando uno quiere, no un muro al entrar.
-     (Mateo, 5/11/26.) */
+     Lo que SÍ se le sigue ocultando a Walter es la información de control que no
+     tiene que ver con SU tarea: el panel de alquileres sin cerrar, los avisos de
+     arranque limpio, los totales mal calculados — eso lo sigue viendo solo Mateo
+     (ver los `soloBuscador` de más abajo, que no se tocaron). (Mateo, 26/11/26,
+     sobre una decisión anterior del 5/11/26.) */
   const soloBuscador = (ROL_ACTUAL === 'facturacion');
-  if(soloBuscador && !busca){
-    cont.innerHTML = `<div style="text-align:center;color:var(--txt3);font-size:.88rem;line-height:1.7;margin:2.5rem 0">
-        Buscá el cliente que estás facturando.<br>
-        <span style="font-size:.82rem">Te va a decir hasta qué día se le facturó, si quedó algo parcial o si todavía no se le facturó nada.</span>
-      </div>`;
-    return;
-  }
 
-  // Para Walter arranca sin el contador de pendientes: el número global no le dice
-  // nada cuando está facturando un cliente puntual.
-  let h = hSel + (soloBuscador ? '' : `<div style="font-size:.85rem;color:var(--txt2);margin-bottom:${pendientesViejos.length?'.4rem':'1rem'}">Pendientes de facturar: <b style="color:${pendientes.length?'var(--rojo)':'var(--verde)'}">${pendientes.length}</b>${pendientes.length?` · Total sin facturar: <b style="color:var(--txt)">${fmt(totalPendiente)}</b>`:''}${REPORTES_DESDE_MES?` <span style="color:var(--txt3)">· desde ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}</span>`:''}</div>`);
+  // Para Walter, en vez del contador (que es más para control que para hacer la
+  // tarea), un renglón que le aclara que ya está viendo todo y que el buscador de
+  // arriba es para filtrar, no un paso obligatorio.
+  let h = hSel + (soloBuscador
+    ? (busca ? '' : `<div style="font-size:.85rem;color:var(--txt2);margin-bottom:1rem">Esto es todo lo que está pendiente de facturar. Buscá un cliente arriba si querés ver solo el suyo.</div>`)
+    : `<div style="font-size:.85rem;color:var(--txt2);margin-bottom:${pendientesViejos.length?'.4rem':'1rem'}">Pendientes de facturar: <b style="color:${pendientes.length?'var(--rojo)':'var(--verde)'}">${pendientes.length}</b>${pendientes.length?` · Total sin facturar: <b style="color:var(--txt)">${fmt(totalPendiente)}</b>`:''}${REPORTES_DESDE_MES?` <span style="color:var(--txt3)">· desde ${mesLabel(REPORTES_DESDE_MES).toLowerCase()}</span>`:''}</div>`);
 
   if(pendientesViejos.length && !soloBuscador){
     const totalViejos=pendientesViejos.reduce((s,a)=>s+(a.tot||0),0);
