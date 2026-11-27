@@ -1492,6 +1492,13 @@ if ('serviceWorker' in navigator) {
           <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:700;color:var(--txt);cursor:pointer;margin-top:.4rem;">
             <input type="checkbox" id="cot-mostrar-iva-check" checked onchange="cotizar()"> Mostrar desglose de IVA
           </label>
+          <!-- Opcional, apagado por defecto (Mateo, 26/11/26): para cuando el cliente
+               quiere ver un solo número, ya final, sin desglose ni aclaración de "+IVA"
+               abajo. No reemplaza el tilde de arriba — ese sigue decidiendo si en pantalla
+               y WhatsApp se ve el desglose; este es solo para el PDF. -->
+          <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:700;color:var(--txt);cursor:pointer;margin-top:.4rem;">
+            <input type="checkbox" id="cot-pdf-iva-incluido-check" onchange="cotizar()"> En el PDF, sacarlo con el precio final (IVA incluido), sin aclaración
+          </label>
         </div>
       </div>
 
@@ -9675,6 +9682,9 @@ function cotizar(){
   // llevan total combinado, aunque el casillero de alternativas esté sin tildar.
   const sinTotal = document.getElementById('cot-sin-total-check').checked || paqDias.length>0;
   const mostrarIva = document.getElementById('cot-mostrar-iva-check').checked;
+  // Opcional, para el PDF nada más (ver generarPDF): precio final con IVA incluido, sin
+  // la aclaración de "PRECIOS MAS IVA" abajo. No toca la pantalla ni el texto de WhatsApp.
+  const pdfIvaIncluido = document.getElementById('cot-pdf-iva-incluido-check').checked;
   // Destino del flete (para mostrar "Traslado ida y vuelta <ciudad>" en pantalla).
   const destFlete = fleteEspecial ? '' : destinoFromFleteLabel(fLabel);
   const destFleteLiviano = destinoFromFleteLabel(fLabelLiviano);
@@ -9763,7 +9773,7 @@ function cotizar(){
     document.getElementById('iva-box').textContent=`Total final: ${fmt(tot)}`;
   }
   document.getElementById('res-card').style.display='block';
-  window._cot={nombre:p.nombre,tipo,perLabel,base,equiposExtra,equiposExtraTotal,todosLosEquipos,sinTotal,paquetes:paqDias,fleteAparte,mostrarIva,fLabel,fVal,fDesglose,sub:subGuardado,iva:ivaGuardado,tot:totGuardado,cliente:cotCliente,
+  window._cot={nombre:p.nombre,tipo,perLabel,base,equiposExtra,equiposExtraTotal,todosLosEquipos,sinTotal,paquetes:paqDias,fleteAparte,mostrarIva,pdfIvaIncluido,fLabel,fVal,fDesglose,sub:subGuardado,iva:ivaGuardado,tot:totGuardado,cliente:cotCliente,
     dias, perModo,
     // Se guarda para que al reabrir el presupuesto vuelva armado igual (ver verDetallePresup).
     tarifaClasica: tarifaClasicaCot(),
@@ -9972,6 +9982,7 @@ function limpiar(){
   document.querySelectorAll('.cot-paq').forEach(x=>{ x.checked = (x.value==='7' || x.value==='28'); });
   document.getElementById('cot-paq-otro').value='';
   document.getElementById('cot-mostrar-iva-check').checked=true;
+  document.getElementById('cot-pdf-iva-incluido-check').checked=false;
   document.getElementById('cot-usd-check').checked=false;
   document.getElementById('cot-usd-box').style.display='none';
   document.getElementById('cot-usd-valor').value='';
@@ -13904,6 +13915,16 @@ function renderContratoChecklist(tipo){
   // mandó el contrato al cliente sí queda solo para oficina.
   if(tipo==='salida'){
     h+=`<button onclick="generarPDFCompletoContrato()" class="btn-cop" style="width:100%;margin-bottom:.5rem">Generar / Imprimir contrato</button>`;
+    // ENVÍO REAL (Mateo, 26/11/26): abre la app de mail del celular con el cliente y el
+    // texto ya cargados — las fotos las saca taller con la cámara común del teléfono y
+    // las adjunta a mano desde ahí mismo (un mailto NO puede traerlas solo, es una
+    // restricción del navegador). Así las fotos nunca tocan la app ni ocupan espacio acá.
+    h+=`<button onclick="enviarFotosMailCliente()" class="btn-cop" style="width:100%;margin-bottom:.5rem;background:#2e8018">📧 Enviar mail al cliente (adjuntás las fotos ahí)</button>`;
+    // DEMO para discutir con Mateo (26/11/26): vista previa nada más, no manda nada ni
+    // adjunta fotos reales — es para mostrar el diseño del mail con membrete, si más
+    // adelante se arma el envío de verdad con ese diseño (necesita un servicio de mail
+    // aparte, eso se habla cuando llegue el momento).
+    h+=`<button onclick="demoMailSalidaCliente()" class="btn-lim" style="width:100%;margin-bottom:.5rem;color:#8e24aa;border-color:#8e24aa">🔎 DEMO: cómo se vería con diseño (a futuro)</button>`;
   } else {
     h+=`<button onclick="generarPDFChecklist('${tipo}')" class="btn-cop" style="width:100%;margin-bottom:.5rem">Generar PDF de ${tipo}</button>`;
   }
@@ -14048,6 +14069,114 @@ async function guardarChecklistContrato(tipo){
 // Genera un solo documento imprimible con el contrato (cláusulas) + el checklist de
 // salida (ítems y fotos, si hay) — pensado para que taller lo pueda generar/imprimir
 // él mismo antes de subir el equipo al camión, sin tener que pasar por dos botones.
+/* ═══════════════════════════════════════════════════════════════════════════
+   DEMO — MAIL AL CLIENTE CUANDO SALE EL EQUIPO (idea de Mateo, 26/11/26)
+
+   Esto es SOLO una vista previa visual para discutir el diseño. No manda nada, no
+   adjunta fotos reales ni el PDF de disponibilidad — eso requiere un servicio de
+   envío de mail de verdad (algo como Resend, o la cuenta de Gmail de la empresa vía
+   una función de Supabase), que es la parte que hay que definir juntos antes de
+   construirla. El objetivo acá es solo mostrar la idea: encabezado con el camioncito,
+   "TU MÁQUINA ESTÁ EN CAMINO", los datos del equipo, las fotos del checklist de
+   salida, la frase de cierre, y la mención del PDF de flota disponible adjunto.
+   ═══════════════════════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════════════════════
+   ENVIAR MAIL AL CLIENTE CON EL EQUIPO (Mateo, 26/11/26)
+
+   La idea original era mandar un mail con diseño y las fotos adjuntas solas, pero un
+   botón de una página web NO puede adjuntar archivos a un mail por su cuenta — es una
+   restricción de seguridad del navegador, no algo que dependa de esta app. Mateo lo
+   resolvió más simple: que taller saque las fotos con la cámara del celular (como
+   siempre) y después toque un botón acá que le abra la app de mail YA con el
+   destinatario, el asunto y el texto cargados — ahí mismo, con el clip de adjuntar de
+   su propia app de mail, agrega las fotos de la cámara y manda. Las fotos nunca pasan
+   por la app ni se guardan acá, que era justo lo que no quería.
+   Si en algún momento se quiere un mail con el diseño con membrete (ver
+   demoMailSalidaCliente, más abajo) hace falta un servicio de envío aparte — esto de
+   acá funciona YA, sin depender de eso. */
+function enviarFotosMailCliente(){
+  const a=ALQUILERES.find(x=>x.id===contratoAlqId); if(!a) return;
+  const cl=CLIENTES.find(x=>x.id===a.clienteId);
+  if(!cl || !cl.email){
+    alert(`"${a.cliente}" no tiene un email cargado todavía.\n\nAgregalo en la ficha del cliente (pantalla Clientes) y volvé a intentar.`);
+    return;
+  }
+  const fmtD=str=>{ if(!str) return '—'; const[y,m,d]=String(str).split('-');return`${d}/${m}/${y.slice(2)}`; };
+  const asunto = 'Tu equipo está en camino — Rentaz S.A.';
+  const cuerpo = `Hola ${cl.nombre},\n\n`+
+    `Te compartimos los datos de tu equipo:\n\n`+
+    `Equipo: ${a.equipoNombre}\n`+
+    `Período: ${fmtD(a.inicio)} al ${fmtD(a.retiradoAnticipado||a.fechaRetiro||a.fin)}\n`+
+    `Destino: ${a.localidad||'—'}\n\n`+
+    `Adjuntamos las fotos del estado de salida del equipo.\n\n`+
+    `Estamos para acompañarte en todos tus trabajos.\n\n`+
+    `Rentaz S.A.`;
+  const mailtoUrl = `mailto:${cl.email}?subject=${encodeURIComponent(asunto)}&body=${encodeURIComponent(cuerpo)}`;
+  // El aviso va ANTES de abrir el mail — una vez que se abre la app de mail, esta
+  // pantalla queda atrás y taller se puede olvidar de volver a leer nada.
+  alert('Se va a abrir tu app de mail con el destinatario y el texto ya cargados.\n\nAntes de mandarlo: tocá el clip de "adjuntar" y agregá ahí las fotos que sacaste del equipo con la cámara.');
+  window.location.href = mailtoUrl;
+}
+function demoMailSalidaCliente(){
+  const a=ALQUILERES.find(x=>x.id===contratoAlqId); if(!a) return;
+  const cl=CLIENTES.find(x=>x.id===a.clienteId);
+  const fmtD=str=>{ if(!str) return '—'; const[y,m,d]=String(str).split('-');return`${d}/${m}/${y.slice(2)}`; };
+  const logo=LOGO_B64;
+  const horaDemo = (new Date()).toTimeString().slice(0,5);
+  const mailHtml=`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>DEMO — Mail al cliente</title>
+  <style>
+    *{box-sizing:border-box;}
+    body{font-family:Arial,sans-serif;background:#efece6;margin:0;padding:28px 0;}
+    .mail{max-width:600px;margin:0 auto;background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 14px rgba(0,0,0,.12);}
+    .hdr-top{display:flex;align-items:center;padding:16px 22px;background:#000;}
+    .hdr-top img{height:36px;display:block}
+    .truck-banner{background:linear-gradient(135deg,#2e3f52,#1a2b3c);padding:30px 20px;text-align:center;color:#fff;}
+    .truck-emoji{font-size:50px;line-height:1}
+    .truck-titulo{font-size:21px;font-weight:700;margin-top:10px;letter-spacing:.4px}
+    .cuerpo{padding:26px 28px 10px;}
+    .datos{background:#f7f6f3;border-radius:8px;padding:14px 18px;margin:16px 0 20px;font-size:13.5px;line-height:1.9;color:#333}
+    .datos b{color:#111}
+    .subt{font-size:13px;font-weight:700;color:#57534e;margin-bottom:8px}
+    .fotos{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+    .foto-ph{width:118px;height:118px;background:#e3dfd8;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#9a938a;font-size:11px;text-align:center;border:1px dashed #c5c0b7}
+    .adjunto{background:#eef6ea;border:1px dashed #3da820;border-radius:8px;padding:10px 14px;font-size:12px;color:#2e8018;margin:6px 0 4px}
+    .tagline{text-align:center;font-size:15px;font-weight:700;color:#3da820;margin:22px 0 4px;padding-top:18px;border-top:1px solid #eee}
+    .footer{text-align:center;font-size:10.5px;color:#999;padding:16px;background:#fafafa}
+    .banner-demo{max-width:600px;margin:14px auto 0;text-align:center;font-size:12.5px;font-weight:700;color:#8e24aa;background:#8e24aa18;border-radius:8px;padding:8px 14px}
+  </style></head><body>
+    <div class="mail">
+      <div class="hdr-top"><img src="${logo}"></div>
+      <div class="truck-banner">
+        <div class="truck-emoji">🚛</div>
+        <div class="truck-titulo">TU MÁQUINA ESTÁ EN CAMINO</div>
+      </div>
+      <div class="cuerpo">
+        <p style="font-size:14px;margin:0">Hola <b>${cl?cl.nombre:a.cliente}</b>,</p>
+        <p style="font-size:14px;margin:8px 0 0">Te compartimos los datos de tu equipo y cómo sale del depósito:</p>
+        <div class="datos">
+          <div><b>Equipo:</b> ${a.equipoNombre}</div>
+          <div><b>Período:</b> ${fmtD(a.inicio)} al ${fmtD(a.retiradoAnticipado||a.fechaRetiro||a.fin)}</div>
+          <div><b>Destino:</b> ${a.localidad||'—'}</div>
+          <div><b>Sale:</b> hoy, ${horaDemo} hs</div>
+        </div>
+        <div class="subt">Así sale el equipo (checklist de salida):</div>
+        <div class="fotos">
+          <div class="foto-ph">Foto<br>frente</div>
+          <div class="foto-ph">Foto<br>dorso</div>
+          <div class="foto-ph">Foto<br>costado izq.</div>
+          <div class="foto-ph">Foto<br>costado der.</div>
+        </div>
+        <div class="adjunto">📎 Adjunto: Equipos disponibles — Rentaz S.A. (PDF)</div>
+        <div class="tagline">Estamos para acompañarte en todos tus trabajos.</div>
+      </div>
+      <div class="footer">Rentaz S.A. · Conscripto Zurbriggen 785, Rafaela, Santa Fe · Tel: 3492-693524</div>
+    </div>
+    <div class="banner-demo">⚠ DEMO — vista previa del diseño. Todavía no manda nada ni usa fotos reales.</div>
+  </body></html>`;
+  const demoBlob = new Blob([mailHtml], {type:'text/html'});
+  const demoUrl = URL.createObjectURL(demoBlob);
+  window.open(demoUrl, '_blank', 'width=680,height=1000');
+}
 function generarPDFCompletoContrato(){
   const a=ALQUILERES.find(x=>x.id===contratoAlqId); if(!a) return;
   const c=asegurarContrato(contratoAlqId);
@@ -14600,11 +14729,11 @@ function generarPDF(){
     </table>
     <hr style="border:none;border-top:1px solid #bbb;margin:10px 0 8px;">
     ${c.sinTotal ? '' : `<div class="total-num" style="text-align:right;margin-bottom:8px;">
-      <span class="total-label">Total:</span><span class="total-monto"> $ ${Math.round(c.mostrarIva?c.sub:c.tot).toLocaleString('es-AR')},-</span>
+      <span class="total-label">Total:</span><span class="total-monto"> $ ${Math.round(c.pdfIvaIncluido?c.tot:(c.mostrarIva?c.sub:c.tot)).toLocaleString('es-AR')},-</span>
     </div>`}
     <hr>
     <div class="total-bloque">
-      <div><div class="obs">Observaciones:</div>${c.obs?`<div style="font-size:11px;color:#333;margin-top:3px;max-width:260px;white-space:pre-line">${c.obs}</div>`:'<br>'}<div class="iva-txt">${c.mostrarIva?'PRECIOS MAS IVA':''}</div></div>
+      <div><div class="obs">Observaciones:</div>${c.obs?`<div style="font-size:11px;color:#333;margin-top:3px;max-width:260px;white-space:pre-line">${c.obs}</div>`:'<br>'}<div class="iva-txt">${c.pdfIvaIncluido?'PRECIO FINAL, IVA INCLUIDO':(c.mostrarIva?'PRECIOS MAS IVA':'')}</div></div>
     </div>
     <div class="footer">
       <div class="footer-datos">Rentaz S.A<span>Conscripto Zurbriggen 785, Rafaela, Santa Fe</span><span>Tel: 3492-693524</span><span>www.rentazmaquinarias.com</span></div>
@@ -14772,6 +14901,7 @@ function cargarPresupuestoEnCotizador(c, presupId){
   const sueltos = paqGuardados.filter(d=>!fijos.includes(d));
   document.getElementById('cot-paq-otro').value = sueltos.length ? sueltos[0] : '';
   document.getElementById('cot-mostrar-iva-check').checked = c.mostrarIva!==false;
+  document.getElementById('cot-pdf-iva-incluido-check').checked = !!c.pdfIvaIncluido;
   document.getElementById('cot-localidad').value = c.localidad || '';
   document.getElementById('cot-obs').value = c.obs || '';
 
