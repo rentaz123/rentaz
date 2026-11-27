@@ -1337,6 +1337,12 @@ if ('serviceWorker' in navigator) {
           </div>
           <button onclick="limpiarCliente()" style="background:none;border:none;color:var(--txt2);cursor:pointer;font-size:.9rem;margin-left:8px">✕</button>
         </div>
+        <!-- Aviso fijo mientras este cliente esté elegido (Mateo, 26/11/26): no solo un
+             alert() que se puede cerrar sin leer — esto queda a la vista todo el tiempo
+             que dure la cotización. Ver elegirCliente()/avisarSiClienteDificilCobro(). -->
+        <div id="cot-cl-aviso-dificil" style="display:none;margin-top:.5rem;background:rgba(201,106,94,.12);border:1px solid var(--rojo);border-radius:8px;padding:.5rem .8rem;font-size:.78rem;color:var(--rojo);line-height:1.5;">
+          <b>⚠ Difícil de cobrar.</b> <span id="cot-cl-aviso-dificil-txt"></span>
+        </div>
         <!-- form cliente nuevo (oculto) -->
         <div id="cot-cl-nuevo-form" style="display:none;margin-top:.8rem;border-top:1px solid var(--border);padding-top:.8rem;">
           <div style="font-size:.78rem;font-weight:700;color:var(--txt2);margin-bottom:.6rem;text-transform:uppercase;letter-spacing:.04em">Nuevo cliente</div>
@@ -2180,6 +2186,11 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
               <span id="alq-cl-nombre" style="font-size:.85rem;font-weight:700;color:var(--verde)"></span>
               <button onclick="limpiarClAlq()" style="background:none;border:none;color:var(--txt2);cursor:pointer">✕</button>
             </div>
+            <!-- Mismo aviso fijo que en el cotizador (Mateo, 26/11/26), acá es donde más
+                 importa: justo antes de cargar el alquiler nuevo. Ver elegirClAlq(). -->
+            <div id="alq-cl-aviso-dificil" style="display:none;margin-top:.4rem;background:rgba(201,106,94,.12);border:1px solid var(--rojo);border-radius:8px;padding:.4rem .8rem;font-size:.78rem;color:var(--rojo);line-height:1.5;">
+              <b>⚠ Difícil de cobrar.</b> <span id="alq-cl-aviso-dificil-txt"></span>
+            </div>
           </div>
 
           <!-- EQUIPOS -->
@@ -2742,6 +2753,21 @@ Presupuesto v&aacute;lido por 15 d&iacute;as, sujeto a disponibilidad de equipos
           <label class="flabel">Datos de la obra / alturas</label>
           <textarea id="mcl-notas" rows="3" placeholder="EJ: LA RURAL — SALÓN A 7M, SALÓN B 9M. SE ENTRA POR EL PORTÓN DE ATRÁS. CONTACTO EN OBRA: JUAN 3492-..."
                     style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border2);border-radius:9px;background:var(--bg);color:var(--txt);font-family:inherit;font-size:.86rem;line-height:1.5;resize:vertical"></textarea>
+        </div>
+
+        <!-- Difícil de cobrar (Mateo, 26/11/26): un registro de clientes con los que hay
+             que hablar la forma de pago ANTES de alquilarles — no para no alquilarles,
+             sino para no repetir el problema. El aviso sale al elegir este cliente en un
+             alquiler nuevo o en el cotizador (ver avisarSiClienteDificilCobro). -->
+        <div style="background:rgba(201,106,94,.08);border:1px solid rgba(201,106,94,.3);border-radius:9px;padding:9px 11px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:.85rem;font-weight:700;color:var(--rojo);cursor:pointer;">
+            <input type="checkbox" id="mcl-dificil-cobrar" onchange="document.getElementById('mcl-dificil-cobrar-box').style.display=this.checked?'block':'none'"> Difícil de cobrar
+          </label>
+          <div id="mcl-dificil-cobrar-box" style="display:none;margin-top:.5rem">
+            <label class="flabel">Por qué (se muestra como aviso cada vez que se lo elige)</label>
+            <textarea id="mcl-dificil-cobrar-motivo" rows="2" placeholder="EJ: HACE DOS SEMANAS QUE PATEA UN PAGO. HABLAR FORMA DE PAGO ANTES DE ALQUILARLE DE NUEVO."
+                      style="width:100%;box-sizing:border-box;padding:9px 11px;border:1px solid var(--border2);border-radius:9px;background:var(--bg);color:var(--txt);font-family:inherit;font-size:.86rem;line-height:1.5;resize:vertical"></textarea>
+          </div>
         </div>
 
         <!-- Qué alquila habitualmente. Es de solo lectura: sale de los alquileres
@@ -8827,6 +8853,22 @@ function filtrarClCot(){
   items+=`<div class="cl-drop-item" style="color:var(--verde);border-top:1px solid var(--border)" onclick="mostrarNuevoCliente()">Crear cliente nuevo</div>`;
   dd.innerHTML=items; dd.style.display='block';
 }
+// Aviso de "difícil de cobrar" al elegir un cliente (Mateo, 26/11/26: "que primero,
+// antes de alquilarle, tenga que hablar la forma de pago"). Un alert() que corta el
+// paso — hay que leerlo y cerrarlo — más un cartel fijo que queda a la vista todo el
+// tiempo que dure la carga, por si el alert se cierra de un toque sin leerlo bien.
+function avisarSiClienteDificilCobro(cliente, avisoId, avisoTxtId){
+  const aviso = document.getElementById(avisoId);
+  if(!aviso) return;
+  if(cliente && cliente.cobroDificil){
+    const motivo = cliente.cobroDificilMotivo || 'Hablá la forma de pago antes de alquilarle.';
+    document.getElementById(avisoTxtId).textContent = motivo;
+    aviso.style.display = 'block';
+    alert(`⚠ "${cliente.nombre}" está marcado como DIFÍCIL DE COBRAR.\n\n${motivo}`);
+  } else {
+    aviso.style.display = 'none';
+  }
+}
 function elegirCliente(id){
   cotCliente=CLIENTES.find(c=>c.id===id);
   document.getElementById('cot-cl-buscar').value='';
@@ -8836,10 +8878,12 @@ function elegirCliente(id){
   document.getElementById('cot-cl-nombre').textContent=cotCliente.nombre;
   const meta=[cotCliente.ciudad&&cotCliente.ciudad!=='-'?cotCliente.ciudad:'',cotCliente.cuit&&cotCliente.cuit!=='-'?'CUIT: '+cotCliente.cuit:'',cotCliente.tel&&cotCliente.tel!=='-'?'Tel: '+cotCliente.tel:''].filter(Boolean).join(' · ');
   document.getElementById('cot-cl-meta').textContent=meta;
+  avisarSiClienteDificilCobro(cotCliente, 'cot-cl-aviso-dificil', 'cot-cl-aviso-dificil-txt');
 }
 function limpiarCliente(){
   cotCliente=null;
   document.getElementById('cot-cl-elegido').style.display='none';
+  document.getElementById('cot-cl-aviso-dificil').style.display='none';
   document.getElementById('cot-cl-buscar').value='';
   document.getElementById('cot-cl-nuevo-form').style.display='none';
 }
@@ -14319,7 +14363,7 @@ function renderCl(){
     :lista.map(c=>`
     <div class="cl-item" onclick="editCl(${c.id})">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <h4>${c.nombre}</h4>
+        <h4>${c.nombre}${c.cobroDificil?' <span style="font-size:.68rem;font-weight:700;color:var(--rojo);background:rgba(201,106,94,.14);padding:2px 7px;border-radius:8px;vertical-align:middle">⚠ Difícil de cobrar</span>':''}</h4>
         ${ROL_ACTUAL!=='taller'?`<button onclick="event.stopPropagation();elimCl(${c.id})" style="background:none;border:none;color:var(--gris3);cursor:pointer;font-size:.9rem">✕</button>`:''}
       </div>
       <div class="cl-meta">
@@ -14476,6 +14520,9 @@ function abrirModalCliente(id){
   poner('nombre', c&&c.nombre); poner('dir', c&&c.dir); poner('ciudad', c&&c.ciudad);
   poner('cuit', c&&c.cuit);     poner('tel', c&&c.tel); poner('email', c&&c.email);
   poner('notas', c&&c.notas);
+  document.getElementById('mcl-dificil-cobrar').checked = !!(c && c.cobroDificil);
+  poner('dificil-cobrar-motivo', c&&c.cobroDificilMotivo);
+  document.getElementById('mcl-dificil-cobrar-box').style.display = (c && c.cobroDificil) ? 'block' : 'none';
   // El historial solo tiene sentido en un cliente que ya existe: en uno nuevo no hay
   // nada que mostrar y una caja vacía confunde.
   const caja = document.getElementById('mcl-historial-caja');
@@ -14499,12 +14546,15 @@ function guardarModalCliente(){
   if(!nombre){ alert('Hace falta el nombre para guardar el cliente.'); document.getElementById('mcl-nombre').focus(); return; }
   // aMayusCliente ya recorta los espacios de los costados. El email va en
   // minuscula: en mayuscula se lee mal y algunos servidores lo rebotan.
+  const dificilCobro = document.getElementById('mcl-dificil-cobrar').checked;
   const datos = {
     nombre, dir: aMayusCliente(v('dir')), ciudad: aMayusCliente(v('ciudad')),
     cuit: aMayusCliente(v('cuit')), tel: aMayusCliente(v('tel')), email: aMinusEmail(v('email')),
     // Las notas NO van a mayúscula: son renglones largos y en mayúscula no se leen.
     // Solo se recortan los espacios de los costados.
-    notas: String(v('notas')||'').trim()
+    notas: String(v('notas')||'').trim(),
+    cobroDificil: dificilCobro,
+    cobroDificilMotivo: dificilCobro ? String(v('dificil-cobrar-motivo')||'').trim() : ''
   };
   if(clienteEditandoId){
     const c = CLIENTES.find(x=>x.id===clienteEditandoId);
@@ -16957,11 +17007,13 @@ function elegirClAlq(id){
   const el=document.getElementById('alq-cl-elegido');
   el.style.display='flex';
   document.getElementById('alq-cl-nombre').textContent=alqClienteElegido.nombre;
+  avisarSiClienteDificilCobro(alqClienteElegido, 'alq-cl-aviso-dificil', 'alq-cl-aviso-dificil-txt');
 }
 
 function limpiarClAlq(){
   alqClienteElegido=null;
   document.getElementById('alq-cl-elegido').style.display='none';
+  document.getElementById('alq-cl-aviso-dificil').style.display='none';
   document.getElementById('alq-cl-buscar').value='';
 }
 
